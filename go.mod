@@ -11,6 +11,7 @@ tool github.com/atombender/go-jsonschema
 
 require (
 	github.com/goccy/go-yaml v1.19.2
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/spf13/cobra v1.10.2
 )
 
@@ -23,4 +24,5 @@ require (
 	github.com/sanity-io/litter v1.5.8 // indirect
 	github.com/sosodev/duration v1.4.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
+	golang.org/x/text v0.14.0 // indirect
 )
