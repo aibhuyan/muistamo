@@ -1,0 +1,13 @@
+apiVersion: muistamo.dev/v1
+kind: KnowledgePack
+metadata:
+  name: equity-research-basics
+  owner: team-equity-research
+spec:
+  version: 3.1.0
+  layer: role
+  mandatory: false
+  reviewers: [group:research-leads]
+  mergePolicy:
+    requires: [review, evaluation]
+  storageLocation: s3://example-bucket/packs/equity-research-basics

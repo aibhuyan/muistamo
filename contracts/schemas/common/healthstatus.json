@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/common/healthstatus.json",
+  "title": "HealthStatus",
+  "description": "Response body of every service health endpoint.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "service"],
+  "properties": {
+    "status": { "type": "string", "enum": ["ok"] },
+    "service": { "type": "string" }
+  }
+}

@@ -1,0 +1,20 @@
+apiVersion: muistamo.dev/v1
+kind: AgentTemplate
+metadata:
+  name: analyst-intern
+  owner: team-equity-research
+spec:
+  purpose: Support interns with company and market analysis
+  riskTier: medium
+  modelAlias: reasoning-default
+  knowledgePacks:
+    - name: equity-research-basics
+      version: "3.x"
+  tools: [sharepoint-research]
+  dataClasses: [internal, confidential]
+  autonomy: read-and-draft
+  assignment:
+    hrJobCodes: [ANALYST_INTERN]
+  budget:
+    perInstanceMonthlyEUR: 40
+  evaluationSet: evals/analyst-intern.yaml

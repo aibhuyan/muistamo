@@ -1,0 +1,18 @@
+name: setup
+description: Install Go, Python (uv) and Node toolchains, then run make setup.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+    - uses: astral-sh/setup-uv@v10
+      with:
+        enable-cache: true
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: console/package-lock.json
+    - run: make setup
+      shell: bash

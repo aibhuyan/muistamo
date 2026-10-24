@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agentinstance.json",
+  "title": "AgentInstance",
+  "description": "An agent bound to a user, team or service, with its own identity (PRD section 5). Usually generated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "type": "string", "const": "muistamo.dev/v1" },
+    "kind": { "type": "string", "const": "AgentInstance" },
+    "metadata": { "$ref": "common/objectmeta.json" },
+    "spec": {
+      "title": "AgentInstanceSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["templateRef", "binding", "state"],
+      "properties": {
+        "templateRef": {
+          "title": "TemplateRef",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": "string" }
+          }
+        },
+        "binding": {
+          "title": "InstanceBinding",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "ref"],
+          "properties": {
+            "type": { "type": "string", "enum": ["user", "team", "service"] },
+            "ref": { "type": "string" }
+          }
+        },
+        "identityRef": {
+          "description": "Identity ID of the instance in the identity provider.",
+          "type": "string"
+        },
+        "sponsor": { "type": "string" },
+        "delegate": { "type": "string" },
+        "personalLayerRef": { "type": "string" },
+        "state": {
+          "type": "string",
+          "enum": ["requested", "active", "under-review", "suspended", "retired", "quarantined"]
+        },
+        "costCentre": { "type": "string" }
+      }
+    }
+  }
+}

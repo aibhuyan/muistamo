@@ -1,0 +1,12 @@
+[project]
+name = "muistamo-knowledge"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = ["fastapi", "uvicorn", "muistamo-contracts"]
+
+[tool.uv.sources]
+muistamo-contracts = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"

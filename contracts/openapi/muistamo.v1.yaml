@@ -1,0 +1,31 @@
+openapi: 3.1.0
+info:
+  title: Muistamo API
+  version: 0.0.0
+  description: >-
+    Stub. Operations are added here before they are implemented. Schemas live in
+    ../schemas and are referenced, never copied.
+servers:
+  - url: http://localhost
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Service health
+      responses:
+        "200":
+          description: The service is up.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/common/healthstatus.json"
+components:
+  schemas:
+    HealthStatus:
+      $ref: "../schemas/common/healthstatus.json"
+    AgentTemplate:
+      $ref: "../schemas/agenttemplate.json"
+    AgentInstance:
+      $ref: "../schemas/agentinstance.json"
+    KnowledgePack:
+      $ref: "../schemas/knowledgepack.json"

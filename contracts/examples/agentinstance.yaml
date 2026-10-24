@@ -1,0 +1,15 @@
+apiVersion: muistamo.dev/v1
+kind: AgentInstance
+metadata:
+  name: analyst-intern-person-a
+spec:
+  templateRef:
+    name: analyst-intern
+    version: "3.1.0"
+  binding:
+    type: user
+    ref: person-a@example.invalid
+  identityRef: 00000000-0000-0000-0000-000000000000
+  sponsor: person-b@example.invalid
+  state: active
+  costCentre: CC-0000

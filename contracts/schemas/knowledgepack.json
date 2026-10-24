@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/knowledgepack.json",
+  "title": "KnowledgePack",
+  "description": "A versioned, reviewed body of company knowledge (PRD section 5).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "type": "string", "const": "muistamo.dev/v1" },
+    "kind": { "type": "string", "const": "KnowledgePack" },
+    "metadata": { "$ref": "common/objectmeta.json" },
+    "spec": {
+      "title": "KnowledgePackSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "layer"],
+      "properties": {
+        "version": {
+          "description": "Semantic version of the pack.",
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+        },
+        "layer": { "type": "string", "enum": ["company", "role", "team", "personal"] },
+        "mandatory": {
+          "description": "Users and agents cannot switch a mandatory pack off.",
+          "type": "boolean"
+        },
+        "reviewers": { "type": "array", "items": { "type": "string" } },
+        "mergePolicy": {
+          "title": "MergePolicy",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requires": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["review", "evaluation"] }
+            }
+          }
+        },
+        "storageLocation": {
+          "description": "Customer-bound object storage location for pack content.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

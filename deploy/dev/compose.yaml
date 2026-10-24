@@ -1,0 +1,47 @@
+# Local infrastructure for `make dev`. Development only: fake credentials, in-memory stores,
+# ports bound to localhost. Override values from an untracked .env next to this file.
+name: muistamo-dev
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17-trixie
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-muistamo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-not-a-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-muistamo}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  temporal:
+    image: temporalio/temporal:1.9.1
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--ui-port", "8233"]
+    ports:
+      - "127.0.0.1:${TEMPORAL_PORT:-7233}:7233"
+      - "127.0.0.1:${TEMPORAL_UI_PORT:-8233}:8233"
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  openfga:
+    image: openfga/openfga:v1.22.0
+    command: ["run", "--datastore-engine", "memory"]
+    ports:
+      - "127.0.0.1:${OPENFGA_HTTP_PORT:-8081}:8080"
+      - "127.0.0.1:${OPENFGA_GRPC_PORT:-8082}:8081"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:8081"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres-data:
