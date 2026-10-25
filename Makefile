@@ -13,6 +13,9 @@ export POSTGRES_PORT
 export MUISTAMO_TEST_DATABASE_URL ?= postgres://muistamo:dev-only-not-a-secret@127.0.0.1:$(POSTGRES_PORT)/muistamo
 export MUISTAMO_TEST_TEMPORAL_ADDRESS ?= 127.0.0.1:7233
 
+# The Terraform provider's acceptance tests run against OpenTofu (MPL-2.0), never a BUSL binary.
+TOFU ?= $(shell command -v tofu 2>/dev/null)
+
 .PHONY: setup generate check-generated lint test test-db test-authz dev dev-down
 
 setup:
@@ -49,7 +52,8 @@ test-db:
 	$(COMPOSE) up -d --wait postgres temporal
 
 test: test-db
-	go test ./...
+	@[ -n "$(TOFU)" ] || { echo "OpenTofu (tofu) is required for the provider acceptance tests: install it, or set TOFU=/path/to/tofu" >&2; exit 1; }
+	TF_ACC=1 TF_ACC_TERRAFORM_PATH="$(TOFU)" TF_ACC_PROVIDER_NAMESPACE=hashicorp TF_ACC_PROVIDER_HOST=registry.opentofu.org go test ./...
 	uv run --no-sync pytest -m "not authz"
 	npm test --prefix console
 

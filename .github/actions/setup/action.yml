@@ -9,6 +9,11 @@ runs:
     - uses: astral-sh/setup-uv@v10.3.2 # no floating major tag is published
       with:
         enable-cache: true
+    - uses: opentofu/setup-opentofu@v2
+      with:
+        tofu_version: 1.13.2
+        # The wrapper script interferes with terraform-plugin-testing; use the raw binary.
+        tofu_wrapper: false
     - uses: actions/setup-node@v7
       with:
         node-version: 24
