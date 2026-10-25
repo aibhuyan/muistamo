@@ -135,6 +135,18 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     def get_version(name: str, version: str, who: Who) -> JSONResponse:
         return ok(svc().get_version(who, name, version))
 
+    @app.get("/v1/knowledge/packs/{name}/versions/{version}/skills.zip")
+    def export_skills(name: str, version: str, who: Who) -> Response:
+        resolved, data = svc().export_skills(who, name, version)
+        return Response(
+            data,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{name}-{resolved}-skills.zip"',
+                "X-Muistamo-Pack-Version": resolved,
+            },
+        )
+
     @app.post("/v1/knowledge/packs/{name}/rollback")
     def rollback(name: str, body: RollbackInput, who: Who) -> JSONResponse:
         return ok(svc().rollback(who, name, body.toVersion, body.reason), 201)
