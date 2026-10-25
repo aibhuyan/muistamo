@@ -16,6 +16,7 @@ import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -236,6 +237,7 @@ class Knowledge:
 
     def capture(self, actor: Actor, entry: dict[str, Any]) -> dict[str, Any]:
         with self.db.in_tenant(actor.tenant) as cur:
+            self._ensure_not_frozen(cur, actor.name)
             created = self._insert_entry(cur, actor.tenant, entry, contributor=actor.name)
             cur.execute(
                 "INSERT INTO knowledge.personal_entries (tenant_id, owner, entry_id) VALUES (%s, %s, %s)",
@@ -256,17 +258,35 @@ class Knowledge:
             return self._personal(cur, actor)
 
     def _personal(self, cur: Cursor, actor: Actor) -> list[dict[str, Any]]:
+        return self._personal_of(cur, actor.name)
+
+    def _personal_of(self, cur: Cursor, owner: str) -> list[dict[str, Any]]:
         cur.execute(
             _ENTRY_SELECT
             + " JOIN knowledge.personal_entries p ON p.tenant_id = e.tenant_id AND p.entry_id = e.id"
             " WHERE p.owner = %s ORDER BY e.key, e.created_at",
-            (actor.name,),
+            (owner,),
         )
         return [_entry(r) for r in cur.fetchall()]
+
+    def _ensure_not_frozen(self, cur: Cursor, person: str) -> None:
+        """A leaver's personal layer is frozen while their review is open (E4.2)."""
+        cur.execute(
+            "SELECT EXISTS (SELECT 1 FROM knowledge.leaver_reviews"
+            " WHERE person = %s AND status = 'open')",
+            (person,),
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            raise Conflict(
+                "this personal layer is frozen while its leaver review is open; nothing can be"
+                " added, proposed or deleted"
+            )
 
     def delete_personal(self, actor: Actor, entry_id: UUID) -> None:
         """Delete one of the caller's own entries. Copies already submitted in proposals remain."""
         with self.db.in_tenant(actor.tenant) as cur:
+            self._ensure_not_frozen(cur, actor.name)
             cur.execute(
                 "DELETE FROM knowledge.personal_entries WHERE entry_id = %s AND owner = %s RETURNING entry_id",
                 (entry_id, actor.name),
@@ -289,66 +309,92 @@ class Knowledge:
         self, actor: Actor, pack: str, entry_ids: list[UUID], summary: str
     ) -> dict[str, Any]:
         with self.db.in_tenant(actor.tenant) as cur:
-            info = self._pack(cur, pack)
-            own = {e["id"]: e for e in self._personal(cur, actor)}
-            missing = [str(i) for i in entry_ids if i not in own]
-            if missing:
-                raise NotFound(f"entries {', '.join(missing)}")
-            current = {
-                e["entry"]["key"]: e["entry"]["body"]
-                for e in self._version_entries(cur, pack, info["latest"])
-            }
+            self._ensure_not_frozen(cur, actor.name)
+            return self._propose(cur, actor, actor.name, pack, entry_ids, summary)
 
-            proposal_id = uuid.uuid4()
-            findings: list[checks.Finding] = []
-            copies = []
-            for entry_id in entry_ids:
-                source = own[entry_id]
-                findings += checks.check_entry(
-                    source["key"], source["title"], source["body"], source.get("source")
+    def _propose(
+        self,
+        cur: Cursor,
+        actor: Actor,
+        owner: str,
+        pack: str,
+        entry_ids: list[UUID],
+        summary: str,
+        proposed_by: str | None = None,
+    ) -> dict[str, Any]:
+        """Propose owner's personal entries. proposed_by is set when someone else proposes on the
+        owner's behalf (a leaver's decider); the owner stays the contributor, for lineage."""
+        info = self._pack(cur, pack)
+        own = {e["id"]: e for e in self._personal_of(cur, owner)}
+        missing = [str(i) for i in entry_ids if i not in own]
+        if missing:
+            raise NotFound(f"entries {', '.join(missing)}")
+        current = {
+            e["entry"]["key"]: e["entry"]["body"]
+            for e in self._version_entries(cur, pack, info["latest"])
+        }
+
+        proposal_id = uuid.uuid4()
+        findings: list[checks.Finding] = []
+        copies = []
+        for entry_id in entry_ids:
+            source = own[entry_id]
+            findings += checks.check_entry(
+                source["key"], source["title"], source["body"], source.get("source")
+            )
+            findings += checks.duplicate(source["key"], source["body"], current)
+            # The proposal holds its own revision, so deleting the personal entry later
+            # does not break the proposal's lineage.
+            copies.append(
+                self._insert_entry(
+                    cur, actor.tenant, source, contributor=owner, derived_from=entry_id
                 )
-                findings += checks.duplicate(source["key"], source["body"], current)
-                # The proposal holds its own revision, so deleting the personal entry later
-                # does not break the proposal's lineage.
-                copies.append(
-                    self._insert_entry(
-                        cur, actor.tenant, source, contributor=actor.name, derived_from=entry_id
-                    )
-                )
-            status = "checks-failed" if checks.blocked(findings) else "in-review"
-            check_json = [
-                {
-                    "ruleId": f.rule_id,
-                    "severity": f.severity,
-                    "entryKey": f.entry_key,
-                    "message": f.message,
-                }
-                for f in findings
-            ]
+            )
+        status = "checks-failed" if checks.blocked(findings) else "in-review"
+        check_json = [
+            {
+                "ruleId": f.rule_id,
+                "severity": f.severity,
+                "entryKey": f.entry_key,
+                "message": f.message,
+            }
+            for f in findings
+        ]
+        cur.execute(
+            "INSERT INTO knowledge.proposals"
+            " (tenant_id, id, pack, contributor, summary, status, checks, proposed_by)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                actor.tenant,
+                proposal_id,
+                pack,
+                owner,
+                summary,
+                status,
+                Jsonb(check_json),
+                proposed_by,
+            ),
+        )
+        for copy in copies:
             cur.execute(
-                "INSERT INTO knowledge.proposals (tenant_id, id, pack, contributor, summary, status, checks)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (actor.tenant, proposal_id, pack, actor.name, summary, status, Jsonb(check_json)),
+                "INSERT INTO knowledge.proposal_entries (tenant_id, proposal_id, entry_id) VALUES (%s, %s, %s)",
+                (actor.tenant, proposal_id, copy["id"]),
             )
-            for copy in copies:
-                cur.execute(
-                    "INSERT INTO knowledge.proposal_entries (tenant_id, proposal_id, entry_id) VALUES (%s, %s, %s)",
-                    (actor.tenant, proposal_id, copy["id"]),
-                )
-            self._evidence(
-                cur,
-                actor,
-                "knowledge.proposal.created",
-                "Proposal",
-                str(proposal_id),
-                after={
-                    "pack": pack,
-                    "status": status,
-                    "entries": [c["key"] for c in copies],
-                    "checks": check_json,
-                },
-            )
-            return self._proposal(cur, proposal_id)
+        self._evidence(
+            cur,
+            actor,
+            "knowledge.proposal.created",
+            "Proposal",
+            str(proposal_id),
+            after={
+                "pack": pack,
+                "status": status,
+                "entries": [c["key"] for c in copies],
+                "checks": check_json,
+                **({"onBehalfOf": owner} if proposed_by else {}),
+            },
+        )
+        return self._proposal(cur, proposal_id)
 
     def list_proposals(self, actor: Actor, role: str) -> list[dict[str, Any]]:
         with self.db.in_tenant(actor.tenant) as cur:
@@ -382,13 +428,14 @@ class Knowledge:
     ) -> dict[str, Any]:
         with self.db.in_tenant(actor.tenant) as cur:
             cur.execute(
-                "SELECT pack, contributor, status FROM knowledge.proposals WHERE id = %s FOR UPDATE",
+                "SELECT pack, contributor, status, proposed_by FROM knowledge.proposals"
+                " WHERE id = %s FOR UPDATE",
                 (proposal_id,),
             )
             row = cur.fetchone()
             if row is None:
                 raise NotFound(f"proposal {proposal_id}")
-            pack, contributor, status = row
+            pack, contributor, status, proposed_by = row
             info = self._pack(cur, pack, lock=True)
             if actor.name not in info["reviewers"]:
                 if actor.name == contributor:
@@ -396,6 +443,8 @@ class Knowledge:
                 raise NotFound(f"proposal {proposal_id}")
             if actor.name == contributor:
                 raise Forbidden("a reviewer cannot decide their own proposal")
+            if actor.name == proposed_by:
+                raise Forbidden("whoever proposed on a leaver's behalf cannot decide that proposal")
             if status != "in-review":
                 raise Conflict(f"proposal is {status}; only proposals in review can be decided")
 
@@ -592,7 +641,7 @@ class Knowledge:
     def _proposal(self, cur: Cursor, proposal_id: UUID) -> dict[str, Any]:
         cur.execute(
             "SELECT id, pack, contributor, summary, status, checks, reviewer, decision, reason, decided_at,"
-            " merged_version, created_at FROM knowledge.proposals WHERE id = %s",
+            " merged_version, created_at, proposed_by FROM knowledge.proposals WHERE id = %s",
             (proposal_id,),
         )
         r = cur.fetchone()
@@ -614,6 +663,8 @@ class Knowledge:
             "entries": [_entry(e) for e in cur.fetchall()],
             "createdAt": r[11],
         }
+        if r[12] is not None:
+            out["proposedBy"] = r[12]
         if r[7] is not None:
             out["decision"] = {
                 "reviewer": r[6],
@@ -744,4 +795,12 @@ def _entry(row: tuple) -> dict[str, Any]:
 
 
 def to_jsonable(value: Any) -> Any:
-    return json.loads(json.dumps(value, default=str))
+    """JSON-ready API output. Datetimes are RFC 3339 (the contracts' date-time), never str()'s
+    space-separated form, which strict clients such as the control plane cannot parse."""
+    return json.loads(json.dumps(value, default=_json_default))
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)

@@ -8,12 +8,16 @@ import uuid
 
 import psycopg
 import pytest
+from muistamo_knowledge import auth
+from muistamo_knowledge.leavers import Leavers, set_service_secret
 from muistamo_knowledge.privacy import PERSONAL_DATA_TABLES, replace_officers, rows_mentioning
 
 pytestmark = pytest.mark.authz
 
 DPO = "dpo@example.invalid"
+LEAVER = "leaver-l@example.invalid"
 SEEDED_ERASURE = "6f1c2c1e-1d0b-4b0e-9a54-6a3f1c2b7d10"
+SERVICE_SECRET = b"mks_tenant-1-test-only-not-a-secret-000000"
 
 PACK = {
     "apiVersion": "muistamo.dev/v1",
@@ -40,6 +44,8 @@ TABLES = [
     "reads",
     "privacy_officers",
     "erasure_requests",
+    "service_secrets",
+    "leaver_reviews",
 ]
 
 
@@ -85,6 +91,21 @@ def seed(world) -> dict:
         json={"id": SEEDED_ERASURE, "reason": "seed", "subject": nobody},
     )
     assert done.status_code == 201, done.text
+    # Tenant 1 has a service secret and an open review of a leaver with a private entry.
+    set_service_secret(world.db.owner_url, world.tenant, SERVICE_SECRET)
+    note = world.client(LEAVER).post(
+        "/v1/knowledge/personal/entries", json=entry("leaver-note", "The leaver's note")
+    )
+    assert note.status_code == 201, note.text
+    opened = Leavers(world.knowledge, auth.dev_identity).open(
+        world.tenant,
+        {
+            "id": "leaver:1",
+            "person": {"email": LEAVER},
+            "deciders": [{"email": R, "kind": "manager"}],
+        },
+    )
+    assert opened[0]["status"] == "open"
     return {"private": private["id"], "proposed": proposed["id"], "proposal": proposal["id"]}
 
 
@@ -345,3 +366,65 @@ def test_privacy_requests_are_tenant_scoped(world) -> None:
     ):
         err = _exec(world.db.app_url, world.other_tenant, stmt)
         assert err is not None and "permission denied" in str(err), (stmt, err)
+
+
+def test_leaver_reviews_and_service_secrets_are_tenant_scoped(world) -> None:
+    seed(world)
+    # Tenant 2's people, even one named as decider in tenant 1, cannot see tenant 1's review.
+    r2 = world.client(R, world.other_tenant)
+    assert r2.get("/v1/knowledge/leaver-reviews").json()["items"] == []
+    assert r2.get("/v1/knowledge/leaver-reviews/leaver:1").status_code == 404
+    decision = {"decision": "purge", "reason": "x"}
+    assert (
+        r2.post("/v1/knowledge/leaver-reviews/leaver:1/decision", json=decision).status_code == 404
+    )
+    # The frozen layer is still intact in tenant 1, and tenant 1's decider still sees it.
+    assert world.client(R).get("/v1/knowledge/leaver-reviews/leaver:1").status_code == 200
+
+    # Tenant 2's own service secret cannot reach tenant 1's review either.
+    secret2 = b"mks_tenant-2-test-only-not-a-secret-000000"
+    set_service_secret(world.db.owner_url, world.other_tenant, secret2)
+    client = world.client(A)
+    for path in (
+        "/v1/knowledge/internal/leaver-reviews/leaver:1/expire",
+        "/v1/knowledge/internal/leaver-reviews/leaver:1/cancel",
+    ):
+        res = client.post(
+            path,
+            content=b"",
+            headers={
+                "X-Muistamo-Tenant": str(world.other_tenant),
+                "X-Muistamo-Signature": auth.sign(secret2, b""),
+            },
+        )
+        assert res.status_code == 404, (path, res.status_code)
+    with world.knowledge.db.in_tenant(world.tenant) as cur:
+        cur.execute("SELECT status FROM knowledge.leaver_reviews WHERE id = 'leaver:1'")
+        assert cur.fetchone()[0] == "open"
+
+    # The server role reads its own tenant's secret only, and writes none.
+    assert (
+        _count(
+            world.db.app_url,
+            world.other_tenant,
+            "SELECT count(*) FROM knowledge.service_secrets WHERE tenant_id = %s",
+            world.tenant,
+        )
+        == 0
+    )
+    for stmt in (
+        "UPDATE knowledge.service_secrets SET secret = decode(repeat('ab', 32), 'hex')",
+        "INSERT INTO knowledge.service_secrets (tenant_id, secret) VALUES (current_setting('muistamo.tenant_id')::uuid, decode(repeat('ab', 32), 'hex'))",
+    ):
+        err = _exec(world.db.app_url, world.other_tenant, stmt)
+        assert err is not None and "permission denied" in str(err), (stmt, err)
+    err = _exec(
+        world.db.app_url,
+        world.other_tenant,
+        "UPDATE knowledge.leaver_reviews SET status = 'closed', outcome = 'cancelled' WHERE tenant_id = %s",
+        world.tenant,
+    )
+    assert err is None
+    with world.knowledge.db.in_tenant(world.tenant) as cur:
+        cur.execute("SELECT status FROM knowledge.leaver_reviews WHERE id = 'leaver:1'")
+        assert cur.fetchone()[0] == "open", "tenant 2 closed tenant 1's review by SQL"

@@ -26,6 +26,10 @@
     "contributor": {
       "type": "string"
     },
+    "proposedBy": {
+      "description": "Set when someone proposed on the contributor's behalf (a leaver's decider, E4.2). They cannot decide the proposal.",
+      "type": "string"
+    },
     "summary": {
       "type": "string"
     },

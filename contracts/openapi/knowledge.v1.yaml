@@ -458,6 +458,144 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/knowledge/leaver-reviews:
+    get:
+      operationId: listLeaverReviews
+      summary: Reviews of leavers' personal layers that the caller decides
+      responses:
+        "200":
+          description: Open reviews first.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/leaverreviewpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/leaver-reviews/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getLeaverReview
+      summary: A review with the leaver's personal entries (its decider only; every read is recorded)
+      responses:
+        "200":
+          description: The review.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/leaverreview.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/leaver-reviews/{id}/decision:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: decideLeaverReview
+      summary: Merge chosen entries as a proposal, keep for one more period, or purge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/leaverreviewdecision.json"
+      responses:
+        "200":
+          description: The review after the decision.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/leaverreview.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/internal/leaver-reviews:
+    post:
+      operationId: openLeaverReview
+      summary: Open and freeze a leaver's personal-layer review (service call)
+      description: >-
+        Service call from the control plane's leaver workflow only: authenticated by
+        X-Muistamo-Tenant and X-Muistamo-Signature (t=<unix seconds>,v1=<hex HMAC-SHA256 of
+        "t.body"> under the tenant's service secret), never by a user identity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/leaverreviewopen.json"
+      responses:
+        "200":
+          description: Already open for this id.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/leaverreview.json"
+        "201":
+          description: Opened.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/leaverreview.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/internal/leaver-reviews/{id}/expire:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: expireLeaverReview
+      summary: At or after the deadline, purge an undecided layer; otherwise report the deadline (service call)
+      description: >-
+        Service call from the control plane's leaver workflow only: authenticated by
+        X-Muistamo-Tenant and X-Muistamo-Signature (t=<unix seconds>,v1=<hex HMAC-SHA256 of
+        "t.body"> under the tenant's service secret), never by a user identity.
+      responses:
+        "200":
+          description: The review; still open with a later deadline if it was kept.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/leaverreview.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/internal/leaver-reviews/{id}/cancel:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: cancelLeaverReview
+      summary: The person was rehired; close an open review and unfreeze the layer (service call)
+      description: >-
+        Service call from the control plane's leaver workflow only: authenticated by
+        X-Muistamo-Tenant and X-Muistamo-Signature (t=<unix seconds>,v1=<hex HMAC-SHA256 of
+        "t.body"> under the tenant's service secret), never by a user identity.
+      responses:
+        "200":
+          description: The review.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/leaverreview.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/knowledge/events:
     get:
       operationId: listEvents

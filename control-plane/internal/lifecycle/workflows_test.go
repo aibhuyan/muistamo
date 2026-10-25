@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
@@ -74,11 +75,15 @@ func TestJoinerRetriesAStepWhoseEvidenceFailed(t *testing.T) {
 	env.AssertExpectations(t)
 }
 
+const reviewID = "wf:run"
+
+// expectLeaverStart mocks suspension, revocation and an opened personal-layer review.
 func expectLeaverStart(env *testsuite.TestWorkflowEnvironment, got *steps, instance string) {
 	env.OnActivity(a.PersonInstances, mock.Anything, scope, person.ID).Return([]string{instance}, nil)
 	env.OnActivity(a.SetState, mock.Anything, scope, instance, muistamov1.InstanceStateSuspended).Return(nil).Run(got.add("suspend"))
 	env.OnActivity(a.RevokeCredentials, mock.Anything, scope, instance).Return(nil).Run(got.add("revoke"))
-	env.OnActivity(a.RecordPersonalLayerDecision, mock.Anything, scope, instance).Return(nil).Run(got.add("personal-layer"))
+	env.OnActivity(a.OpenPersonalLayerReview, mock.Anything, scope, person, []string{instance}).
+		Return(ReviewOpened{ID: reviewID, Opened: true}, nil).Run(got.add("personal-layer"))
 }
 
 func TestLeaverRetiresAfterTheGracePeriod(t *testing.T) {
@@ -87,6 +92,7 @@ func TestLeaverRetiresAfterTheGracePeriod(t *testing.T) {
 	expectLeaverStart(env, &got, "i")
 	env.OnActivity(a.SetState, mock.Anything, scope, "i", muistamov1.InstanceStateRetired).Return(nil).Run(got.add("retire"))
 	env.OnActivity(a.SetIdentityEnabled, mock.Anything, scope, "i", false).Return(nil).Run(got.add("disable"))
+	env.OnActivity(a.ExpirePersonalLayerReview, mock.Anything, scope, person.ID, reviewID).Return(ReviewState{Closed: true}, nil).Run(got.add("purge-undecided"))
 
 	// Fails the test if anything retires before the grace period ends.
 	env.RegisterDelayedCallback(func() {
@@ -100,7 +106,7 @@ func TestLeaverRetiresAfterTheGracePeriod(t *testing.T) {
 	if env.GetWorkflowError() != nil {
 		t.Fatal(env.GetWorkflowError())
 	}
-	if want := []string{"suspend", "revoke", "personal-layer", "retire", "disable"}; !equal(got, want) {
+	if want := []string{"suspend", "revoke", "personal-layer", "retire", "disable", "purge-undecided"}; !equal(got, want) {
 		t.Fatalf("steps = %v, want %v", got, want)
 	}
 	var result LeaverResult
@@ -115,6 +121,7 @@ func TestRehireDuringGracePeriodReactivates(t *testing.T) {
 	expectLeaverStart(env, &got, "i")
 	env.OnActivity(a.SetIdentityEnabled, mock.Anything, scope, "i", true).Return(nil).Run(got.add("enable"))
 	env.OnActivity(a.SetState, mock.Anything, scope, "i", muistamov1.InstanceStateActive).Return(nil).Run(got.add("activate"))
+	env.OnActivity(a.CancelPersonalLayerReview, mock.Anything, scope, person.ID, reviewID).Return(nil).Run(got.add("cancel-review"))
 
 	env.RegisterDelayedCallback(func() { env.SignalWorkflow(RehiredSignal, Rehire{EventID: "rehire-1"}) }, 10*24*time.Hour)
 	env.ExecuteWorkflow(Leaver, LeaverInput{Scope: scope, Person: person})
@@ -122,7 +129,7 @@ func TestRehireDuringGracePeriodReactivates(t *testing.T) {
 	if env.GetWorkflowError() != nil {
 		t.Fatal(env.GetWorkflowError())
 	}
-	if want := []string{"suspend", "revoke", "personal-layer", "enable", "activate"}; !equal(got, want) {
+	if want := []string{"suspend", "revoke", "personal-layer", "cancel-review", "enable", "activate"}; !equal(got, want) {
 		t.Fatalf("steps = %v, want %v (and never retire)", got, want)
 	}
 	var result LeaverResult
@@ -137,6 +144,7 @@ func TestRehireBeforeSuspensionFinishesIsNotLost(t *testing.T) {
 	expectLeaverStart(env, &got, "i")
 	env.OnActivity(a.SetIdentityEnabled, mock.Anything, scope, "i", true).Return(nil)
 	env.OnActivity(a.SetState, mock.Anything, scope, "i", muistamov1.InstanceStateActive).Return(nil).Run(got.add("activate"))
+	env.OnActivity(a.CancelPersonalLayerReview, mock.Anything, scope, person.ID, reviewID).Return(nil)
 
 	env.RegisterDelayedCallback(func() { env.SignalWorkflow(RehiredSignal, Rehire{EventID: "early"}) }, 0)
 	env.ExecuteWorkflow(Leaver, LeaverInput{Scope: scope, Person: person})
@@ -149,14 +157,89 @@ func TestRehireBeforeSuspensionFinishesIsNotLost(t *testing.T) {
 	}
 }
 
-func TestLeaverWithNoInstancesEnds(t *testing.T) {
+func TestLeaverWithNoInstancesOrLayerEnds(t *testing.T) {
 	env := newEnv(t)
 	env.OnActivity(a.PersonInstances, mock.Anything, scope, person.ID).Return([]string(nil), nil)
+	env.OnActivity(a.OpenPersonalLayerReview, mock.Anything, scope, person, []string(nil)).Return(ReviewOpened{}, nil)
 
 	env.ExecuteWorkflow(Leaver, LeaverInput{Scope: scope, Person: person})
 
 	if !env.IsWorkflowCompleted() || env.GetWorkflowError() != nil {
 		t.Fatalf("workflow error: %v", env.GetWorkflowError())
+	}
+	env.AssertExpectations(t)
+}
+
+// A person can have a personal layer without any instance (through their own assistant): it is
+// still reviewed, and purged after the grace period.
+func TestLeaverWithOnlyAPersonalLayerIsStillReviewed(t *testing.T) {
+	env := newEnv(t)
+	var got steps
+	env.OnActivity(a.PersonInstances, mock.Anything, scope, person.ID).Return([]string(nil), nil)
+	env.OnActivity(a.OpenPersonalLayerReview, mock.Anything, scope, person, []string(nil)).
+		Return(ReviewOpened{ID: reviewID, Opened: true}, nil).Run(got.add("open"))
+	env.OnActivity(a.ExpirePersonalLayerReview, mock.Anything, scope, person.ID, reviewID).
+		Return(ReviewState{Closed: true}, nil).Run(got.add("expire"))
+
+	env.ExecuteWorkflow(Leaver, LeaverInput{Scope: scope, Person: person})
+
+	if env.GetWorkflowError() != nil {
+		t.Fatal(env.GetWorkflowError())
+	}
+	if !equal(got, []string{"open", "expire"}) {
+		t.Fatalf("steps = %v", got)
+	}
+}
+
+// A review the decider kept comes back open with a later deadline; the workflow waits for it and
+// asks again, rather than purging early or giving up.
+func TestKeptReviewIsExpiredAtItsLaterDeadline(t *testing.T) {
+	env := newEnv(t)
+	var got steps
+	expectLeaverStart(env, &got, "i")
+	env.OnActivity(a.SetState, mock.Anything, scope, "i", muistamov1.InstanceStateRetired).Return(nil)
+	env.OnActivity(a.SetIdentityEnabled, mock.Anything, scope, "i", false).Return(nil)
+	var calls []time.Time
+	kept := env.Now().Add(GracePeriod + 30*24*time.Hour)
+	env.OnActivity(a.ExpirePersonalLayerReview, mock.Anything, scope, person.ID, reviewID).
+		Return(ReviewState{Deadline: kept}, nil).Once().Run(func(mock.Arguments) { calls = append(calls, env.Now()) })
+	env.OnActivity(a.ExpirePersonalLayerReview, mock.Anything, scope, person.ID, reviewID).
+		Return(ReviewState{Closed: true}, nil).Once().Run(func(mock.Arguments) { calls = append(calls, env.Now()) })
+
+	env.ExecuteWorkflow(Leaver, LeaverInput{Scope: scope, Person: person})
+
+	if env.GetWorkflowError() != nil {
+		t.Fatal(env.GetWorkflowError())
+	}
+	if len(calls) != 2 || calls[1].Before(kept) {
+		t.Fatalf("expiry calls at %v; want two, the second at or after %v", calls, kept)
+	}
+	var result LeaverResult
+	if err := env.GetWorkflowResult(&result); err != nil || result.Review != reviewID {
+		t.Fatalf("result = %+v, %v", result, err)
+	}
+}
+
+// A leaver workflow recorded before reviews existed replays its old step, so in-flight leavers
+// finish instead of failing on a non-deterministic history.
+func TestLeaverStartedBeforeReviewsKeepsTheOldStep(t *testing.T) {
+	env := newEnv(t)
+	var got steps
+	env.OnGetVersion(reviewChange, workflow.DefaultVersion, 1).Return(workflow.DefaultVersion)
+	env.OnActivity(a.PersonInstances, mock.Anything, scope, person.ID).Return([]string{"i"}, nil)
+	env.OnActivity(a.SetState, mock.Anything, scope, "i", muistamov1.InstanceStateSuspended).Return(nil)
+	env.OnActivity(a.RevokeCredentials, mock.Anything, scope, "i").Return(nil)
+	env.OnActivity(a.RecordPersonalLayerDecision, mock.Anything, scope, "i").Return(nil).Run(got.add("old-step"))
+	env.OnActivity(a.SetState, mock.Anything, scope, "i", muistamov1.InstanceStateRetired).Return(nil)
+	env.OnActivity(a.SetIdentityEnabled, mock.Anything, scope, "i", false).Return(nil)
+
+	env.ExecuteWorkflow(Leaver, LeaverInput{Scope: scope, Person: person})
+
+	if env.GetWorkflowError() != nil {
+		t.Fatal(env.GetWorkflowError())
+	}
+	if !equal(got, []string{"old-step"}) {
+		t.Fatalf("steps = %v, want the old personal-layer step only", got)
 	}
 }
 

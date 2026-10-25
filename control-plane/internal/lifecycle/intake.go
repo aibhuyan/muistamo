@@ -109,6 +109,9 @@ func LeaverWorkflowID(tenant uuid.UUID, personID string) string {
 // Dispatch starts a leaver workflow, signals a waiting one on rehire, or starts a joiner.
 func (d TemporalDispatcher) Dispatch(ctx context.Context, scope Scope, event muistamov1.HREvent) (string, error) {
 	person := Person{ID: event.Person.Id, Email: event.Person.Email, JobCode: event.Person.JobCode}
+	if event.Person.ManagerEmail != nil {
+		person.ManagerEmail = *event.Person.ManagerEmail
+	}
 	leaverID := LeaverWorkflowID(scope.Tenant, person.ID)
 
 	switch event.Type {

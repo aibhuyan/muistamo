@@ -4,7 +4,8 @@
 from __future__ import annotations
 from enum import StrEnum
 from uuid import UUID
-from pydantic import AwareDatetime, BaseModel, ConfigDict
+from typing import Annotated
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from . import checkresult, knowledgeentry, proposaldecisionrecord
 
 
@@ -22,6 +23,12 @@ class Proposal(BaseModel):
     id: UUID
     pack: str
     contributor: str
+    proposedBy: Annotated[
+        str | None,
+        Field(
+            description="Set when someone proposed on the contributor's behalf (a leaver's decider, E4.2). They cannot decide the proposal."
+        ),
+    ] = None
     summary: str
     status: Status
     entries: list[knowledgeentry.KnowledgeEntry]

@@ -20,6 +20,8 @@ type Person struct {
 	ID      string
 	Email   string
 	JobCode string
+	// ManagerEmail decides what happens to a leaver's personal knowledge layer (E4.2).
+	ManagerEmail string `json:",omitempty"`
 }
 
 // Scope identifies who and what a workflow step acts for. It is carried from the HR event into
@@ -39,6 +41,8 @@ type Activities struct {
 	Registry    *registry.Service
 	Provisioner Provisioner
 	Revoker     Revoker
+	// Knowledge reviews leavers' personal layers. Nil: reviews are recorded as not opened.
+	Knowledge LeaverReviews
 }
 
 // MatchTemplates returns the templates assigned to the person's job code.
@@ -145,11 +149,12 @@ func (a *Activities) SetIdentityEnabled(ctx context.Context, scope Scope, instan
 	return a.Registry.RecordLifecycleEvent(ctx, scope.actor(), action, instance, map[string]any{"identityRef": ref})
 }
 
-// RecordPersonalLayerDecision records the leaver's personal-layer step (E4.2). Knowledge layers
-// do not exist yet, so the record says so rather than the step being skipped silently.
+// RecordPersonalLayerDecision is the personal-layer step of leaver workflows that started before
+// reviews existed (workflow version DefaultVersion); it stays registered so they can finish. It
+// records that no review was opened for them.
 func (a *Activities) RecordPersonalLayerDecision(ctx context.Context, scope Scope, instance string) error {
 	return a.Registry.RecordLifecycleEvent(ctx, scope.actor(), "personal-layer.decision", instance,
-		map[string]any{"decision": "none", "reason": "no personal knowledge layer exists yet"})
+		map[string]any{"decision": "none", "reason": "this leaver workflow started before personal-layer reviews existed; no review was opened"})
 }
 
 func newInstance(name string, template registry.TemplateVersionRef, person Person) muistamov1.AgentInstance {

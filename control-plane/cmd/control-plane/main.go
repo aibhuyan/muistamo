@@ -124,7 +124,13 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 			w := worker.New(temporal, lifecycle.TaskQueue, worker.Options{})
 			w.RegisterWorkflow(lifecycle.Joiner)
 			w.RegisterWorkflow(lifecycle.Leaver)
-			w.RegisterActivity(&lifecycle.Activities{Registry: registry.New(db, key), Provisioner: simulated, Revoker: simulated})
+			acts := &lifecycle.Activities{Registry: registry.New(db, key), Provisioner: simulated, Revoker: simulated}
+			if url := os.Getenv("MUISTAMO_KNOWLEDGE_URL"); url != "" {
+				acts.Knowledge = lifecycle.NewKnowledgeClient(url)
+			} else {
+				log.Warn("MUISTAMO_KNOWLEDGE_URL is not set: leavers' personal layers will not be reviewed, and evidence will say so")
+			}
+			w.RegisterActivity(acts)
 			log.Info("lifecycle worker running", "task_queue", lifecycle.TaskQueue, "evidence_key", key.KeyID())
 			return w.Run(worker.InterruptCh())
 		},
@@ -172,6 +178,29 @@ func tenantCmd() *cobra.Command {
 			// The printed string itself is the HMAC key, as with most webhook providers.
 			secret := "mhr_" + hex.EncodeToString(raw)
 			if err := store.SetHRSecret(cmd.Context(), requireEnv("MUISTAMO_MIGRATE_DATABASE_URL"), id, []byte(secret)); err != nil {
+				return err
+			}
+			cmd.Println(secret)
+			return nil
+		},
+	})
+	tenant.AddCommand(&cobra.Command{
+		Use:   "knowledge-secret TENANT_ID",
+		Short: "Create the secret the leaver workflow signs knowledge-service calls with, and print it once (MUISTAMO_MIGRATE_DATABASE_URL)",
+		Long: "Store the printed value in the knowledge service too: python -m muistamo_knowledge tenant service-secret TENANT_ID SECRET. " +
+			"Running this again replaces the secret, so set the new value there as well.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("tenant id: %w", err)
+			}
+			raw := make([]byte, 32)
+			if _, err := rand.Read(raw); err != nil {
+				return fmt.Errorf("generate secret: %w", err)
+			}
+			secret := "mks_" + hex.EncodeToString(raw)
+			if err := store.SetKnowledgeSecret(cmd.Context(), requireEnv("MUISTAMO_MIGRATE_DATABASE_URL"), id, []byte(secret)); err != nil {
 				return err
 			}
 			cmd.Println(secret)

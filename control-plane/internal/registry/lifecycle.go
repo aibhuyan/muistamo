@@ -102,6 +102,27 @@ func (s *Service) RecordLifecycleEvent(ctx context.Context, actor Actor, action,
 	})
 }
 
+// RecordPersonEvent records evidence about an HR person rather than an instance, such as the
+// review of their personal knowledge layer.
+func (s *Service) RecordPersonEvent(ctx context.Context, actor Actor, action, personID string, after any) error {
+	return s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		return recordEvidence(ctx, tx, s.signer, actor, action, "HRPerson", personID, nil, after)
+	})
+}
+
+// KnowledgeSecret returns the tenant's knowledge-service secret, or nil if none is set.
+func (s *Service) KnowledgeSecret(ctx context.Context, actor Actor) ([]byte, error) {
+	var secret []byte
+	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `SELECT secret FROM knowledge_service_secrets`).Scan(&secret)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	})
+	return secret, err
+}
+
 // TransitionTo moves an instance to state unless it is already there. It reads the current
 // revision itself, so it is for lifecycle workflows, which act on the latest state.
 func (s *Service) TransitionTo(ctx context.Context, actor Actor, name string, to muistamov1.InstanceState) (muistamov1.AgentInstanceRecord, error) {

@@ -41,6 +41,7 @@ PERSONAL_DATA_TABLES = (
     "reads",
     "privacy_officers",
     "erasure_requests",
+    "leaver_reviews",
     "evidence_events",
 )
 
@@ -89,7 +90,7 @@ def subject_digest(tenant: UUID, subject: dict[str, Any]) -> str:
     return h.hexdigest()
 
 
-def _is_officer(cur: Cursor, name: str) -> bool:
+def is_officer(cur: Cursor, name: str) -> bool:
     cur.execute(
         "SELECT EXISTS (SELECT 1 FROM knowledge.privacy_officers WHERE officer = %s)", (name,)
     )
@@ -138,7 +139,7 @@ class Privacy:
         digest = subject_digest(actor.tenant, subject)
         redact = [UUID(str(e)) for e in request.get("redactEntries") or []]
         with self.k.db.in_tenant(actor.tenant) as cur:
-            if not _is_officer(cur, actor.name):
+            if not is_officer(cur, actor.name):
                 raise Forbidden("only privacy officers can erase personal data")
             if actor.name in values:
                 raise Forbidden(
@@ -210,7 +211,7 @@ class Privacy:
 
     def get_erasure(self, actor: Actor, request_id: UUID) -> dict[str, Any]:
         with self.k.db.in_tenant(actor.tenant) as cur:
-            if not _is_officer(cur, actor.name):
+            if not is_officer(cur, actor.name):
                 raise Forbidden("only privacy officers can read erasure proofs")
             cur.execute("SELECT proof FROM knowledge.erasure_requests WHERE id = %s", (request_id,))
             row = cur.fetchone()
@@ -221,7 +222,7 @@ class Privacy:
     def export(self, actor: Actor, subject: dict[str, Any]) -> dict[str, Any]:
         """Every row of PERSONAL_DATA_TABLES holding one of the person's identifiers."""
         with self.k.db.in_tenant(actor.tenant) as cur:
-            officer = _is_officer(cur, actor.name)
+            officer = is_officer(cur, actor.name)
             if officer:
                 values = subject_identifiers(subject, with_hr=False)
             elif subject["identities"] == [actor.name]:

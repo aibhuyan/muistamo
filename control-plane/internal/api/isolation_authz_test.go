@@ -22,7 +22,7 @@ import (
 )
 
 var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_events", "evidence_heads", "hr_events", "hr_webhook_secrets",
-	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published", "policy_documents", "privacy_officers", "erasure_requests"}
+	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published", "policy_documents", "privacy_officers", "erasure_requests", "knowledge_service_secrets"}
 
 // seedTenantA gives tenant A a template, an instance, an HR secret and one HR event.
 func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
@@ -66,6 +66,9 @@ func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
 		if err := store.SetPrivacyOfficers(context.Background(), h.db.OwnerURL, tenant, []string{"dev:" + officer}); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := store.SetKnowledgeSecret(context.Background(), h.db.OwnerURL, a, []byte("mks_tenant-a-test-only-not-a-secret-000000")); err != nil {
+		t.Fatal(err)
 	}
 	nobody := `{"id":"` + seededErasure + `","reason":"seed","subject":{"identities":["dev:nobody@example.invalid"],"email":"nobody@example.invalid"}}`
 	if got := h.call(t, a, http.MethodPost, "/v1/privacy/erasures", nobody, asOfficer()...); got.status != http.StatusCreated {
@@ -463,5 +466,39 @@ func TestAuthzPrivacyIsTenantScoped(t *testing.T) {
 		if err := testdb.ExecErr(h.db.AppURL, b, stmt, args...); err == nil || !strings.Contains(err.Error(), "permission denied") {
 			t.Errorf("%s as the server role: err = %v, want permission denied", name, err)
 		}
+	}
+}
+
+func TestAuthzKnowledgeSecretsAreTenantScoped(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a, b := seedTenantA(t, h)
+	if n := testdb.CountIn(t, h.db.AppURL, b, `SELECT count(*) FROM knowledge_service_secrets WHERE tenant_id = $1`, a); n != 0 {
+		t.Errorf("B reads A's knowledge service secret")
+	}
+	for name, stmt := range map[string]string{
+		"plant a secret for A": `INSERT INTO knowledge_service_secrets (tenant_id, secret) VALUES ($1, decode(repeat('ab', 32), 'hex'))`,
+		"replace A's secret":   `UPDATE knowledge_service_secrets SET secret = decode(repeat('ab', 32), 'hex') WHERE tenant_id = $1`,
+		"give itself one as B": `INSERT INTO knowledge_service_secrets (tenant_id, secret) VALUES (current_setting('muistamo.tenant_id')::uuid, decode(repeat('ab', 32), 'hex'))`,
+	} {
+		var args []any
+		if strings.Contains(stmt, "$1") {
+			args = []any{a}
+		}
+		if err := testdb.ExecErr(h.db.AppURL, b, stmt, args...); err == nil || !strings.Contains(err.Error(), "permission denied") {
+			t.Errorf("%s as the server role: err = %v, want permission denied", name, err)
+		}
+	}
+	// The worker reads only its own tenant's secret through the registry.
+	conn, err := store.Open(context.Background(), h.db.AppURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	svc := registry.New(conn, h.key)
+	if secret, err := svc.KnowledgeSecret(context.Background(), registry.Actor{Tenant: b, Name: "workflow:x"}); err != nil || secret != nil {
+		t.Errorf("B's worker got secret %q (%v), want none", secret, err)
+	}
+	if secret, err := svc.KnowledgeSecret(context.Background(), registry.Actor{Tenant: a, Name: "workflow:x"}); err != nil || len(secret) == 0 {
+		t.Errorf("A's worker got no secret (%v)", err)
 	}
 }

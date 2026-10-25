@@ -1554,6 +1554,12 @@ components:
             jobCode:
               type: string
               minLength: 1
+            managerEmail:
+              description: 'Leaver: the person''s manager, who decides what happens
+                to their personal knowledge layer (E4.2). Without it the instance
+                sponsor decides, then the tenant''s privacy officers.'
+              type: string
+              minLength: 3
     HREventAccepted:
       title: HREventAccepted
       description: Which workflow handles an HR event.
@@ -1984,6 +1990,199 @@ components:
         updatedAt:
           type: string
           format: date-time
+    LeaverReview:
+      title: LeaverReview
+      description: The review of a leaver's personal knowledge layer (E4.2). While
+        open, the layer is frozen. The decider merges chosen entries as a proposal,
+        keeps the layer for one more period, or purges it; without a decision it is
+        purged at the deadline.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - person
+      - status
+      - deciderKind
+      - deadline
+      - kept
+      - entryCount
+      - openedAt
+      properties:
+        id:
+          type: string
+        person:
+          description: The leaver's identity.
+          type: string
+        status:
+          type: string
+          enum:
+          - open
+          - closed
+        outcome:
+          description: 'closed: merged (chosen entries proposed, the rest purged),
+            purged, expired (purged at the deadline), cancelled (rehired; the layer
+            is unfrozen) or empty (nothing to review).'
+          type: string
+          enum:
+          - merged
+          - purged
+          - expired
+          - cancelled
+          - empty
+        deciderKind:
+          type: string
+          enum:
+          - manager
+          - sponsor
+          - privacy-officers
+        decider:
+          description: The deciding identity; absent when any privacy officer decides.
+          type: string
+        deadline:
+          type: string
+          format: date-time
+        kept:
+          description: The decider already extended the deadline once.
+          type: boolean
+        entryCount:
+          type: integer
+          minimum: 0
+        proposalId:
+          description: 'merged: the proposal the chosen entries became.'
+          type: string
+          format: uuid
+        openedAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
+        entries:
+          description: 'Only on GET of one review, to its decider: the leaver''s personal
+            entries.'
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeEntry'
+    LeaverReviewDecision:
+      title: LeaverReviewDecision
+      description: The decider's choice. merge proposes the chosen entries to a pack
+        (normal review applies, and the decider cannot approve it) and purges the
+        rest; keep extends the deadline once; purge deletes the layer now.
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      - reason
+      properties:
+        decision:
+          type: string
+          enum:
+          - merge
+          - keep
+          - purge
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        pack:
+          description: 'merge: the pack to propose to.'
+          type: string
+        entryIds:
+          description: 'merge: the leaver''s entries to propose.'
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        summary:
+          description: 'merge: the proposal summary.'
+          type: string
+          minLength: 1
+          maxLength: 2000
+      if:
+        properties:
+          decision:
+            const: merge
+      then:
+        required:
+        - pack
+        - entryIds
+        - summary
+      else:
+        not:
+          anyOf:
+          - required:
+            - pack
+          - required:
+            - entryIds
+          - required:
+            - summary
+    LeaverReviewOpen:
+      title: LeaverReviewOpen
+      description: 'Sent by the control plane''s leaver workflow, signed with the
+        tenant''s service secret: open the review of a leaver''s personal knowledge
+        layer and freeze it. Repeating an id is safe.'
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - person
+      - deciders
+      properties:
+        id:
+          description: 'The leaver workflow''s id and run id: unique per leaving,
+            stable across retries.'
+          type: string
+          minLength: 1
+          maxLength: 255
+        person:
+          title: LeaverReviewPerson
+          type: object
+          additionalProperties: false
+          required:
+          - email
+          properties:
+            email:
+              type: string
+              minLength: 3
+            hrPersonId:
+              type: string
+              minLength: 1
+              maxLength: 200
+        deciders:
+          description: 'Candidate deciders in order of preference: the manager, then
+            instance sponsors. The first who is not the leaver decides; with none,
+            the tenant''s privacy officers do.'
+          type: array
+          items:
+            title: LeaverReviewDecider
+            type: object
+            additionalProperties: false
+            required:
+            - email
+            - kind
+            properties:
+              email:
+                type: string
+                minLength: 3
+              kind:
+                type: string
+                enum:
+                - manager
+                - sponsor
+    LeaverReviewPage:
+      title: LeaverReviewPage
+      description: The reviews the caller decides, open first.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaverReview'
     ObjectMeta:
       title: ObjectMeta
       description: Metadata shared by every Muistamo YAML kind.
@@ -2368,6 +2567,10 @@ components:
         pack:
           type: string
         contributor:
+          type: string
+        proposedBy:
+          description: Set when someone proposed on the contributor's behalf (a leaver's
+            decider, E4.2). They cannot decide the proposal.
           type: string
         summary:
           type: string

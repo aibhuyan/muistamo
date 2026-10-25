@@ -21,6 +21,13 @@ class HRPerson(BaseModel):
     ]
     email: Annotated[str, Field(min_length=3)]
     jobCode: Annotated[str, Field(min_length=1)]
+    managerEmail: Annotated[
+        str | None,
+        Field(
+            description="Leaver: the person's manager, who decides what happens to their personal knowledge layer (E4.2). Without it the instance sponsor decides, then the tenant's privacy officers.",
+            min_length=3,
+        ),
+    ] = None
 
 
 class HREvent(BaseModel):
