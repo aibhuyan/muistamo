@@ -179,6 +179,129 @@ func TestAccCatalogueDataSource(t *testing.T) {
 	})
 }
 
+func policyConfig(prefix, skills string) string {
+	return prefix + fmt.Sprintf(`
+resource "muistamo_agent_link" "intern_to_market" {
+  name = "analyst-intern-to-market-data"
+  spec = jsonencode({
+    from          = { template = "analyst-intern" }
+    to            = { template = "market-data-agent" }
+    allowedSkills = [%s]
+    dataClasses   = ["public", "internal"]
+  })
+}
+resource "muistamo_action_policy" "intern" {
+  name = "analyst-intern-actions"
+  spec = jsonencode({
+    appliesTo = { template = "analyst-intern" }
+    default   = "deny"
+    rules = [
+      { action = "sharepoint.read", effect = "allow" },
+      { action = "email.send", effect = "deny", unless = ["recipients.allInternal"] },
+    ]
+  })
+}
+`, skills)
+}
+
+// decide asks the control plane for a decision as the tenant.
+func decide(t *testing.T, url, tenant, body string) string {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPost, url+"/v1/policy/decisions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Muistamo-Tenant", tenant)
+	req.Header.Set("X-Muistamo-Actor", "terraform@example.invalid")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	var d struct {
+		Decision string `json:"decision"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&d); err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("decision = %d %v", res.StatusCode, err)
+	}
+	return d.Decision
+}
+
+func TestAccAgentLinkAndActionPolicy(t *testing.T) {
+	requireTofu(t)
+	cp := controlplanetest.New(t)
+	tenant := cp.Tenant.String()
+	prefix := providerBlock(cp.URL, "", tenant)
+	quotes := `{"kind":"call","from":"analyst-intern","to":"market-data-agent","skill":"get-quotes"}`
+	financials := `{"kind":"call","from":"analyst-intern","to":"market-data-agent","skill":"get-company-financials"}`
+	check := func(body, want string) resource.TestCheckFunc {
+		return func(*terraform.State) error {
+			if got := decide(t, cp.URL, tenant, body); got != want {
+				return fmt.Errorf("decision for %s = %s, want %s", body, got, want)
+			}
+			return nil
+		}
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{
+				Config: policyConfig(prefix, `"get-quotes"`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("muistamo_agent_link.intern_to_market", "version", "1"),
+					resource.TestCheckResourceAttr("muistamo_action_policy.intern", "version", "1"),
+					check(quotes, "allow"),
+					check(financials, "deny"),
+					check(`{"kind":"action","agent":"analyst-intern","action":"email.send"}`, "deny"),
+				),
+			},
+			{Config: policyConfig(prefix, `"get-quotes"`), PlanOnly: true},
+			{
+				Config: policyConfig(prefix, `"get-quotes", "get-company-financials"`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("muistamo_agent_link.intern_to_market", "version", "2"),
+					check(financials, "allow"),
+				),
+			},
+			{ResourceName: "muistamo_agent_link.intern_to_market", ImportState: true, ImportStateVerify: true},
+			{ResourceName: "muistamo_action_policy.intern", ImportState: true, ImportStateVerify: true},
+			{
+				Config: prefix + `
+resource "muistamo_action_policy" "bad" {
+  name = "bad"
+  spec = jsonencode({ appliesTo = { template = "x" }, rules = [{ action = "email.send", effect = "requireApproval" }] })
+}`,
+				ExpectError: regexp.MustCompile(`does not match the Muistamo contract`),
+			},
+			// Removing the link from the configuration deletes it: the call is denied again.
+			{
+				Config: prefix + `
+resource "muistamo_action_policy" "intern" {
+  name = "analyst-intern-actions"
+  spec = jsonencode({ appliesTo = { template = "analyst-intern" }, default = "deny", rules = [{ action = "sharepoint.read", effect = "allow" }] })
+}`,
+				Check: check(quotes, "deny"),
+			},
+		},
+		// Destroy deletes the policy too.
+		CheckDestroy: func(*terraform.State) error {
+			for _, path := range []string{"/v1/links/analyst-intern-to-market-data", "/v1/action-policies/analyst-intern-actions"} {
+				res, err := http.DefaultClient.Do(mustRequest(cp.URL+path, tenant))
+				if err != nil {
+					return err
+				}
+				_ = res.Body.Close()
+				if res.StatusCode != http.StatusNotFound {
+					return fmt.Errorf("%s after destroy = %d, want 404", path, res.StatusCode)
+				}
+			}
+			if got := decide(t, cp.URL, tenant, `{"kind":"action","agent":"analyst-intern","action":"sharepoint.read"}`); got != "deny" {
+				return fmt.Errorf("sharepoint.read after destroy = %s, want deny", got)
+			}
+			return nil
+		},
+	})
+}
+
 // fakeKnowledge stands in for the Python knowledge service: it validates every document against
 // the contract and stores it, as the real service does.
 type fakeKnowledge struct {

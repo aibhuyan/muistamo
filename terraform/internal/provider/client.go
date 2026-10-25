@@ -86,6 +86,9 @@ type kind struct {
 	document func(body []byte) (json.RawMessage, error)
 	// version extracts the computed version, or "" when the kind has none.
 	version func(body []byte) string
+	// deletable kinds are deleted on destroy: keeping them would keep granting what they allow.
+	// Others are history the product keeps, and destroy only forgets them.
+	deletable bool
 }
 
 func (c *client) put(ctx context.Context, k kind, name string, doc []byte) ([]byte, error) {
@@ -108,6 +111,18 @@ func (c *client) get(ctx context.Context, k kind, name string) ([]byte, error) {
 		return nil, apiError(status, body)
 	}
 	return body, nil
+}
+
+// delete removes an object. One that is already gone counts as deleted.
+func (c *client) delete(ctx context.Context, k kind, name string) error {
+	status, body, err := c.do(ctx, http.MethodDelete, k.service(c), k.collection+url.PathEscape(name), nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return apiError(status, body)
+	}
+	return nil
 }
 
 func recordDocument(body []byte) (json.RawMessage, error) {
@@ -157,4 +172,31 @@ var (
 		document:   recordDocument,
 		version:    func([]byte) string { return "" },
 	}
+	linkKind = kind{
+		name:       "AgentLink",
+		service:    func(c *client) string { return c.controlPlane },
+		collection: "/v1/links/",
+		document:   recordDocument,
+		version:    revision,
+		deletable:  true,
+	}
+	actionPolicyKind = kind{
+		name:       "ActionPolicy",
+		service:    func(c *client) string { return c.controlPlane },
+		collection: "/v1/action-policies/",
+		document:   recordDocument,
+		version:    revision,
+		deletable:  true,
+	}
 )
+
+func revision(body []byte) string {
+	var rec struct {
+		Revision int `json:"revision"`
+	}
+	_ = json.Unmarshal(body, &rec)
+	if rec.Revision == 0 {
+		return ""
+	}
+	return fmt.Sprint(rec.Revision)
+}
