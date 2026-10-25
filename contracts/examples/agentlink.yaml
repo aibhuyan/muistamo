@@ -1,0 +1,17 @@
+# The analyst intern's agent may ask the market-data agent for quotes and financials, never the
+# other way round (PRD section 8.1).
+apiVersion: muistamo.dev/v1
+kind: AgentLink
+metadata:
+  name: analyst-intern-to-market-data
+  owner: team-equity-research
+spec:
+  from:
+    template: analyst-intern
+  to:
+    template: market-data-agent
+  allowedSkills: [get-quotes, get-company-financials]
+  dataClasses: [public, internal]
+  actFor: same-user          # the called agent acts with the same human's access
+  maxDelegationDepth: 1      # it may not pass the work on to further agents
+  rateLimit: 60/min          # stored; evaluated once the gateway exists

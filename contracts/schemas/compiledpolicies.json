@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/compiledpolicies.json",
+  "title": "CompiledPolicies",
+  "description": "The tenant's links and action policies as the Cedar policy set that is actually evaluated, for review.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cedar", "rules"],
+  "properties": {
+    "cedar": { "description": "Cedar policy text, ordered by policy id.", "type": "string" },
+    "rules": { "type": "array", "items": { "$ref": "policyruleref.json" } }
+  }
+}

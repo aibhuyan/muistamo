@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/policydecision.json",
+  "title": "PolicyDecision",
+  "description": "The policy engine's answer. Release 1 runs in observe mode: nothing is enforced yet (the gateway is not built), so enforced is always false and wouldBlock says what enforcement would do.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "wouldBlock", "monitored", "mode", "enforced", "reason", "matchedRules", "checked", "notEvaluated"],
+  "properties": {
+    "decision": { "description": "What the rules say.", "type": "string", "enum": ["allow", "deny"] },
+    "wouldBlock": { "description": "Whether enforcement would block this: a denial, unless the denying ActionPolicy is in monitor mode.", "type": "boolean" },
+    "monitored": { "description": "A monitor rule matched, or a monitor-mode policy denied: the request is flagged for review.", "type": "boolean" },
+    "policyMode": { "description": "action: the mode of the ActionPolicy for the agent, if one exists.", "type": "string", "enum": ["enforce", "monitor"] },
+    "mode": { "type": "string", "const": "observe" },
+    "enforced": { "type": "boolean", "const": false },
+    "reason": { "description": "A plain-language explanation.", "type": "string" },
+    "matchedRules": {
+      "description": "The rules that decided: the allowing ones for an allow, the denying ones for a deny. Empty for a denial by default.",
+      "type": "array",
+      "items": { "$ref": "policyruleref.json" }
+    },
+    "checked": { "description": "The parts of the effective permission that were evaluated.", "type": "array", "items": { "type": "string" } },
+    "notEvaluated": { "description": "Parts of the effective permission that release 1 cannot evaluate yet.", "type": "array", "items": { "type": "string" } }
+  }
+}

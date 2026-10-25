@@ -27,6 +27,10 @@ func validateDocuments(next http.Handler) http.Handler {
 			validate = func(b []byte) error { return contracts.ValidateAgainst("cataloguedecision.json", b) }
 		case r.Method == http.MethodPost && r.URL.Path == hrEventsPath:
 			validate = func(b []byte) error { return contracts.ValidateAgainst("hrevent.json", b) }
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/policy/decisions":
+			validate = func(b []byte) error { return contracts.ValidateAgainst("policydecisionrequest.json", b) }
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/policy/simulate":
+			validate = func(b []byte) error { return contracts.ValidateAgainst("policysimulationrequest.json", b) }
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/transitions"):
 			validate = func(b []byte) error { return contracts.ValidateAgainst("instancetransition.json", b) }
 		case r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch:

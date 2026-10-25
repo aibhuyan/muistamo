@@ -40,7 +40,7 @@ func main() {
 			Short: "Print the mst version",
 			Run:   func(cmd *cobra.Command, _ []string) { cmd.Println(version.String()) },
 		},
-		applyCmd(opts), diffCmd(opts), getCmd(opts), evidenceCmd(opts), knowledgeCmd(opts), catalogueCmd(opts),
+		applyCmd(opts), diffCmd(opts), getCmd(opts), evidenceCmd(opts), knowledgeCmd(opts), catalogueCmd(opts), policyCmd(opts),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "mst:", err)
@@ -136,10 +136,10 @@ func diffCmd(opts *options) *cobra.Command {
 
 func getCmd(opts *options) *cobra.Command {
 	return &cobra.Command{
-		Use:       "get templates|instances [NAME]",
-		Short:     "Print templates or instances as JSON",
+		Use:       "get templates|instances|links|action-policies [NAME]",
+		Short:     "Print templates, instances, links or action policies as JSON",
 		Args:      cobra.RangeArgs(1, 2),
-		ValidArgs: []string{"templates", "instances"},
+		ValidArgs: []string{"templates", "instances", "links", "action-policies"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := opts.client()
 			if err != nil {
@@ -175,8 +175,32 @@ func getCmd(opts *options) *cobra.Command {
 					return err
 				}
 				res, body = r, r.Body
+			case args[0] == "links" && len(args) == 1:
+				r, err := client.ListLinksWithResponse(ctx)
+				if err != nil {
+					return err
+				}
+				res, body = r, r.Body
+			case args[0] == "links":
+				r, err := client.GetLinkWithResponse(ctx, args[1])
+				if err != nil {
+					return err
+				}
+				res, body = r, r.Body
+			case args[0] == "action-policies" && len(args) == 1:
+				r, err := client.ListActionPoliciesWithResponse(ctx)
+				if err != nil {
+					return err
+				}
+				res, body = r, r.Body
+			case args[0] == "action-policies":
+				r, err := client.GetActionPolicyWithResponse(ctx, args[1])
+				if err != nil {
+					return err
+				}
+				res, body = r, r.Body
 			default:
-				return fmt.Errorf("unknown resource %q: use templates or instances", args[0])
+				return fmt.Errorf("unknown resource %q: use templates, instances, links or action-policies", args[0])
 			}
 			if res.StatusCode() != http.StatusOK {
 				return problem(res.StatusCode(), body)
@@ -231,8 +255,32 @@ func apply(cmd *cobra.Command, client *muistamov1.ClientWithResponses, doc manif
 		default:
 			return problem(res.StatusCode(), res.Body)
 		}
+	case "AgentLink":
+		res, err := client.ApplyLinkWithBodyWithResponse(ctx, doc.Name, "application/json", bytes.NewReader(doc.JSON))
+		if err != nil {
+			return fmt.Errorf("apply %s/%s: %w", doc.Kind, doc.Name, err)
+		}
+		return printRevision(cmd, doc, res.StatusCode(), res.Body, res.HTTPResponse.Header.Get("ETag"))
+	case "ActionPolicy":
+		res, err := client.ApplyActionPolicyWithBodyWithResponse(ctx, doc.Name, "application/json", bytes.NewReader(doc.JSON))
+		if err != nil {
+			return fmt.Errorf("apply %s/%s: %w", doc.Kind, doc.Name, err)
+		}
+		return printRevision(cmd, doc, res.StatusCode(), res.Body, res.HTTPResponse.Header.Get("ETag"))
 	default:
 		return fmt.Errorf("%s/%s: the control plane does not serve %s yet", doc.Kind, doc.Name, doc.Kind)
+	}
+	return nil
+}
+
+func printRevision(cmd *cobra.Command, doc manifest.Document, status int, body []byte, etag string) error {
+	switch status {
+	case http.StatusCreated:
+		cmd.Printf("%s/%s: created (revision %s)\n", doc.Kind, doc.Name, etag)
+	case http.StatusOK:
+		cmd.Printf("%s/%s: applied (revision %s)\n", doc.Kind, doc.Name, etag)
+	default:
+		return problem(status, body)
 	}
 	return nil
 }
@@ -266,6 +314,32 @@ func fetch(ctx context.Context, client *muistamov1.ClientWithResponses, doc mani
 		}
 		current, err := json.Marshal(res.JSON200.Document)
 		return current, res.HTTPResponse.Header.Get("ETag"), err
+	case "AgentLink":
+		res, err := client.GetLinkWithResponse(ctx, doc.Name)
+		if err != nil {
+			return nil, "", fmt.Errorf("get %s/%s: %w", doc.Kind, doc.Name, err)
+		}
+		if res.StatusCode() == http.StatusNotFound {
+			return nil, "", nil
+		}
+		if res.StatusCode() != http.StatusOK {
+			return nil, "", problem(res.StatusCode(), res.Body)
+		}
+		current, err := json.Marshal(res.JSON200.Document)
+		return current, "", err
+	case "ActionPolicy":
+		res, err := client.GetActionPolicyWithResponse(ctx, doc.Name)
+		if err != nil {
+			return nil, "", fmt.Errorf("get %s/%s: %w", doc.Kind, doc.Name, err)
+		}
+		if res.StatusCode() == http.StatusNotFound {
+			return nil, "", nil
+		}
+		if res.StatusCode() != http.StatusOK {
+			return nil, "", problem(res.StatusCode(), res.Body)
+		}
+		current, err := json.Marshal(res.JSON200.Document)
+		return current, "", err
 	default:
 		return nil, "", fmt.Errorf("%s/%s: the control plane does not serve %s yet", doc.Kind, doc.Name, doc.Kind)
 	}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/policysimulationrequest.json",
+  "title": "PolicySimulationRequest",
+  "description": "Decide a request under the current rules and under proposed ones. A proposed document replaces the current one of the same kind and name, or is added. Nothing is stored and no evidence is written.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["request"],
+  "properties": {
+    "request": { "$ref": "policydecisionrequest.json" },
+    "links": { "type": "array", "items": { "$ref": "agentlink.json" } },
+    "policies": { "type": "array", "items": { "$ref": "actionpolicy.json" } }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agentlinkpage.json",
+  "title": "AgentLinkPage",
+  "description": "Every AgentLink in the tenant, by name.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": { "type": "array", "items": { "$ref": "agentlinkrecord.json" } }
+  }
+}

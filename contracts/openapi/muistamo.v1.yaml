@@ -242,6 +242,162 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/links:
+    get:
+      operationId: listLinks
+      summary: List every agent link
+      responses:
+        "200":
+          description: The tenant's links, by name.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/agentlinkpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/links/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getLink
+      responses:
+        "200":
+          $ref: "#/components/responses/LinkRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: applyLink
+      summary: Create or change an agent link; an identical document changes nothing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/agentlink.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/LinkRecord"
+        "201":
+          $ref: "#/components/responses/LinkRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteLink
+      summary: Remove a link; calls it allowed are denied from then on
+      responses:
+        "204":
+          description: Removed.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/action-policies:
+    get:
+      operationId: listActionPolicies
+      summary: List every action policy
+      responses:
+        "200":
+          description: The tenant's action policies, by name.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/actionpolicypage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/action-policies/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getActionPolicy
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionPolicyRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: applyActionPolicy
+      summary: Create or change an action policy; at most one applies to a template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/actionpolicy.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionPolicyRecord"
+        "201":
+          $ref: "#/components/responses/ActionPolicyRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteActionPolicy
+      summary: Remove an action policy; the template's actions are denied by default from then on
+      responses:
+        "204":
+          description: Removed.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/policy/decisions:
+    post:
+      operationId: decidePolicy
+      summary: Decide an agent call or tool action (observe mode; recorded as evidence)
+      description: >-
+        Evaluates the tenant's links and action policies, compiled to Cedar. Deny by default; deny
+        overrides allow. Release 1 enforces nothing: the answer says what enforcement would do, and
+        every decision is recorded as a signed policy.decision event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/policydecisionrequest.json"
+      responses:
+        "200":
+          description: The decision.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/policydecision.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/policy/simulate:
+    post:
+      operationId: simulatePolicy
+      summary: Decide a request under the current and proposed rules, changing nothing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/policysimulationrequest.json"
+      responses:
+        "200":
+          description: Both decisions.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/policysimulation.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/policy/cedar:
+    get:
+      operationId: getCompiledPolicies
+      summary: The Cedar policy set the tenant's rules compile to
+      responses:
+        "200":
+          description: The compiled policies.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/compiledpolicies.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/events:
     get:
       operationId: listEvents
@@ -348,6 +504,24 @@ components:
         application/json:
           schema:
             $ref: "../schemas/agentinstancerecord.json"
+    LinkRecord:
+      description: An agent link.
+      headers:
+        ETag:
+          $ref: "#/components/headers/ETag"
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/agentlinkrecord.json"
+    ActionPolicyRecord:
+      description: An action policy.
+      headers:
+        ETag:
+          $ref: "#/components/headers/ETag"
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/actionpolicyrecord.json"
     CatalogueRequest:
       description: A catalogue request.
       content:

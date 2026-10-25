@@ -1,0 +1,26 @@
+# What the analyst intern's agent may do with its tools (PRD section 8.1). Deny overrides allow,
+# so "send only to internal recipients" is a deny with an unless, not an ordered list of rules.
+# The PRD's requireApproval effect for internal mail is release 2.
+apiVersion: muistamo.dev/v1
+kind: ActionPolicy
+metadata:
+  name: analyst-intern-actions
+  owner: team-equity-research
+spec:
+  appliesTo:
+    template: analyst-intern
+  default: deny
+  mode: enforce              # or monitor: report, never block
+  rules:
+    - action: sharepoint.read
+      effect: allow
+    - action: email.draft
+      effect: allow
+    - action: email.send
+      effect: monitor
+      when: [recipients.allInternal]
+    - action: email.send     # anything not provably internal
+      effect: deny
+      unless: [recipients.allInternal]
+    - action: crm.update
+      effect: deny

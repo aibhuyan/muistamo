@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agentlink.json",
+  "title": "AgentLink",
+  "description": "A one-way permission for agents of one template to call agents of another (PRD section 8.1, FR-1003). Without a link, calls are denied. Release 1: links between Muistamo-hosted templates only; links to external A2A agents are release 2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "type": "string", "const": "muistamo.dev/v1" },
+    "kind": { "type": "string", "const": "AgentLink" },
+    "metadata": { "$ref": "common/objectmeta.json" },
+    "spec": {
+      "title": "AgentLinkSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "allowedSkills", "dataClasses"],
+      "properties": {
+        "from": { "$ref": "agentlinkendpoint.json", "description": "The calling agents." },
+        "to": { "$ref": "agentlinkendpoint.json", "description": "The called agents. The link never allows calls the other way." },
+        "allowedSkills": {
+          "description": "Skills of the called agent the caller may use.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$" }
+        },
+        "dataClasses": {
+          "description": "Data classes a call may carry. A call carrying any other class is denied.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$" }
+        },
+        "actFor": {
+          "description": "same-user (the default): the called agent acts with the calling human's own access. service: it acts as itself.",
+          "type": "string",
+          "enum": ["same-user", "service"]
+        },
+        "maxDelegationDepth": {
+          "description": "The deepest point in a delegation chain at which this call is allowed. 1 (the default) means direct calls only: the called agent may not pass the work on.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "rateLimit": {
+          "description": "For example 60/min. Stored, but not yet evaluated: it needs the gateway's counters.",
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,6}/(s|min|h|day)$"
+        }
+      }
+    }
+  }
+}

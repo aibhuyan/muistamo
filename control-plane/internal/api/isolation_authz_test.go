@@ -22,7 +22,7 @@ import (
 )
 
 var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_events", "evidence_heads", "hr_events", "hr_webhook_secrets",
-	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published"}
+	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published", "policy_documents"}
 
 // seedTenantA gives tenant A a template, an instance, an HR secret and one HR event.
 func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
@@ -56,6 +56,11 @@ func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
 			t.Fatalf("seed approval by %s = %d: %s", approver, got.status, got.raw)
 		}
 	}
+	for path, body := range map[string]string{"/v1/links/intern-to-market": linkJSON, "/v1/action-policies/intern-actions": actionPolicyJSON} {
+		if got := h.call(t, a, http.MethodPut, path, body); got.status != http.StatusCreated {
+			t.Fatalf("seed %s = %d: %s", path, got.status, got.raw)
+		}
+	}
 	return a, b
 }
 
@@ -67,15 +72,17 @@ func TestAuthzTenantCannotReadAnotherTenantsRecords(t *testing.T) {
 		"/v1/templates/analyst-intern",
 		"/v1/templates/analyst-intern/versions/1",
 		"/v1/instances/analyst-intern-person-a",
+		"/v1/links/intern-to-market",
+		"/v1/action-policies/intern-actions",
 	} {
 		got := h.call(t, b, http.MethodGet, path, "")
 		// The same answer as for a name that exists nowhere, so B cannot infer A's names.
-		absent := h.call(t, b, http.MethodGet, strings.Replace(path, "analyst-intern", "no-such-name", 1), "")
+		absent := h.call(t, b, http.MethodGet, strings.NewReplacer("analyst-intern", "no-such-name", "intern-to-market", "no-such-name", "intern-actions", "no-such-name").Replace(path), "")
 		if got.status != http.StatusNotFound || absent.status != http.StatusNotFound || got.body["title"] != absent.body["title"] {
 			t.Errorf("GET %s as B = %d %v; absent name = %d %v; want identical 404s", path, got.status, got.body["title"], absent.status, absent.body["title"])
 		}
 	}
-	for _, path := range []string{"/v1/templates", "/v1/instances", "/v1/events"} {
+	for _, path := range []string{"/v1/templates", "/v1/instances", "/v1/events", "/v1/links", "/v1/action-policies"} {
 		got := h.call(t, b, http.MethodGet, path, "")
 		if items, _ := got.body["items"].([]any); got.status != http.StatusOK || len(items) != 0 {
 			t.Errorf("GET %s as B = %d with %d items, want 200 and none: %s", path, got.status, len(items), got.raw)
@@ -280,5 +287,93 @@ func TestAuthzCatalogueIsTenantScoped(t *testing.T) {
 	}
 	if err := testdb.ExecErr(h.db.AppURL, a, `INSERT INTO catalogue_approvers (tenant_id, approver) VALUES ($1, 'dev:self-appointed')`, a); err == nil || !strings.Contains(err.Error(), "permission denied") {
 		t.Errorf("server role adding an approver: err = %v, want permission denied", err)
+	}
+}
+
+func TestAuthzPolicyIsTenantScoped(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a, b := seedTenantA(t, h)
+
+	// B grants itself everything A's rules deny. None of it may change A's decisions.
+	permissive := strings.NewReplacer(`"allowedSkills":["get-quotes"]`, `"allowedSkills":["get-quotes","place-order"]`,
+		"intern-to-market", "b-reverse").Replace(linkJSON)
+	permissive = strings.Replace(permissive, `"from":{"template":"analyst-intern"},"to":{"template":"market-data-agent"}`,
+		`"from":{"template":"market-data-agent"},"to":{"template":"analyst-intern"}`, 1)
+	if got := h.call(t, b, http.MethodPut, "/v1/links/b-reverse", permissive); got.status != http.StatusCreated {
+		t.Fatalf("B's link = %d: %s", got.status, got.raw)
+	}
+	allowAll := strings.NewReplacer(`"default":"deny"`, `"default":"allow"`, `{"action":"crm.update","effect":"deny"}`, `{"action":"crm.update","effect":"allow"}`).Replace(actionPolicyJSON)
+	if got := h.call(t, b, http.MethodPut, "/v1/action-policies/intern-actions", allowAll); got.status != http.StatusCreated {
+		t.Fatalf("B's policy = %d: %s", got.status, got.raw)
+	}
+	for name, req := range map[string]string{
+		"reverse call":    `{"kind":"call","from":"market-data-agent","to":"analyst-intern","skill":"get-quotes"}`,
+		"unlinked skill":  `{"kind":"call","from":"analyst-intern","to":"market-data-agent","skill":"place-order"}`,
+		"denied action":   `{"kind":"action","agent":"analyst-intern","action":"crm.update"}`,
+		"unlisted action": `{"kind":"action","agent":"analyst-intern","action":"calendar.write"}`,
+	} {
+		if got := decisionOf(t, h.call(t, a, http.MethodPost, "/v1/policy/decisions", req)); got != "deny" {
+			t.Errorf("%s for A with B's permissive rules: %s, want deny", name, got)
+		}
+		if got := decisionOf(t, h.call(t, b, http.MethodPost, "/v1/policy/decisions", req)); name != "unlinked skill" && got != "allow" {
+			t.Errorf("%s for B under B's own rules: %s, want allow (the attack must be real)", name, got)
+		}
+	}
+	// A's own rules still hold for A and are invisible to B.
+	if got := decisionOf(t, h.call(t, a, http.MethodPost, "/v1/policy/decisions", quoteCall)); got != "allow" {
+		t.Errorf("A's linked call: %s, want allow", got)
+	}
+	if got := decisionOf(t, h.call(t, b, http.MethodPost, "/v1/policy/decisions", quoteCall)); got != "deny" {
+		t.Errorf("B using A's link: %s, want deny", got)
+	}
+	cedarB := h.call(t, b, http.MethodGet, "/v1/policy/cedar", "")
+	if text, _ := cedarB.body["cedar"].(string); strings.Contains(text, "intern-to-market") {
+		t.Errorf("B's compiled Cedar contains A's link:\n%s", text)
+	}
+	// A simulation as B, proposing A's names, sees only B's rules.
+	sim := h.call(t, b, http.MethodPost, "/v1/policy/simulate", `{"request":`+quoteCall+`}`)
+	if cur, _ := sim.body["current"].(map[string]any); cur["decision"] != "deny" {
+		t.Errorf("B's simulation used A's link: %s", sim.raw)
+	}
+	// B cannot delete A's rules: deleting a name both hold removes B's own only.
+	if got := h.call(t, b, http.MethodDelete, "/v1/links/intern-to-market", ""); got.status != http.StatusNotFound {
+		t.Errorf("B deletes A's link = %d, want 404", got.status)
+	}
+	if got := h.call(t, b, http.MethodDelete, "/v1/action-policies/intern-actions", ""); got.status != http.StatusNoContent {
+		t.Errorf("B deletes its own policy = %d, want 204", got.status)
+	}
+	for _, path := range []string{"/v1/links/intern-to-market", "/v1/action-policies/intern-actions"} {
+		if got := h.call(t, a, http.MethodGet, path, ""); got.status != http.StatusOK {
+			t.Errorf("A's %s after B's deletes = %d", path, got.status)
+		}
+	}
+	// A's decision evidence stays in A's chain.
+	if n := testdb.CountIn(t, h.db.AppURL, b, `SELECT count(*) FROM evidence_events WHERE tenant_id = $1 AND action = 'policy.decision'`, a); n != 0 {
+		t.Errorf("B sees %d of A's decisions", n)
+	}
+
+	attacks := map[string]string{
+		"plant a link in A": `INSERT INTO policy_documents (tenant_id, kind, name, revision, digest, document, updated_by)
+			VALUES ($1, 'AgentLink', 'planted', 1, 'x', '{}', 'x')`,
+		"retarget B's rules to A": `UPDATE policy_documents SET tenant_id = $1`,
+	}
+	for name, stmt := range attacks {
+		err := testdb.ExecErr(h.db.AppURL, b, stmt, a)
+		if err == nil || !strings.Contains(err.Error(), "row-level security") {
+			t.Errorf("%s as B: err = %v, want a row-level security violation", name, err)
+		}
+	}
+	if err := testdb.ExecErr(h.db.AppURL, b, `DELETE FROM policy_documents WHERE tenant_id = $1`, a); err != nil {
+		t.Fatalf("DELETE as B: %v", err)
+	}
+	if n := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM policy_documents WHERE tenant_id = $1`, a); n != 2 {
+		t.Errorf("A's rules after B's DELETE: %d, want 2", n)
+	}
+	// The database itself refuses a second action policy for one template within a tenant (B
+	// holding one for the same template name above shows the rule is per tenant).
+	err := testdb.ExecErr(h.db.AppURL, a, `INSERT INTO policy_documents (tenant_id, kind, name, template, revision, digest, document, updated_by)
+		VALUES ($1, 'ActionPolicy', 'second', 'analyst-intern', 1, 'x', '{}', 'x')`, a)
+	if err == nil || !strings.Contains(err.Error(), "policy_documents_one_policy_per_template") {
+		t.Errorf("second action policy for a template by SQL: err = %v, want the unique index to refuse it", err)
 	}
 }

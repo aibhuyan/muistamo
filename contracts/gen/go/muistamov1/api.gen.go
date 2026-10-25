@@ -21,6 +21,93 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for ActionPolicyApiVersion.
+const (
+	ActionPolicyApiVersionMuistamoDevv1 ActionPolicyApiVersion = "muistamo.dev/v1"
+)
+
+// Valid indicates whether the value is a known member of the ActionPolicyApiVersion enum.
+func (e ActionPolicyApiVersion) Valid() bool {
+	switch e {
+	case ActionPolicyApiVersionMuistamoDevv1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActionPolicyKind.
+const (
+	ActionPolicyKindActionPolicy ActionPolicyKind = "ActionPolicy"
+)
+
+// Valid indicates whether the value is a known member of the ActionPolicyKind enum.
+func (e ActionPolicyKind) Valid() bool {
+	switch e {
+	case ActionPolicyKindActionPolicy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActionPolicySpecDefault.
+const (
+	ActionPolicySpecDefaultAllow ActionPolicySpecDefault = "allow"
+	ActionPolicySpecDefaultDeny  ActionPolicySpecDefault = "deny"
+)
+
+// Valid indicates whether the value is a known member of the ActionPolicySpecDefault enum.
+func (e ActionPolicySpecDefault) Valid() bool {
+	switch e {
+	case ActionPolicySpecDefaultAllow:
+		return true
+	case ActionPolicySpecDefaultDeny:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActionPolicySpecMode.
+const (
+	ActionPolicySpecModeEnforce ActionPolicySpecMode = "enforce"
+	ActionPolicySpecModeMonitor ActionPolicySpecMode = "monitor"
+)
+
+// Valid indicates whether the value is a known member of the ActionPolicySpecMode enum.
+func (e ActionPolicySpecMode) Valid() bool {
+	switch e {
+	case ActionPolicySpecModeEnforce:
+		return true
+	case ActionPolicySpecModeMonitor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActionPolicySpecRulesEffect.
+const (
+	ActionPolicySpecRulesEffectAllow   ActionPolicySpecRulesEffect = "allow"
+	ActionPolicySpecRulesEffectDeny    ActionPolicySpecRulesEffect = "deny"
+	ActionPolicySpecRulesEffectMonitor ActionPolicySpecRulesEffect = "monitor"
+)
+
+// Valid indicates whether the value is a known member of the ActionPolicySpecRulesEffect enum.
+func (e ActionPolicySpecRulesEffect) Valid() bool {
+	switch e {
+	case ActionPolicySpecRulesEffectAllow:
+		return true
+	case ActionPolicySpecRulesEffectDeny:
+		return true
+	case ActionPolicySpecRulesEffectMonitor:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentInstanceApiVersion.
 const (
 	AgentInstanceApiVersionMuistamoDevv1 AgentInstanceApiVersion = "muistamo.dev/v1"
@@ -66,6 +153,54 @@ func (e AgentInstanceSpecBindingType) Valid() bool {
 	case AgentInstanceSpecBindingTypeTeam:
 		return true
 	case AgentInstanceSpecBindingTypeUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentLinkApiVersion.
+const (
+	AgentLinkApiVersionMuistamoDevv1 AgentLinkApiVersion = "muistamo.dev/v1"
+)
+
+// Valid indicates whether the value is a known member of the AgentLinkApiVersion enum.
+func (e AgentLinkApiVersion) Valid() bool {
+	switch e {
+	case AgentLinkApiVersionMuistamoDevv1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentLinkKind.
+const (
+	AgentLinkKindAgentLink AgentLinkKind = "AgentLink"
+)
+
+// Valid indicates whether the value is a known member of the AgentLinkKind enum.
+func (e AgentLinkKind) Valid() bool {
+	switch e {
+	case AgentLinkKindAgentLink:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentLinkSpecActFor.
+const (
+	AgentLinkSpecActForSameUser AgentLinkSpecActFor = "same-user"
+	AgentLinkSpecActForService  AgentLinkSpecActFor = "service"
+)
+
+// Valid indicates whether the value is a known member of the AgentLinkSpecActFor enum.
+func (e AgentLinkSpecActFor) Valid() bool {
+	switch e {
+	case AgentLinkSpecActForSameUser:
+		return true
+	case AgentLinkSpecActForService:
 		return true
 	default:
 		return false
@@ -567,6 +702,147 @@ func (e KnowledgeSourceSpecConnector) Valid() bool {
 	}
 }
 
+// Defines values for PolicyDecisionDecision.
+const (
+	PolicyDecisionDecisionAllow PolicyDecisionDecision = "allow"
+	PolicyDecisionDecisionDeny  PolicyDecisionDecision = "deny"
+)
+
+// Valid indicates whether the value is a known member of the PolicyDecisionDecision enum.
+func (e PolicyDecisionDecision) Valid() bool {
+	switch e {
+	case PolicyDecisionDecisionAllow:
+		return true
+	case PolicyDecisionDecisionDeny:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyDecisionEnforced.
+const (
+	PolicyDecisionEnforcedFalse PolicyDecisionEnforced = false
+)
+
+// Valid indicates whether the value is a known member of the PolicyDecisionEnforced enum.
+func (e PolicyDecisionEnforced) Valid() bool {
+	switch e {
+	case PolicyDecisionEnforcedFalse:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyDecisionMode.
+const (
+	PolicyDecisionModeObserve PolicyDecisionMode = "observe"
+)
+
+// Valid indicates whether the value is a known member of the PolicyDecisionMode enum.
+func (e PolicyDecisionMode) Valid() bool {
+	switch e {
+	case PolicyDecisionModeObserve:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyDecisionPolicyMode.
+const (
+	PolicyDecisionPolicyModeEnforce PolicyDecisionPolicyMode = "enforce"
+	PolicyDecisionPolicyModeMonitor PolicyDecisionPolicyMode = "monitor"
+)
+
+// Valid indicates whether the value is a known member of the PolicyDecisionPolicyMode enum.
+func (e PolicyDecisionPolicyMode) Valid() bool {
+	switch e {
+	case PolicyDecisionPolicyModeEnforce:
+		return true
+	case PolicyDecisionPolicyModeMonitor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyDecisionRequestActFor.
+const (
+	PolicyDecisionRequestActForSameUser PolicyDecisionRequestActFor = "same-user"
+	PolicyDecisionRequestActForService  PolicyDecisionRequestActFor = "service"
+)
+
+// Valid indicates whether the value is a known member of the PolicyDecisionRequestActFor enum.
+func (e PolicyDecisionRequestActFor) Valid() bool {
+	switch e {
+	case PolicyDecisionRequestActForSameUser:
+		return true
+	case PolicyDecisionRequestActForService:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyDecisionRequestKind.
+const (
+	PolicyDecisionRequestKindAction PolicyDecisionRequestKind = "action"
+	PolicyDecisionRequestKindCall   PolicyDecisionRequestKind = "call"
+)
+
+// Valid indicates whether the value is a known member of the PolicyDecisionRequestKind enum.
+func (e PolicyDecisionRequestKind) Valid() bool {
+	switch e {
+	case PolicyDecisionRequestKindAction:
+		return true
+	case PolicyDecisionRequestKindCall:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyRuleRefEffect.
+const (
+	PolicyRuleRefEffectAllow   PolicyRuleRefEffect = "allow"
+	PolicyRuleRefEffectDeny    PolicyRuleRefEffect = "deny"
+	PolicyRuleRefEffectMonitor PolicyRuleRefEffect = "monitor"
+)
+
+// Valid indicates whether the value is a known member of the PolicyRuleRefEffect enum.
+func (e PolicyRuleRefEffect) Valid() bool {
+	switch e {
+	case PolicyRuleRefEffectAllow:
+		return true
+	case PolicyRuleRefEffectDeny:
+		return true
+	case PolicyRuleRefEffectMonitor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyRuleRefKind.
+const (
+	PolicyRuleRefKindActionPolicy PolicyRuleRefKind = "ActionPolicy"
+	PolicyRuleRefKindAgentLink    PolicyRuleRefKind = "AgentLink"
+)
+
+// Valid indicates whether the value is a known member of the PolicyRuleRefKind enum.
+func (e PolicyRuleRefKind) Valid() bool {
+	switch e {
+	case PolicyRuleRefKindActionPolicy:
+		return true
+	case PolicyRuleRefKindAgentLink:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProposalStatus.
 const (
 	ProposalStatusApproved     ProposalStatus = "approved"
@@ -678,6 +954,70 @@ func (e ListCatalogueRequestsParamsState) Valid() bool {
 	}
 }
 
+// ActionPolicy The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template.
+type ActionPolicy struct {
+	ApiVersion ActionPolicyApiVersion `json:"apiVersion"`
+	Kind       ActionPolicyKind       `json:"kind"`
+
+	// Metadata Metadata shared by every Muistamo YAML kind.
+	Metadata ObjectMeta `json:"metadata"`
+	Spec     struct {
+		AppliesTo struct {
+			Template string `json:"template"`
+		} `json:"appliesTo"`
+
+		// Default What happens to actions no rule allows: deny (the default) or allow. allow still yields to every deny rule.
+		Default *ActionPolicySpecDefault `json:"default,omitempty"`
+
+		// Mode enforce (the default): once the gateway enforces, denied actions are blocked. monitor: they are only reported.
+		Mode  *ActionPolicySpecMode `json:"mode,omitempty"`
+		Rules []struct {
+			// Action A tool action, for example email.send.
+			Action string `json:"action"`
+
+			// Effect allow, deny, or monitor (allow, and flag for review). requireApproval is release 2.
+			Effect ActionPolicySpecRulesEffect `json:"effect"`
+
+			// Unless Request attributes any one of which, when true, stops the rule applying. A missing attribute counts against the caller, as for when.
+			Unless *[]string `json:"unless,omitempty"`
+
+			// When Request attributes that must all be true for the rule to apply. An attribute the request does not supply counts against the caller: it stops an allow or monitor rule applying, and lets a deny rule apply.
+			When *[]string `json:"when,omitempty"`
+		} `json:"rules"`
+	} `json:"spec"`
+}
+
+// ActionPolicyApiVersion defines model for ActionPolicy.ApiVersion.
+type ActionPolicyApiVersion string
+
+// ActionPolicyKind defines model for ActionPolicy.Kind.
+type ActionPolicyKind string
+
+// ActionPolicySpecDefault What happens to actions no rule allows: deny (the default) or allow. allow still yields to every deny rule.
+type ActionPolicySpecDefault string
+
+// ActionPolicySpecMode enforce (the default): once the gateway enforces, denied actions are blocked. monitor: they are only reported.
+type ActionPolicySpecMode string
+
+// ActionPolicySpecRulesEffect allow, deny, or monitor (allow, and flag for review). requireApproval is release 2.
+type ActionPolicySpecRulesEffect string
+
+// ActionPolicyPage Every ActionPolicy in the tenant, by name.
+type ActionPolicyPage struct {
+	Items []ActionPolicyRecord `json:"items"`
+}
+
+// ActionPolicyRecord The current ActionPolicy. Revision increments on every change.
+type ActionPolicyRecord struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Document The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template.
+	Document  ActionPolicy `json:"document"`
+	Revision  int          `json:"revision"`
+	UpdatedAt time.Time    `json:"updatedAt"`
+	UpdatedBy string       `json:"updatedBy"`
+}
+
 // AgentInstance An agent bound to a user, team or service, with its own identity (PRD section 5). Usually generated.
 type AgentInstance struct {
 	ApiVersion AgentInstanceApiVersion `json:"apiVersion"`
@@ -734,6 +1074,67 @@ type AgentInstanceRecord struct {
 	Document  AgentInstance `json:"document"`
 	Revision  int           `json:"revision"`
 	UpdatedAt time.Time     `json:"updatedAt"`
+}
+
+// AgentLink A one-way permission for agents of one template to call agents of another (PRD section 8.1, FR-1003). Without a link, calls are denied. Release 1: links between Muistamo-hosted templates only; links to external A2A agents are release 2.
+type AgentLink struct {
+	ApiVersion AgentLinkApiVersion `json:"apiVersion"`
+	Kind       AgentLinkKind       `json:"kind"`
+
+	// Metadata Metadata shared by every Muistamo YAML kind.
+	Metadata ObjectMeta `json:"metadata"`
+	Spec     struct {
+		// ActFor same-user (the default): the called agent acts with the calling human's own access. service: it acts as itself.
+		ActFor *AgentLinkSpecActFor `json:"actFor,omitempty"`
+
+		// AllowedSkills Skills of the called agent the caller may use.
+		AllowedSkills []string `json:"allowedSkills"`
+
+		// DataClasses Data classes a call may carry. A call carrying any other class is denied.
+		DataClasses []string `json:"dataClasses"`
+
+		// From The calling agents.
+		From AgentLinkEndpoint `json:"from"`
+
+		// MaxDelegationDepth The deepest point in a delegation chain at which this call is allowed. 1 (the default) means direct calls only: the called agent may not pass the work on.
+		MaxDelegationDepth *int `json:"maxDelegationDepth,omitempty"`
+
+		// RateLimit For example 60/min. Stored, but not yet evaluated: it needs the gateway's counters.
+		RateLimit *string `json:"rateLimit,omitempty"`
+
+		// To The called agents. The link never allows calls the other way.
+		To AgentLinkEndpoint `json:"to"`
+	} `json:"spec"`
+}
+
+// AgentLinkApiVersion defines model for AgentLink.ApiVersion.
+type AgentLinkApiVersion string
+
+// AgentLinkKind defines model for AgentLink.Kind.
+type AgentLinkKind string
+
+// AgentLinkSpecActFor same-user (the default): the called agent acts with the calling human's own access. service: it acts as itself.
+type AgentLinkSpecActFor string
+
+// AgentLinkEndpoint One end of an AgentLink. Release 1 selects agents by template; clones, instances and labels come later.
+type AgentLinkEndpoint struct {
+	Template string `json:"template"`
+}
+
+// AgentLinkPage Every AgentLink in the tenant, by name.
+type AgentLinkPage struct {
+	Items []AgentLinkRecord `json:"items"`
+}
+
+// AgentLinkRecord The current AgentLink. Revision increments on every change.
+type AgentLinkRecord struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Document A one-way permission for agents of one template to call agents of another (PRD section 8.1, FR-1003). Without a link, calls are denied. Release 1: links between Muistamo-hosted templates only; links to external A2A agents are release 2.
+	Document  AgentLink `json:"document"`
+	Revision  int       `json:"revision"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	UpdatedBy string    `json:"updatedBy"`
 }
 
 // AgentTemplate A reusable agent definition owned by the company (PRD section 5).
@@ -885,6 +1286,13 @@ type CitationLayer string
 
 // CitationType defines model for Citation.Type.
 type CitationType string
+
+// CompiledPolicies The tenant's links and action policies as the Cedar policy set that is actually evaluated, for review.
+type CompiledPolicies struct {
+	// Cedar Cedar policy text, ordered by policy id.
+	Cedar string          `json:"cedar"`
+	Rules []PolicyRuleRef `json:"rules"`
+}
 
 // EvidenceEvent One signed, hash-chained evidence event. The hashed body and signature are defined in control-plane/evidencechain; verify chains with mst evidence verify.
 type EvidenceEvent struct {
@@ -1183,6 +1591,126 @@ type PackVersionPage struct {
 	Items []PackVersion `json:"items"`
 }
 
+// PolicyDecision The policy engine's answer. Release 1 runs in observe mode: nothing is enforced yet (the gateway is not built), so enforced is always false and wouldBlock says what enforcement would do.
+type PolicyDecision struct {
+	// Checked The parts of the effective permission that were evaluated.
+	Checked []string `json:"checked"`
+
+	// Decision What the rules say.
+	Decision PolicyDecisionDecision `json:"decision"`
+	Enforced PolicyDecisionEnforced `json:"enforced"`
+
+	// MatchedRules The rules that decided: the allowing ones for an allow, the denying ones for a deny. Empty for a denial by default.
+	MatchedRules []PolicyRuleRef    `json:"matchedRules"`
+	Mode         PolicyDecisionMode `json:"mode"`
+
+	// Monitored A monitor rule matched, or a monitor-mode policy denied: the request is flagged for review.
+	Monitored bool `json:"monitored"`
+
+	// NotEvaluated Parts of the effective permission that release 1 cannot evaluate yet.
+	NotEvaluated []string `json:"notEvaluated"`
+
+	// PolicyMode action: the mode of the ActionPolicy for the agent, if one exists.
+	PolicyMode *PolicyDecisionPolicyMode `json:"policyMode,omitempty"`
+
+	// Reason A plain-language explanation.
+	Reason string `json:"reason"`
+
+	// WouldBlock Whether enforcement would block this: a denial, unless the denying ActionPolicy is in monitor mode.
+	WouldBlock bool `json:"wouldBlock"`
+}
+
+// PolicyDecisionDecision What the rules say.
+type PolicyDecisionDecision string
+
+// PolicyDecisionEnforced defines model for PolicyDecision.Enforced.
+type PolicyDecisionEnforced bool
+
+// PolicyDecisionMode defines model for PolicyDecision.Mode.
+type PolicyDecisionMode string
+
+// PolicyDecisionPolicyMode action: the mode of the ActionPolicy for the agent, if one exists.
+type PolicyDecisionPolicyMode string
+
+// PolicyDecisionRequest A question for the policy engine: may this agent call that one (kind call), or take this tool action (kind action)? Agents are named by template in release 1.
+type PolicyDecisionRequest struct {
+	// ActFor call: whose access the called agent uses (default same-user).
+	ActFor *PolicyDecisionRequestActFor `json:"actFor,omitempty"`
+
+	// Action action: the tool action, for example email.send.
+	Action *string `json:"action,omitempty"`
+
+	// Agent action: the template taking the action.
+	Agent *string `json:"agent,omitempty"`
+
+	// Attributes action: facts about the request that rules can test, for example recipients.allInternal.
+	Attributes *map[string]bool `json:"attributes,omitempty"`
+
+	// DataClasses call: every data class the call carries (none if omitted).
+	DataClasses *[]string `json:"dataClasses,omitempty"`
+
+	// Depth call: position in the delegation chain; 1 (the default) is a direct call.
+	Depth *int `json:"depth,omitempty"`
+
+	// From call: the calling template.
+	From *string                   `json:"from,omitempty"`
+	Kind PolicyDecisionRequestKind `json:"kind"`
+
+	// Skill call: the skill of the called agent being used.
+	Skill *string `json:"skill,omitempty"`
+
+	// To call: the called template.
+	To *string `json:"to,omitempty"`
+}
+
+// PolicyDecisionRequestActFor call: whose access the called agent uses (default same-user).
+type PolicyDecisionRequestActFor string
+
+// PolicyDecisionRequestKind defines model for PolicyDecisionRequest.Kind.
+type PolicyDecisionRequestKind string
+
+// PolicyRuleRef One compiled Cedar policy and the document it came from.
+type PolicyRuleRef struct {
+	Effect PolicyRuleRefEffect `json:"effect"`
+
+	// Id The Cedar policy id, for example link/analyst-intern-to-market-data or action-policy/analyst-intern-actions/rule/2.
+	Id   string            `json:"id"`
+	Kind PolicyRuleRefKind `json:"kind"`
+
+	// Name metadata.name of the source document.
+	Name string `json:"name"`
+
+	// Rule ActionPolicy: the 1-based index of the rule; absent for the policy's default.
+	Rule *int `json:"rule,omitempty"`
+}
+
+// PolicyRuleRefEffect defines model for PolicyRuleRef.Effect.
+type PolicyRuleRefEffect string
+
+// PolicyRuleRefKind defines model for PolicyRuleRef.Kind.
+type PolicyRuleRefKind string
+
+// PolicySimulation The same request decided under the current and the proposed rules.
+type PolicySimulation struct {
+	// Changed Whether the decision or wouldBlock differs.
+	Changed bool `json:"changed"`
+
+	// Current The policy engine's answer. Release 1 runs in observe mode: nothing is enforced yet (the gateway is not built), so enforced is always false and wouldBlock says what enforcement would do.
+	Current PolicyDecision `json:"current"`
+
+	// Proposed The policy engine's answer. Release 1 runs in observe mode: nothing is enforced yet (the gateway is not built), so enforced is always false and wouldBlock says what enforcement would do.
+	Proposed PolicyDecision `json:"proposed"`
+}
+
+// PolicySimulationRequest Decide a request under the current rules and under proposed ones. A proposed document replaces the current one of the same kind and name, or is added. Nothing is stored and no evidence is written.
+type PolicySimulationRequest struct {
+	Links    *[]AgentLink    `json:"links,omitempty"`
+	Policies *[]ActionPolicy `json:"policies,omitempty"`
+
+	// Request A question for the policy engine: may this agent call that one (kind call), or take this tool action (kind action)? Agents are named by template in release 1.
+	Request PolicyDecisionRequest `json:"request"`
+}
+
 // Problem Error body (RFC 9457 problem details).
 type Problem struct {
 	Detail *string `json:"detail,omitempty"`
@@ -1317,6 +1845,9 @@ type Name = string
 // InstanceRecord The current state of an AgentInstance. Revision increments on every change.
 type InstanceRecord = AgentInstanceRecord
 
+// LinkRecord The current AgentLink. Revision increments on every change.
+type LinkRecord = AgentLinkRecord
+
 // TemplateRecord One immutable, server-numbered version of an AgentTemplate.
 type TemplateRecord = AgentTemplateRecord
 
@@ -1356,6 +1887,9 @@ type ListTemplatesParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ApplyActionPolicyJSONRequestBody defines body for ApplyActionPolicy for application/json ContentType.
+type ApplyActionPolicyJSONRequestBody = ActionPolicy
+
 // DecideCatalogueRequestJSONRequestBody defines body for DecideCatalogueRequest for application/json ContentType.
 type DecideCatalogueRequestJSONRequestBody = CatalogueDecision
 
@@ -1367,6 +1901,15 @@ type ApplyInstanceJSONRequestBody = AgentInstance
 
 // TransitionInstanceJSONRequestBody defines body for TransitionInstance for application/json ContentType.
 type TransitionInstanceJSONRequestBody = InstanceTransition
+
+// ApplyLinkJSONRequestBody defines body for ApplyLink for application/json ContentType.
+type ApplyLinkJSONRequestBody = AgentLink
+
+// DecidePolicyJSONRequestBody defines body for DecidePolicy for application/json ContentType.
+type DecidePolicyJSONRequestBody = PolicyDecisionRequest
+
+// SimulatePolicyJSONRequestBody defines body for SimulatePolicy for application/json ContentType.
+type SimulatePolicyJSONRequestBody = PolicySimulationRequest
 
 // ApplyTemplateJSONRequestBody defines body for ApplyTemplate for application/json ContentType.
 type ApplyTemplateJSONRequestBody = AgentTemplate
@@ -1449,6 +1992,33 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /healthz (the `GetHealth` operationId).
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListActionPolicies List every action policy
+	//
+	// Corresponds with GET /v1/action-policies (the `ListActionPolicies` operationId).
+	ListActionPolicies(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteActionPolicy Remove an action policy; the template's actions are denied by default from then on
+	//
+	// Corresponds with DELETE /v1/action-policies/{name} (the `DeleteActionPolicy` operationId).
+	DeleteActionPolicy(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetActionPolicy performs a GET /v1/action-policies/{name} (the `GetActionPolicy` operationId) request.
+	GetActionPolicy(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyActionPolicyWithBody Create or change an action policy; at most one applies to a template
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/action-policies/{name} (the `ApplyActionPolicy` operationId).
+	ApplyActionPolicyWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyActionPolicy Create or change an action policy; at most one applies to a template
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/action-policies/{name} (the `ApplyActionPolicy` operationId).
+	ApplyActionPolicy(ctx context.Context, name Name, body ApplyActionPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCatalogue Template versions published to the catalogue (assignable to joiners)
 	//
@@ -1546,6 +2116,70 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/instances/{name}/transitions (the `TransitionInstance` operationId).
 	TransitionInstance(ctx context.Context, name Name, params *TransitionInstanceParams, body TransitionInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListLinks List every agent link
+	//
+	// Corresponds with GET /v1/links (the `ListLinks` operationId).
+	ListLinks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteLink Remove a link; calls it allowed are denied from then on
+	//
+	// Corresponds with DELETE /v1/links/{name} (the `DeleteLink` operationId).
+	DeleteLink(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetLink performs a GET /v1/links/{name} (the `GetLink` operationId) request.
+	GetLink(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyLinkWithBody Create or change an agent link; an identical document changes nothing
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/links/{name} (the `ApplyLink` operationId).
+	ApplyLinkWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyLink Create or change an agent link; an identical document changes nothing
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/links/{name} (the `ApplyLink` operationId).
+	ApplyLink(ctx context.Context, name Name, body ApplyLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCompiledPolicies The Cedar policy set the tenant's rules compile to
+	//
+	// Corresponds with GET /v1/policy/cedar (the `GetCompiledPolicies` operationId).
+	GetCompiledPolicies(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DecidePolicyWithBody Decide an agent call or tool action (observe mode; recorded as evidence)
+	//
+	// Evaluates the tenant's links and action policies, compiled to Cedar. Deny by default; deny overrides allow. Release 1 enforces nothing: the answer says what enforcement would do, and every decision is recorded as a signed policy.decision event.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/policy/decisions (the `DecidePolicy` operationId).
+	DecidePolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DecidePolicy Decide an agent call or tool action (observe mode; recorded as evidence)
+	//
+	// Evaluates the tenant's links and action policies, compiled to Cedar. Deny by default; deny overrides allow. Release 1 enforces nothing: the answer says what enforcement would do, and every decision is recorded as a signed policy.decision event.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/policy/decisions (the `DecidePolicy` operationId).
+	DecidePolicy(ctx context.Context, body DecidePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SimulatePolicyWithBody Decide a request under the current and proposed rules, changing nothing
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
+	SimulatePolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SimulatePolicy Decide a request under the current and proposed rules, changing nothing
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
+	SimulatePolicy(ctx context.Context, body SimulatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListTemplates List the latest version of every template
 	//
 	// Corresponds with GET /v1/templates (the `ListTemplates` operationId).
@@ -1586,6 +2220,83 @@ type ClientInterface interface {
 // Corresponds with GET /healthz (the `GetHealth` operationId).
 func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListActionPolicies List every action policy
+//
+// Corresponds with GET /v1/action-policies (the `ListActionPolicies` operationId).
+func (c *Client) ListActionPolicies(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListActionPoliciesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteActionPolicy Remove an action policy; the template's actions are denied by default from then on
+//
+// Corresponds with DELETE /v1/action-policies/{name} (the `DeleteActionPolicy` operationId).
+func (c *Client) DeleteActionPolicy(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteActionPolicyRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetActionPolicy performs a GET /v1/action-policies/{name} (the `GetActionPolicy` operationId) request.
+func (c *Client) GetActionPolicy(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetActionPolicyRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyActionPolicyWithBody Create or change an action policy; at most one applies to a template
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/action-policies/{name} (the `ApplyActionPolicy` operationId).
+func (c *Client) ApplyActionPolicyWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyActionPolicyRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyActionPolicy Create or change an action policy; at most one applies to a template
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/action-policies/{name} (the `ApplyActionPolicy` operationId).
+func (c *Client) ApplyActionPolicy(ctx context.Context, name Name, body ApplyActionPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyActionPolicyRequest(c.Server, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1832,6 +2543,170 @@ func (c *Client) TransitionInstance(ctx context.Context, name Name, params *Tran
 	return c.Client.Do(req)
 }
 
+// ListLinks List every agent link
+//
+// Corresponds with GET /v1/links (the `ListLinks` operationId).
+func (c *Client) ListLinks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListLinksRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteLink Remove a link; calls it allowed are denied from then on
+//
+// Corresponds with DELETE /v1/links/{name} (the `DeleteLink` operationId).
+func (c *Client) DeleteLink(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteLinkRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetLink performs a GET /v1/links/{name} (the `GetLink` operationId) request.
+func (c *Client) GetLink(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetLinkRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyLinkWithBody Create or change an agent link; an identical document changes nothing
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/links/{name} (the `ApplyLink` operationId).
+func (c *Client) ApplyLinkWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyLinkRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyLink Create or change an agent link; an identical document changes nothing
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/links/{name} (the `ApplyLink` operationId).
+func (c *Client) ApplyLink(ctx context.Context, name Name, body ApplyLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyLinkRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCompiledPolicies The Cedar policy set the tenant's rules compile to
+//
+// Corresponds with GET /v1/policy/cedar (the `GetCompiledPolicies` operationId).
+func (c *Client) GetCompiledPolicies(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCompiledPoliciesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DecidePolicyWithBody Decide an agent call or tool action (observe mode; recorded as evidence)
+//
+// Evaluates the tenant's links and action policies, compiled to Cedar. Deny by default; deny overrides allow. Release 1 enforces nothing: the answer says what enforcement would do, and every decision is recorded as a signed policy.decision event.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/policy/decisions (the `DecidePolicy` operationId).
+func (c *Client) DecidePolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDecidePolicyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DecidePolicy Decide an agent call or tool action (observe mode; recorded as evidence)
+//
+// Evaluates the tenant's links and action policies, compiled to Cedar. Deny by default; deny overrides allow. Release 1 enforces nothing: the answer says what enforcement would do, and every decision is recorded as a signed policy.decision event.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/policy/decisions (the `DecidePolicy` operationId).
+func (c *Client) DecidePolicy(ctx context.Context, body DecidePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDecidePolicyRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SimulatePolicyWithBody Decide a request under the current and proposed rules, changing nothing
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
+func (c *Client) SimulatePolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSimulatePolicyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SimulatePolicy Decide a request under the current and proposed rules, changing nothing
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
+func (c *Client) SimulatePolicy(ctx context.Context, body SimulatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSimulatePolicyRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListTemplates List the latest version of every template
 //
 // Corresponds with GET /v1/templates (the `ListTemplates` operationId).
@@ -1949,6 +2824,148 @@ func NewGetHealthRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListActionPoliciesRequest constructs an http.Request for the ListActionPolicies method
+func NewListActionPoliciesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/action-policies")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteActionPolicyRequest constructs an http.Request for the DeleteActionPolicy method
+func NewDeleteActionPolicyRequest(server string, name Name) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/action-policies/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetActionPolicyRequest constructs an http.Request for the GetActionPolicy method
+func NewGetActionPolicyRequest(server string, name Name) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/action-policies/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApplyActionPolicyRequest calls the generic ApplyActionPolicy builder with application/json body
+func NewApplyActionPolicyRequest(server string, name Name, body ApplyActionPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewApplyActionPolicyRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewApplyActionPolicyRequestWithBody constructs an http.Request for the ApplyActionPolicy method, with any body, and a specified content type
+func NewApplyActionPolicyRequestWithBody(server string, name Name, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/action-policies/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -2445,6 +3462,255 @@ func NewTransitionInstanceRequestWithBody(server string, name Name, params *Tran
 	return req, nil
 }
 
+// NewListLinksRequest constructs an http.Request for the ListLinks method
+func NewListLinksRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/links")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteLinkRequest constructs an http.Request for the DeleteLink method
+func NewDeleteLinkRequest(server string, name Name) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/links/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetLinkRequest constructs an http.Request for the GetLink method
+func NewGetLinkRequest(server string, name Name) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/links/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApplyLinkRequest calls the generic ApplyLink builder with application/json body
+func NewApplyLinkRequest(server string, name Name, body ApplyLinkJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewApplyLinkRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewApplyLinkRequestWithBody constructs an http.Request for the ApplyLink method, with any body, and a specified content type
+func NewApplyLinkRequestWithBody(server string, name Name, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/links/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetCompiledPoliciesRequest constructs an http.Request for the GetCompiledPolicies method
+func NewGetCompiledPoliciesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/policy/cedar")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDecidePolicyRequest calls the generic DecidePolicy builder with application/json body
+func NewDecidePolicyRequest(server string, body DecidePolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDecidePolicyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewDecidePolicyRequestWithBody constructs an http.Request for the DecidePolicy method, with any body, and a specified content type
+func NewDecidePolicyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/policy/decisions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSimulatePolicyRequest calls the generic SimulatePolicy builder with application/json body
+func NewSimulatePolicyRequest(server string, body SimulatePolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSimulatePolicyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSimulatePolicyRequestWithBody constructs an http.Request for the SimulatePolicy method, with any body, and a specified content type
+func NewSimulatePolicyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/policy/simulate")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListTemplatesRequest constructs an http.Request for the ListTemplates method
 func NewListTemplatesRequest(server string, params *ListTemplatesParams) (*http.Request, error) {
 	var err error
@@ -2725,6 +3991,39 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /healthz (the `GetHealth` operationId).
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 
+	// ListActionPoliciesWithResponse List every action policy
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/action-policies (the `ListActionPolicies` operationId).
+	ListActionPoliciesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListActionPoliciesResponse, error)
+
+	// DeleteActionPolicyWithResponse Remove an action policy; the template's actions are denied by default from then on
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/action-policies/{name} (the `DeleteActionPolicy` operationId).
+	DeleteActionPolicyWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*DeleteActionPolicyResponse, error)
+
+	// GetActionPolicyWithResponse performs a GET /v1/action-policies/{name} (the `GetActionPolicy` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetActionPolicyWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*GetActionPolicyResponse, error)
+
+	// ApplyActionPolicyWithBodyWithResponse Create or change an action policy; at most one applies to a template
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/action-policies/{name} (the `ApplyActionPolicy` operationId).
+	ApplyActionPolicyWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyActionPolicyResponse, error)
+
+	// ApplyActionPolicyWithResponse Create or change an action policy; at most one applies to a template
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/action-policies/{name} (the `ApplyActionPolicy` operationId).
+	ApplyActionPolicyWithResponse(ctx context.Context, name Name, body ApplyActionPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyActionPolicyResponse, error)
+
 	// ListCatalogueWithResponse Template versions published to the catalogue (assignable to joiners)
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2833,6 +4132,78 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/instances/{name}/transitions (the `TransitionInstance` operationId).
 	TransitionInstanceWithResponse(ctx context.Context, name Name, params *TransitionInstanceParams, body TransitionInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*TransitionInstanceResponse, error)
 
+	// ListLinksWithResponse List every agent link
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/links (the `ListLinks` operationId).
+	ListLinksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListLinksResponse, error)
+
+	// DeleteLinkWithResponse Remove a link; calls it allowed are denied from then on
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/links/{name} (the `DeleteLink` operationId).
+	DeleteLinkWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*DeleteLinkResponse, error)
+
+	// GetLinkWithResponse performs a GET /v1/links/{name} (the `GetLink` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetLinkWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*GetLinkResponse, error)
+
+	// ApplyLinkWithBodyWithResponse Create or change an agent link; an identical document changes nothing
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/links/{name} (the `ApplyLink` operationId).
+	ApplyLinkWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyLinkResponse, error)
+
+	// ApplyLinkWithResponse Create or change an agent link; an identical document changes nothing
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/links/{name} (the `ApplyLink` operationId).
+	ApplyLinkWithResponse(ctx context.Context, name Name, body ApplyLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyLinkResponse, error)
+
+	// GetCompiledPoliciesWithResponse The Cedar policy set the tenant's rules compile to
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/policy/cedar (the `GetCompiledPolicies` operationId).
+	GetCompiledPoliciesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCompiledPoliciesResponse, error)
+
+	// DecidePolicyWithBodyWithResponse Decide an agent call or tool action (observe mode; recorded as evidence)
+	//
+	// Evaluates the tenant's links and action policies, compiled to Cedar. Deny by default; deny overrides allow. Release 1 enforces nothing: the answer says what enforcement would do, and every decision is recorded as a signed policy.decision event.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/policy/decisions (the `DecidePolicy` operationId).
+	DecidePolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecidePolicyResponse, error)
+
+	// DecidePolicyWithResponse Decide an agent call or tool action (observe mode; recorded as evidence)
+	//
+	// Evaluates the tenant's links and action policies, compiled to Cedar. Deny by default; deny overrides allow. Release 1 enforces nothing: the answer says what enforcement would do, and every decision is recorded as a signed policy.decision event.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/policy/decisions (the `DecidePolicy` operationId).
+	DecidePolicyWithResponse(ctx context.Context, body DecidePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*DecidePolicyResponse, error)
+
+	// SimulatePolicyWithBodyWithResponse Decide a request under the current and proposed rules, changing nothing
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
+	SimulatePolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SimulatePolicyResponse, error)
+
+	// SimulatePolicyWithResponse Decide a request under the current and proposed rules, changing nothing
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
+	SimulatePolicyWithResponse(ctx context.Context, body SimulatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*SimulatePolicyResponse, error)
+
 	// ListTemplatesWithResponse List the latest version of every template
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2911,6 +4282,219 @@ func (r GetHealthResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetHealthResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListActionPoliciesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ActionPolicyPage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListActionPoliciesResponse) GetJSON200() *ActionPolicyPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListActionPoliciesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListActionPoliciesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListActionPoliciesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListActionPoliciesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListActionPoliciesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteActionPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteActionPolicyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteActionPolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteActionPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteActionPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteActionPolicyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetActionPolicyResponse200Headers the declared response headers of an HTTP 200 response for GetActionPolicy
+type GetActionPolicyResponse200Headers struct {
+	ETag *string
+}
+
+type GetActionPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ActionPolicyRecord
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetActionPolicyResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetActionPolicyResponse) GetJSON200() *ActionPolicyRecord {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetActionPolicyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetActionPolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetActionPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetActionPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetActionPolicyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ApplyActionPolicyResponse200Headers the declared response headers of an HTTP 200 response for ApplyActionPolicy
+type ApplyActionPolicyResponse200Headers struct {
+	ETag *string
+}
+
+// ApplyActionPolicyResponse201Headers the declared response headers of an HTTP 201 response for ApplyActionPolicy
+type ApplyActionPolicyResponse201Headers struct {
+	ETag *string
+}
+
+type ApplyActionPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ActionPolicyRecord
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ActionPolicyRecord
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ApplyActionPolicyResponse200Headers
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *ApplyActionPolicyResponse201Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ApplyActionPolicyResponse) GetJSON200() *ActionPolicyRecord {
+	return r.JSON200
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r ApplyActionPolicyResponse) GetJSON201() *ActionPolicyRecord {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ApplyActionPolicyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ApplyActionPolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ApplyActionPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApplyActionPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ApplyActionPolicyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3432,6 +5016,363 @@ func (r TransitionInstanceResponse) ContentType() string {
 	return ""
 }
 
+type ListLinksResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentLinkPage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListLinksResponse) GetJSON200() *AgentLinkPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListLinksResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListLinksResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListLinksResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListLinksResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListLinksResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteLinkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteLinkResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteLinkResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteLinkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteLinkResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteLinkResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetLinkResponse200Headers the declared response headers of an HTTP 200 response for GetLink
+type GetLinkResponse200Headers struct {
+	ETag *string
+}
+
+type GetLinkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LinkRecord
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetLinkResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetLinkResponse) GetJSON200() *LinkRecord {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetLinkResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetLinkResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetLinkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetLinkResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetLinkResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ApplyLinkResponse200Headers the declared response headers of an HTTP 200 response for ApplyLink
+type ApplyLinkResponse200Headers struct {
+	ETag *string
+}
+
+// ApplyLinkResponse201Headers the declared response headers of an HTTP 201 response for ApplyLink
+type ApplyLinkResponse201Headers struct {
+	ETag *string
+}
+
+type ApplyLinkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LinkRecord
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *LinkRecord
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ApplyLinkResponse200Headers
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *ApplyLinkResponse201Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ApplyLinkResponse) GetJSON200() *LinkRecord {
+	return r.JSON200
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r ApplyLinkResponse) GetJSON201() *LinkRecord {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ApplyLinkResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ApplyLinkResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ApplyLinkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApplyLinkResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ApplyLinkResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCompiledPoliciesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CompiledPolicies
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCompiledPoliciesResponse) GetJSON200() *CompiledPolicies {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetCompiledPoliciesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCompiledPoliciesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCompiledPoliciesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCompiledPoliciesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCompiledPoliciesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DecidePolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PolicyDecision
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DecidePolicyResponse) GetJSON200() *PolicyDecision {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DecidePolicyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DecidePolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DecidePolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DecidePolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DecidePolicyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SimulatePolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PolicySimulation
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SimulatePolicyResponse) GetJSON200() *PolicySimulation {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SimulatePolicyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SimulatePolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SimulatePolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SimulatePolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SimulatePolicyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListTemplatesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3720,6 +5661,69 @@ func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEdit
 	return ParseGetHealthResponse(rsp)
 }
 
+// ListActionPoliciesWithResponse List every action policy
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/action-policies (the `ListActionPolicies` operationId).
+func (c *ClientWithResponses) ListActionPoliciesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListActionPoliciesResponse, error) {
+	rsp, err := c.ListActionPolicies(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListActionPoliciesResponse(rsp)
+}
+
+// DeleteActionPolicyWithResponse Remove an action policy; the template's actions are denied by default from then on
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/action-policies/{name} (the `DeleteActionPolicy` operationId).
+func (c *ClientWithResponses) DeleteActionPolicyWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*DeleteActionPolicyResponse, error) {
+	rsp, err := c.DeleteActionPolicy(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteActionPolicyResponse(rsp)
+}
+
+// GetActionPolicyWithResponse performs a GET /v1/action-policies/{name} (the `GetActionPolicy` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetActionPolicyWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*GetActionPolicyResponse, error) {
+	rsp, err := c.GetActionPolicy(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetActionPolicyResponse(rsp)
+}
+
+// ApplyActionPolicyWithBodyWithResponse Create or change an action policy; at most one applies to a template
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/action-policies/{name} (the `ApplyActionPolicy` operationId).
+func (c *ClientWithResponses) ApplyActionPolicyWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyActionPolicyResponse, error) {
+	rsp, err := c.ApplyActionPolicyWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyActionPolicyResponse(rsp)
+}
+
+// ApplyActionPolicyWithResponse Create or change an action policy; at most one applies to a template
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/action-policies/{name} (the `ApplyActionPolicy` operationId).
+func (c *ClientWithResponses) ApplyActionPolicyWithResponse(ctx context.Context, name Name, body ApplyActionPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyActionPolicyResponse, error) {
+	rsp, err := c.ApplyActionPolicy(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyActionPolicyResponse(rsp)
+}
+
 // ListCatalogueWithResponse Template versions published to the catalogue (assignable to joiners)
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3912,6 +5916,138 @@ func (c *ClientWithResponses) TransitionInstanceWithResponse(ctx context.Context
 	return ParseTransitionInstanceResponse(rsp)
 }
 
+// ListLinksWithResponse List every agent link
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/links (the `ListLinks` operationId).
+func (c *ClientWithResponses) ListLinksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListLinksResponse, error) {
+	rsp, err := c.ListLinks(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListLinksResponse(rsp)
+}
+
+// DeleteLinkWithResponse Remove a link; calls it allowed are denied from then on
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/links/{name} (the `DeleteLink` operationId).
+func (c *ClientWithResponses) DeleteLinkWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*DeleteLinkResponse, error) {
+	rsp, err := c.DeleteLink(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteLinkResponse(rsp)
+}
+
+// GetLinkWithResponse performs a GET /v1/links/{name} (the `GetLink` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetLinkWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*GetLinkResponse, error) {
+	rsp, err := c.GetLink(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetLinkResponse(rsp)
+}
+
+// ApplyLinkWithBodyWithResponse Create or change an agent link; an identical document changes nothing
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/links/{name} (the `ApplyLink` operationId).
+func (c *ClientWithResponses) ApplyLinkWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyLinkResponse, error) {
+	rsp, err := c.ApplyLinkWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyLinkResponse(rsp)
+}
+
+// ApplyLinkWithResponse Create or change an agent link; an identical document changes nothing
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/links/{name} (the `ApplyLink` operationId).
+func (c *ClientWithResponses) ApplyLinkWithResponse(ctx context.Context, name Name, body ApplyLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyLinkResponse, error) {
+	rsp, err := c.ApplyLink(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyLinkResponse(rsp)
+}
+
+// GetCompiledPoliciesWithResponse The Cedar policy set the tenant's rules compile to
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/policy/cedar (the `GetCompiledPolicies` operationId).
+func (c *ClientWithResponses) GetCompiledPoliciesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCompiledPoliciesResponse, error) {
+	rsp, err := c.GetCompiledPolicies(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCompiledPoliciesResponse(rsp)
+}
+
+// DecidePolicyWithBodyWithResponse Decide an agent call or tool action (observe mode; recorded as evidence)
+//
+// Evaluates the tenant's links and action policies, compiled to Cedar. Deny by default; deny overrides allow. Release 1 enforces nothing: the answer says what enforcement would do, and every decision is recorded as a signed policy.decision event.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/policy/decisions (the `DecidePolicy` operationId).
+func (c *ClientWithResponses) DecidePolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecidePolicyResponse, error) {
+	rsp, err := c.DecidePolicyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDecidePolicyResponse(rsp)
+}
+
+// DecidePolicyWithResponse Decide an agent call or tool action (observe mode; recorded as evidence)
+//
+// Evaluates the tenant's links and action policies, compiled to Cedar. Deny by default; deny overrides allow. Release 1 enforces nothing: the answer says what enforcement would do, and every decision is recorded as a signed policy.decision event.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/policy/decisions (the `DecidePolicy` operationId).
+func (c *ClientWithResponses) DecidePolicyWithResponse(ctx context.Context, body DecidePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*DecidePolicyResponse, error) {
+	rsp, err := c.DecidePolicy(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDecidePolicyResponse(rsp)
+}
+
+// SimulatePolicyWithBodyWithResponse Decide a request under the current and proposed rules, changing nothing
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
+func (c *ClientWithResponses) SimulatePolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SimulatePolicyResponse, error) {
+	rsp, err := c.SimulatePolicyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSimulatePolicyResponse(rsp)
+}
+
+// SimulatePolicyWithResponse Decide a request under the current and proposed rules, changing nothing
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
+func (c *ClientWithResponses) SimulatePolicyWithResponse(ctx context.Context, body SimulatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*SimulatePolicyResponse, error) {
+	rsp, err := c.SimulatePolicy(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSimulatePolicyResponse(rsp)
+}
+
 // ListTemplatesWithResponse List the latest version of every template
 //
 // Returns a wrapper object for the known response body format(s).
@@ -4011,6 +6147,177 @@ func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 		}
 		response.JSON200 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseListActionPoliciesResponse parses an HTTP response from a ListActionPoliciesWithResponse call
+func ParseListActionPoliciesResponse(rsp *http.Response) (*ListActionPoliciesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListActionPoliciesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ActionPolicyPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteActionPolicyResponse parses an HTTP response from a DeleteActionPolicyWithResponse call
+func ParseDeleteActionPolicyResponse(rsp *http.Response) (*DeleteActionPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteActionPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetActionPolicyResponse parses an HTTP response from a GetActionPolicyWithResponse call
+func ParseGetActionPolicyResponse(rsp *http.Response) (*GetActionPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetActionPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ActionPolicyRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetActionPolicyResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseApplyActionPolicyResponse parses an HTTP response from a ApplyActionPolicyWithResponse call
+func ParseApplyActionPolicyResponse(rsp *http.Response) (*ApplyActionPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApplyActionPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ActionPolicyRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ActionPolicyRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ApplyActionPolicyResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 201:
+		var headers ApplyActionPolicyResponse201Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers201 = &headers
 	}
 
 	return response, nil
@@ -4405,6 +6712,276 @@ func ParseTransitionInstanceResponse(rsp *http.Response) (*TransitionInstanceRes
 	return response, nil
 }
 
+// ParseListLinksResponse parses an HTTP response from a ListLinksWithResponse call
+func ParseListLinksResponse(rsp *http.Response) (*ListLinksResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListLinksResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentLinkPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteLinkResponse parses an HTTP response from a DeleteLinkWithResponse call
+func ParseDeleteLinkResponse(rsp *http.Response) (*DeleteLinkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteLinkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetLinkResponse parses an HTTP response from a GetLinkWithResponse call
+func ParseGetLinkResponse(rsp *http.Response) (*GetLinkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetLinkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LinkRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetLinkResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseApplyLinkResponse parses an HTTP response from a ApplyLinkWithResponse call
+func ParseApplyLinkResponse(rsp *http.Response) (*ApplyLinkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApplyLinkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LinkRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest LinkRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ApplyLinkResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 201:
+		var headers ApplyLinkResponse201Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers201 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetCompiledPoliciesResponse parses an HTTP response from a GetCompiledPoliciesWithResponse call
+func ParseGetCompiledPoliciesResponse(rsp *http.Response) (*GetCompiledPoliciesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCompiledPoliciesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CompiledPolicies
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDecidePolicyResponse parses an HTTP response from a DecidePolicyWithResponse call
+func ParseDecidePolicyResponse(rsp *http.Response) (*DecidePolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DecidePolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PolicyDecision
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSimulatePolicyResponse parses an HTTP response from a SimulatePolicyWithResponse call
+func ParseSimulatePolicyResponse(rsp *http.Response) (*SimulatePolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SimulatePolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PolicySimulation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListTemplatesResponse parses an HTTP response from a ListTemplatesWithResponse call
 func ParseListTemplatesResponse(rsp *http.Response) (*ListTemplatesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4631,6 +7208,18 @@ type ServerInterface interface {
 	// GetHealth Service health
 	// (GET /healthz)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// ListActionPolicies List every action policy
+	// (GET /v1/action-policies)
+	ListActionPolicies(w http.ResponseWriter, r *http.Request)
+	// DeleteActionPolicy Remove an action policy; the template's actions are denied by default from then on
+	// (DELETE /v1/action-policies/{name})
+	DeleteActionPolicy(w http.ResponseWriter, r *http.Request, name Name)
+
+	// (GET /v1/action-policies/{name})
+	GetActionPolicy(w http.ResponseWriter, r *http.Request, name Name)
+	// ApplyActionPolicy Create or change an action policy; at most one applies to a template
+	// (PUT /v1/action-policies/{name})
+	ApplyActionPolicy(w http.ResponseWriter, r *http.Request, name Name)
 	// ListCatalogue Template versions published to the catalogue (assignable to joiners)
 	// (GET /v1/catalogue)
 	ListCatalogue(w http.ResponseWriter, r *http.Request)
@@ -4661,6 +7250,27 @@ type ServerInterface interface {
 	// TransitionInstance Move an instance to another lifecycle state
 	// (POST /v1/instances/{name}/transitions)
 	TransitionInstance(w http.ResponseWriter, r *http.Request, name Name, params TransitionInstanceParams)
+	// ListLinks List every agent link
+	// (GET /v1/links)
+	ListLinks(w http.ResponseWriter, r *http.Request)
+	// DeleteLink Remove a link; calls it allowed are denied from then on
+	// (DELETE /v1/links/{name})
+	DeleteLink(w http.ResponseWriter, r *http.Request, name Name)
+
+	// (GET /v1/links/{name})
+	GetLink(w http.ResponseWriter, r *http.Request, name Name)
+	// ApplyLink Create or change an agent link; an identical document changes nothing
+	// (PUT /v1/links/{name})
+	ApplyLink(w http.ResponseWriter, r *http.Request, name Name)
+	// GetCompiledPolicies The Cedar policy set the tenant's rules compile to
+	// (GET /v1/policy/cedar)
+	GetCompiledPolicies(w http.ResponseWriter, r *http.Request)
+	// DecidePolicy Decide an agent call or tool action (observe mode; recorded as evidence)
+	// (POST /v1/policy/decisions)
+	DecidePolicy(w http.ResponseWriter, r *http.Request)
+	// SimulatePolicy Decide a request under the current and proposed rules, changing nothing
+	// (POST /v1/policy/simulate)
+	SimulatePolicy(w http.ResponseWriter, r *http.Request)
 	// ListTemplates List the latest version of every template
 	// (GET /v1/templates)
 	ListTemplates(w http.ResponseWriter, r *http.Request, params ListTemplatesParams)
@@ -4692,6 +7302,98 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListActionPolicies operation middleware
+func (siw *ServerInterfaceWrapper) ListActionPolicies(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListActionPolicies(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteActionPolicy operation middleware
+func (siw *ServerInterfaceWrapper) DeleteActionPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteActionPolicy(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetActionPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetActionPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetActionPolicy(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyActionPolicy operation middleware
+func (siw *ServerInterfaceWrapper) ApplyActionPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyActionPolicy(w, r, name)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5032,6 +7734,140 @@ func (siw *ServerInterfaceWrapper) TransitionInstance(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// ListLinks operation middleware
+func (siw *ServerInterfaceWrapper) ListLinks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListLinks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteLink operation middleware
+func (siw *ServerInterfaceWrapper) DeleteLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteLink(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetLink operation middleware
+func (siw *ServerInterfaceWrapper) GetLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLink(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyLink operation middleware
+func (siw *ServerInterfaceWrapper) ApplyLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyLink(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCompiledPolicies operation middleware
+func (siw *ServerInterfaceWrapper) GetCompiledPolicies(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCompiledPolicies(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DecidePolicy operation middleware
+func (siw *ServerInterfaceWrapper) DecidePolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DecidePolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SimulatePolicy operation middleware
+func (siw *ServerInterfaceWrapper) SimulatePolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SimulatePolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTemplates operation middleware
 func (siw *ServerInterfaceWrapper) ListTemplates(w http.ResponseWriter, r *http.Request) {
 
@@ -5334,10 +8170,30 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/instances/{name}", wrapper.GetInstance)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/instances/{name}", wrapper.ApplyInstance)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/instances/{name}/transitions", wrapper.TransitionInstance)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/links", wrapper.ListLinks)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/links/{name}", wrapper.DeleteLink)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/links/{name}", wrapper.GetLink)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/links/{name}", wrapper.ApplyLink)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/action-policies", wrapper.ListActionPolicies)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/action-policies/{name}", wrapper.DeleteActionPolicy)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/action-policies/{name}", wrapper.GetActionPolicy)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/action-policies/{name}", wrapper.ApplyActionPolicy)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/policy/decisions", wrapper.DecidePolicy)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/policy/simulate", wrapper.SimulatePolicy)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/policy/cedar", wrapper.GetCompiledPolicies)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events", wrapper.ListEvents)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/hr/events", wrapper.ReceiveHrEvent)
 
 	return m
+}
+
+type ActionPolicyRecordResponseHeaders struct {
+	ETag *string
+}
+type ActionPolicyRecordJSONResponse struct {
+	Body ActionPolicyRecord
+
+	Headers ActionPolicyRecordResponseHeaders
 }
 
 type CatalogueRequestJSONResponse CatalogueRequest
@@ -5349,6 +8205,15 @@ type InstanceRecordJSONResponse struct {
 	Body AgentInstanceRecord
 
 	Headers InstanceRecordResponseHeaders
+}
+
+type LinkRecordResponseHeaders struct {
+	ETag *string
+}
+type LinkRecordJSONResponse struct {
+	Body AgentLinkRecord
+
+	Headers LinkRecordResponseHeaders
 }
 
 type ProblemApplicationProblemPlusJSONResponse Problem
@@ -5379,6 +8244,186 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListActionPoliciesRequestObject struct {
+}
+
+type ListActionPoliciesResponseObject interface {
+	VisitListActionPoliciesResponse(w http.ResponseWriter) error
+}
+
+type ListActionPolicies200JSONResponse ActionPolicyPage
+
+func (response ListActionPolicies200JSONResponse) VisitListActionPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListActionPoliciesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListActionPoliciesdefaultApplicationProblemPlusJSONResponse) VisitListActionPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteActionPolicyRequestObject struct {
+	Name Name `json:"name"`
+}
+
+type DeleteActionPolicyResponseObject interface {
+	VisitDeleteActionPolicyResponse(w http.ResponseWriter) error
+}
+
+type DeleteActionPolicy204Response struct {
+}
+
+func (response DeleteActionPolicy204Response) VisitDeleteActionPolicyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteActionPolicydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response DeleteActionPolicydefaultApplicationProblemPlusJSONResponse) VisitDeleteActionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetActionPolicyRequestObject struct {
+	Name Name `json:"name"`
+}
+
+type GetActionPolicyResponseObject interface {
+	VisitGetActionPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetActionPolicy200JSONResponse struct{ ActionPolicyRecordJSONResponse }
+
+func (response GetActionPolicy200JSONResponse) VisitGetActionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetActionPolicydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetActionPolicydefaultApplicationProblemPlusJSONResponse) VisitGetActionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyActionPolicyRequestObject struct {
+	Name Name `json:"name"`
+	Body *ApplyActionPolicyJSONRequestBody
+}
+
+type ApplyActionPolicyResponseObject interface {
+	VisitApplyActionPolicyResponse(w http.ResponseWriter) error
+}
+
+type ApplyActionPolicy200JSONResponse struct{ ActionPolicyRecordJSONResponse }
+
+func (response ApplyActionPolicy200JSONResponse) VisitApplyActionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyActionPolicy201ResponseHeaders struct {
+	ETag *string
+}
+
+type ApplyActionPolicy201JSONResponse struct {
+	Body    ActionPolicyRecord
+	Headers ApplyActionPolicy201ResponseHeaders
+}
+
+func (response ApplyActionPolicy201JSONResponse) VisitApplyActionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyActionPolicydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ApplyActionPolicydefaultApplicationProblemPlusJSONResponse) VisitApplyActionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -5818,6 +8863,302 @@ func (response TransitionInstancedefaultApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type ListLinksRequestObject struct {
+}
+
+type ListLinksResponseObject interface {
+	VisitListLinksResponse(w http.ResponseWriter) error
+}
+
+type ListLinks200JSONResponse AgentLinkPage
+
+func (response ListLinks200JSONResponse) VisitListLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLinksdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListLinksdefaultApplicationProblemPlusJSONResponse) VisitListLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteLinkRequestObject struct {
+	Name Name `json:"name"`
+}
+
+type DeleteLinkResponseObject interface {
+	VisitDeleteLinkResponse(w http.ResponseWriter) error
+}
+
+type DeleteLink204Response struct {
+}
+
+func (response DeleteLink204Response) VisitDeleteLinkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteLinkdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response DeleteLinkdefaultApplicationProblemPlusJSONResponse) VisitDeleteLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLinkRequestObject struct {
+	Name Name `json:"name"`
+}
+
+type GetLinkResponseObject interface {
+	VisitGetLinkResponse(w http.ResponseWriter) error
+}
+
+type GetLink200JSONResponse struct{ LinkRecordJSONResponse }
+
+func (response GetLink200JSONResponse) VisitGetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLinkdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetLinkdefaultApplicationProblemPlusJSONResponse) VisitGetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyLinkRequestObject struct {
+	Name Name `json:"name"`
+	Body *ApplyLinkJSONRequestBody
+}
+
+type ApplyLinkResponseObject interface {
+	VisitApplyLinkResponse(w http.ResponseWriter) error
+}
+
+type ApplyLink200JSONResponse struct{ LinkRecordJSONResponse }
+
+func (response ApplyLink200JSONResponse) VisitApplyLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyLink201ResponseHeaders struct {
+	ETag *string
+}
+
+type ApplyLink201JSONResponse struct {
+	Body    AgentLinkRecord
+	Headers ApplyLink201ResponseHeaders
+}
+
+func (response ApplyLink201JSONResponse) VisitApplyLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyLinkdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ApplyLinkdefaultApplicationProblemPlusJSONResponse) VisitApplyLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCompiledPoliciesRequestObject struct {
+}
+
+type GetCompiledPoliciesResponseObject interface {
+	VisitGetCompiledPoliciesResponse(w http.ResponseWriter) error
+}
+
+type GetCompiledPolicies200JSONResponse CompiledPolicies
+
+func (response GetCompiledPolicies200JSONResponse) VisitGetCompiledPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCompiledPoliciesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetCompiledPoliciesdefaultApplicationProblemPlusJSONResponse) VisitGetCompiledPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecidePolicyRequestObject struct {
+	Body *DecidePolicyJSONRequestBody
+}
+
+type DecidePolicyResponseObject interface {
+	VisitDecidePolicyResponse(w http.ResponseWriter) error
+}
+
+type DecidePolicy200JSONResponse PolicyDecision
+
+func (response DecidePolicy200JSONResponse) VisitDecidePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecidePolicydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response DecidePolicydefaultApplicationProblemPlusJSONResponse) VisitDecidePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SimulatePolicyRequestObject struct {
+	Body *SimulatePolicyJSONRequestBody
+}
+
+type SimulatePolicyResponseObject interface {
+	VisitSimulatePolicyResponse(w http.ResponseWriter) error
+}
+
+type SimulatePolicy200JSONResponse PolicySimulation
+
+func (response SimulatePolicy200JSONResponse) VisitSimulatePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SimulatePolicydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response SimulatePolicydefaultApplicationProblemPlusJSONResponse) VisitSimulatePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTemplatesRequestObject struct {
 	Params ListTemplatesParams
 }
@@ -6054,6 +9395,18 @@ type StrictServerInterface interface {
 	// GetHealth Service health
 	// (GET /healthz)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// ListActionPolicies List every action policy
+	// (GET /v1/action-policies)
+	ListActionPolicies(ctx context.Context, request ListActionPoliciesRequestObject) (ListActionPoliciesResponseObject, error)
+	// DeleteActionPolicy Remove an action policy; the template's actions are denied by default from then on
+	// (DELETE /v1/action-policies/{name})
+	DeleteActionPolicy(ctx context.Context, request DeleteActionPolicyRequestObject) (DeleteActionPolicyResponseObject, error)
+
+	// (GET /v1/action-policies/{name})
+	GetActionPolicy(ctx context.Context, request GetActionPolicyRequestObject) (GetActionPolicyResponseObject, error)
+	// ApplyActionPolicy Create or change an action policy; at most one applies to a template
+	// (PUT /v1/action-policies/{name})
+	ApplyActionPolicy(ctx context.Context, request ApplyActionPolicyRequestObject) (ApplyActionPolicyResponseObject, error)
 	// ListCatalogue Template versions published to the catalogue (assignable to joiners)
 	// (GET /v1/catalogue)
 	ListCatalogue(ctx context.Context, request ListCatalogueRequestObject) (ListCatalogueResponseObject, error)
@@ -6084,6 +9437,27 @@ type StrictServerInterface interface {
 	// TransitionInstance Move an instance to another lifecycle state
 	// (POST /v1/instances/{name}/transitions)
 	TransitionInstance(ctx context.Context, request TransitionInstanceRequestObject) (TransitionInstanceResponseObject, error)
+	// ListLinks List every agent link
+	// (GET /v1/links)
+	ListLinks(ctx context.Context, request ListLinksRequestObject) (ListLinksResponseObject, error)
+	// DeleteLink Remove a link; calls it allowed are denied from then on
+	// (DELETE /v1/links/{name})
+	DeleteLink(ctx context.Context, request DeleteLinkRequestObject) (DeleteLinkResponseObject, error)
+
+	// (GET /v1/links/{name})
+	GetLink(ctx context.Context, request GetLinkRequestObject) (GetLinkResponseObject, error)
+	// ApplyLink Create or change an agent link; an identical document changes nothing
+	// (PUT /v1/links/{name})
+	ApplyLink(ctx context.Context, request ApplyLinkRequestObject) (ApplyLinkResponseObject, error)
+	// GetCompiledPolicies The Cedar policy set the tenant's rules compile to
+	// (GET /v1/policy/cedar)
+	GetCompiledPolicies(ctx context.Context, request GetCompiledPoliciesRequestObject) (GetCompiledPoliciesResponseObject, error)
+	// DecidePolicy Decide an agent call or tool action (observe mode; recorded as evidence)
+	// (POST /v1/policy/decisions)
+	DecidePolicy(ctx context.Context, request DecidePolicyRequestObject) (DecidePolicyResponseObject, error)
+	// SimulatePolicy Decide a request under the current and proposed rules, changing nothing
+	// (POST /v1/policy/simulate)
+	SimulatePolicy(ctx context.Context, request SimulatePolicyRequestObject) (SimulatePolicyResponseObject, error)
 	// ListTemplates List the latest version of every template
 	// (GET /v1/templates)
 	ListTemplates(ctx context.Context, request ListTemplatesRequestObject) (ListTemplatesResponseObject, error)
@@ -6157,6 +9531,115 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListActionPolicies operation middleware
+func (sh *strictHandler) ListActionPolicies(w http.ResponseWriter, r *http.Request) {
+	var request ListActionPoliciesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListActionPolicies(ctx, request.(ListActionPoliciesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListActionPolicies")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListActionPoliciesResponseObject); ok {
+		if err := validResponse.VisitListActionPoliciesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteActionPolicy operation middleware
+func (sh *strictHandler) DeleteActionPolicy(w http.ResponseWriter, r *http.Request, name Name) {
+	var request DeleteActionPolicyRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteActionPolicy(ctx, request.(DeleteActionPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteActionPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteActionPolicyResponseObject); ok {
+		if err := validResponse.VisitDeleteActionPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetActionPolicy operation middleware
+func (sh *strictHandler) GetActionPolicy(w http.ResponseWriter, r *http.Request, name Name) {
+	var request GetActionPolicyRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetActionPolicy(ctx, request.(GetActionPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetActionPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetActionPolicyResponseObject); ok {
+		if err := validResponse.VisitGetActionPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApplyActionPolicy operation middleware
+func (sh *strictHandler) ApplyActionPolicy(w http.ResponseWriter, r *http.Request, name Name) {
+	var request ApplyActionPolicyRequestObject
+
+	request.Name = name
+
+	var body ApplyActionPolicyJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApplyActionPolicy(ctx, request.(ApplyActionPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApplyActionPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApplyActionPolicyResponseObject); ok {
+		if err := validResponse.VisitApplyActionPolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -6443,6 +9926,201 @@ func (sh *strictHandler) TransitionInstance(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TransitionInstanceResponseObject); ok {
 		if err := validResponse.VisitTransitionInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListLinks operation middleware
+func (sh *strictHandler) ListLinks(w http.ResponseWriter, r *http.Request) {
+	var request ListLinksRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListLinks(ctx, request.(ListLinksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListLinks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListLinksResponseObject); ok {
+		if err := validResponse.VisitListLinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteLink operation middleware
+func (sh *strictHandler) DeleteLink(w http.ResponseWriter, r *http.Request, name Name) {
+	var request DeleteLinkRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteLink(ctx, request.(DeleteLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteLinkResponseObject); ok {
+		if err := validResponse.VisitDeleteLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLink operation middleware
+func (sh *strictHandler) GetLink(w http.ResponseWriter, r *http.Request, name Name) {
+	var request GetLinkRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLink(ctx, request.(GetLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLinkResponseObject); ok {
+		if err := validResponse.VisitGetLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApplyLink operation middleware
+func (sh *strictHandler) ApplyLink(w http.ResponseWriter, r *http.Request, name Name) {
+	var request ApplyLinkRequestObject
+
+	request.Name = name
+
+	var body ApplyLinkJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApplyLink(ctx, request.(ApplyLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApplyLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApplyLinkResponseObject); ok {
+		if err := validResponse.VisitApplyLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCompiledPolicies operation middleware
+func (sh *strictHandler) GetCompiledPolicies(w http.ResponseWriter, r *http.Request) {
+	var request GetCompiledPoliciesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCompiledPolicies(ctx, request.(GetCompiledPoliciesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCompiledPolicies")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCompiledPoliciesResponseObject); ok {
+		if err := validResponse.VisitGetCompiledPoliciesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DecidePolicy operation middleware
+func (sh *strictHandler) DecidePolicy(w http.ResponseWriter, r *http.Request) {
+	var request DecidePolicyRequestObject
+
+	var body DecidePolicyJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DecidePolicy(ctx, request.(DecidePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DecidePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DecidePolicyResponseObject); ok {
+		if err := validResponse.VisitDecidePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SimulatePolicy operation middleware
+func (sh *strictHandler) SimulatePolicy(w http.ResponseWriter, r *http.Request) {
+	var request SimulatePolicyRequestObject
+
+	var body SimulatePolicyJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SimulatePolicy(ctx, request.(SimulatePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SimulatePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SimulatePolicyResponseObject); ok {
+		if err := validResponse.VisitSimulatePolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
