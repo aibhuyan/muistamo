@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"muistamo.dev/muistamo/control-plane/internal/api"
+	"muistamo.dev/muistamo/control-plane/internal/evidence"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
 	"muistamo.dev/muistamo/control-plane/internal/store"
 	"muistamo.dev/muistamo/control-plane/internal/testdb"
@@ -20,6 +21,7 @@ import (
 
 type harness struct {
 	db  testdb.DB
+	key evidence.LocalKey
 	url string
 }
 
@@ -31,9 +33,10 @@ func newHarness(t *testing.T, resolver api.TenantResolver) harness {
 		t.Fatal(err)
 	}
 	t.Cleanup(conn.Close)
-	srv := httptest.NewServer(api.Handler(registry.New(conn), resolver, slog.New(slog.DiscardHandler)))
+	key := testdb.SigningKey(t, db)
+	srv := httptest.NewServer(api.Handler(registry.New(conn, key), resolver, slog.New(slog.DiscardHandler)))
 	t.Cleanup(srv.Close)
-	return harness{db: db, url: srv.URL}
+	return harness{db: db, key: key, url: srv.URL}
 }
 
 func (h harness) tenant(t *testing.T, name string) uuid.UUID {

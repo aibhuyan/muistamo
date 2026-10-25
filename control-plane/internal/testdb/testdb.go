@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"muistamo.dev/muistamo/control-plane/internal/evidence"
 	"muistamo.dev/muistamo/control-plane/internal/store"
 )
 
@@ -129,6 +130,19 @@ func Exec(t *testing.T, url, sql string, args ...any) {
 	}
 }
 
+// SigningKey creates an evidence signing key and registers it in db.
+func SigningKey(t *testing.T, db DB) evidence.LocalKey {
+	t.Helper()
+	key, _, err := evidence.GenerateLocalKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RegisterSigningKey(context.Background(), db.OwnerURL, key.KeyID(), key.Public()); err != nil {
+		t.Fatal(err)
+	}
+	return key
+}
+
 // ExecErr runs one statement against url inside a transaction scoped to tenant (none when
 // tenant is uuid.Nil), rolls it back, and returns the statement's error.
 func ExecErr(url string, tenant uuid.UUID, sql string, args ...any) error {
@@ -177,6 +191,21 @@ func CountIn(t *testing.T, url string, tenant uuid.UUID, query string, args ...a
 		t.Fatalf("%s: %v", query, err)
 	}
 	return n
+}
+
+// Scalar returns a single text value for query, run against url.
+func Scalar(t *testing.T, url, query string, args ...any) string {
+	t.Helper()
+	conn, err := pgx.Connect(context.Background(), url)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	var v string
+	if err := conn.QueryRow(context.Background(), query, args...).Scan(&v); err != nil {
+		t.Fatalf("%s: %v", query, err)
+	}
+	return v
 }
 
 // Count returns SELECT count(*) for query, run against url.

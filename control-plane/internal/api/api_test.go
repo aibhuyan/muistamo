@@ -1,12 +1,16 @@
 package api_test
 
 import (
+	"crypto/ed25519"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"muistamo.dev/muistamo/control-plane/evidencechain"
 	"muistamo.dev/muistamo/control-plane/internal/api"
 )
 
@@ -93,5 +97,44 @@ func TestInstanceTransitionsOverHTTP(t *testing.T) {
 	}
 	if got := h.call(t, tenant, http.MethodPost, path, `{"to":"galaxy"}`, "If-Match", active.etag); got.status != http.StatusUnprocessableEntity {
 		t.Fatalf("unknown state = %d, want 422", got.status)
+	}
+}
+
+func TestEventsExportPagesAndVerifies(t *testing.T) {
+	h := newHarness(t, api.InsecureDevHeaders{})
+	tenant := h.tenant(t, "acme")
+	h.call(t, tenant, http.MethodPut, "/v1/templates/analyst-intern", templateJSON)
+	h.call(t, tenant, http.MethodPut, "/v1/templates/analyst-intern", strings.Replace(templateJSON, "Support interns", "Changed", 1))
+	h.call(t, tenant, http.MethodPut, "/v1/instances/analyst-intern-person-a", strings.Replace(instanceJSON, `"version":"1"`, `"version":"2"`, 1))
+
+	var events []evidencechain.Event
+	path := "/v1/events?limit=1"
+	for pages := 0; ; pages++ {
+		if pages > 10 {
+			t.Fatal("paging did not terminate")
+		}
+		got := h.call(t, tenant, http.MethodGet, path, "")
+		if got.status != http.StatusOK {
+			t.Fatalf("GET %s = %d: %s", path, got.status, got.raw)
+		}
+		var page struct {
+			Items        []evidencechain.Event `json:"items"`
+			NextAfterSeq *int                  `json:"nextAfterSeq"`
+		}
+		if err := json.Unmarshal([]byte(got.raw), &page); err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, page.Items...)
+		if page.NextAfterSeq == nil {
+			break
+		}
+		path = fmt.Sprintf("/v1/events?limit=1&afterSeq=%d", *page.NextAfterSeq)
+	}
+	if len(events) != 3 {
+		t.Fatalf("exported %d events, want 3", len(events))
+	}
+	keys := map[string]ed25519.PublicKey{h.key.KeyID(): h.key.Public()}
+	if err := evidencechain.Verify(events, keys); err != nil {
+		t.Fatalf("chain exported over HTTP does not verify: %v", err)
 	}
 }

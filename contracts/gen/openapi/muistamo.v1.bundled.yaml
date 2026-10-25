@@ -148,6 +148,27 @@ paths:
           $ref: '#/components/responses/InstanceRecord'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/events:
+    get:
+      operationId: listEvents
+      summary: Export the tenant's evidence chain in seq order
+      parameters:
+      - name: afterSeq
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of evidence events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceEventPage'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   parameters:
     Name:
@@ -437,6 +458,86 @@ components:
           type: string
         document:
           $ref: '#/components/schemas/AgentTemplate'
+    EvidenceEvent:
+      title: EvidenceEvent
+      description: One signed, hash-chained evidence event. The hashed body and signature
+        are defined in control-plane/evidencechain; verify chains with mst evidence
+        verify.
+      type: object
+      additionalProperties: false
+      required:
+      - tenant
+      - seq
+      - occurredAt
+      - actor
+      - action
+      - subject
+      - before
+      - after
+      - requestId
+      - prevHash
+      - hash
+      - keyId
+      - signature
+      properties:
+        tenant:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+          minimum: 1
+        occurredAt:
+          type: string
+          format: date-time
+        actor:
+          type: string
+        action:
+          type: string
+        subject:
+          title: EvidenceSubject
+          type: object
+          additionalProperties: false
+          required:
+          - kind
+          - name
+          properties:
+            kind:
+              type: string
+            name:
+              type: string
+        before:
+          description: State before the action, or null.
+        after:
+          description: State after the action, or null.
+        requestId:
+          type: string
+        prevHash:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        hash:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        keyId:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        signature:
+          description: Ed25519 signature over the hash bytes, base64.
+          type: string
+    EvidenceEventPage:
+      title: EvidenceEventPage
+      description: A page of the tenant's evidence chain, in seq order.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceEvent'
+        nextAfterSeq:
+          description: Pass as afterSeq for the next page. Absent on the last page.
+          type: integer
     HealthStatus:
       title: HealthStatus
       description: Response body of every service health endpoint.

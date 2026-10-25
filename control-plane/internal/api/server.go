@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
 	"muistamo.dev/muistamo/control-plane/internal/store"
@@ -159,6 +161,42 @@ func (s *server) TransitionInstance(ctx context.Context, req muistamov1.Transiti
 		return muistamov1.TransitionInstancedefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
 	}
 	return muistamov1.TransitionInstance200JSONResponse{InstanceRecordJSONResponse: instanceResponse(rec)}, nil
+}
+
+func (s *server) ListEvents(ctx context.Context, req muistamov1.ListEventsRequestObject) (muistamov1.ListEventsResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err != nil {
+		return muistamov1.ListEventsdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	after := int64(0)
+	if req.Params.AfterSeq != nil {
+		after = int64(*req.Params.AfterSeq)
+	}
+	n := limit(req.Params.Limit)
+	events, err := s.svc.ListEvents(ctx, actor, after, n+1)
+	if err != nil {
+		return muistamov1.ListEventsdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	page := muistamov1.EvidenceEventPage{Items: []muistamov1.EvidenceEvent{}}
+	if len(events) > n {
+		events = events[:n]
+		next := int(events[n-1].Seq)
+		page.NextAfterSeq = &next
+	}
+	for _, e := range events {
+		tenant, err := uuid.Parse(e.Tenant)
+		if err != nil {
+			return muistamov1.ListEventsdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, fmt.Errorf("stored tenant id: %w", err))), nil
+		}
+		item := muistamov1.EvidenceEvent{
+			Tenant: tenant, Seq: int(e.Seq), OccurredAt: e.OccurredAt, Actor: e.Actor, Action: e.Action,
+			Before: e.Before, After: e.After, RequestId: e.RequestID,
+			PrevHash: e.PrevHash, Hash: e.Hash, KeyId: e.KeyID, Signature: e.Signature,
+		}
+		item.Subject.Kind, item.Subject.Name = e.Subject.Kind, e.Subject.Name
+		page.Items = append(page.Items, item)
+	}
+	return muistamov1.ListEvents200JSONResponse(page), nil
 }
 
 func (s *server) actor(ctx context.Context) (registry.Actor, error) {
