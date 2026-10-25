@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/leaverreview.json",
+  "title": "LeaverReview",
+  "description": "The review of a leaver's personal knowledge layer (E4.2). While open, the layer is frozen. The decider merges chosen entries as a proposal, keeps the layer for one more period, or purges it; without a decision it is purged at the deadline.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "person", "status", "deciderKind", "deadline", "kept", "entryCount", "openedAt"],
+  "properties": {
+    "id": { "type": "string" },
+    "person": { "description": "The leaver's identity.", "type": "string" },
+    "status": { "type": "string", "enum": ["open", "closed"] },
+    "outcome": {
+      "description": "closed: merged (chosen entries proposed, the rest purged), purged, expired (purged at the deadline), cancelled (rehired; the layer is unfrozen) or empty (nothing to review).",
+      "type": "string",
+      "enum": ["merged", "purged", "expired", "cancelled", "empty"]
+    },
+    "deciderKind": { "type": "string", "enum": ["manager", "sponsor", "privacy-officers"] },
+    "decider": { "description": "The deciding identity; absent when any privacy officer decides.", "type": "string" },
+    "deadline": { "type": "string", "format": "date-time" },
+    "kept": { "description": "The decider already extended the deadline once.", "type": "boolean" },
+    "entryCount": { "type": "integer", "minimum": 0 },
+    "proposalId": { "description": "merged: the proposal the chosen entries became.", "type": "string", "format": "uuid" },
+    "openedAt": { "type": "string", "format": "date-time" },
+    "closedAt": { "type": "string", "format": "date-time" },
+    "entries": {
+      "description": "Only on GET of one review, to its decider: the leaver's personal entries.",
+      "type": "array",
+      "items": { "$ref": "knowledgeentry.json" }
+    }
+  }
+}

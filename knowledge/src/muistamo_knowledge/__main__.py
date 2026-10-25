@@ -66,6 +66,14 @@ def register_tenant(args: argparse.Namespace) -> None:
     print(f"registered tenant {tenant}")
 
 
+def set_service_secret(args: argparse.Namespace) -> None:
+    from muistamo_knowledge.leavers import set_service_secret as store
+
+    tenant = uuid.UUID(args.tenant)
+    store(require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant, args.secret.encode())
+    print(f"tenant {tenant} service secret stored")
+
+
 def set_privacy_officers(args: argparse.Namespace) -> None:
     from muistamo_knowledge.privacy import replace_officers
 
@@ -101,6 +109,12 @@ def main() -> None:
     reg = tenant.add_parser("register", help="accept requests for a tenant (owner URL)")
     reg.add_argument("tenant")
     reg.set_defaults(fn=register_tenant)
+    ss = tenant.add_parser(
+        "service-secret", help="store the secret the control plane signs calls with (owner URL)"
+    )
+    ss.add_argument("tenant")
+    ss.add_argument("secret", help="as printed by control-plane tenant knowledge-secret")
+    ss.set_defaults(fn=set_service_secret)
     priv = sub.add_parser("privacy", help="privacy officers").add_subparsers(required=True)
     po = priv.add_parser("officers", help="replace the tenant's privacy officers (owner URL)")
     po.add_argument("tenant")

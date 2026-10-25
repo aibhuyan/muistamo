@@ -738,6 +738,111 @@ func (e KnowledgeSourceSpecConnector) Valid() bool {
 	}
 }
 
+// Defines values for LeaverReviewDeciderKind.
+const (
+	LeaverReviewDeciderKindManager         LeaverReviewDeciderKind = "manager"
+	LeaverReviewDeciderKindPrivacyOfficers LeaverReviewDeciderKind = "privacy-officers"
+	LeaverReviewDeciderKindSponsor         LeaverReviewDeciderKind = "sponsor"
+)
+
+// Valid indicates whether the value is a known member of the LeaverReviewDeciderKind enum.
+func (e LeaverReviewDeciderKind) Valid() bool {
+	switch e {
+	case LeaverReviewDeciderKindManager:
+		return true
+	case LeaverReviewDeciderKindPrivacyOfficers:
+		return true
+	case LeaverReviewDeciderKindSponsor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LeaverReviewOutcome.
+const (
+	LeaverReviewOutcomeCancelled LeaverReviewOutcome = "cancelled"
+	LeaverReviewOutcomeEmpty     LeaverReviewOutcome = "empty"
+	LeaverReviewOutcomeExpired   LeaverReviewOutcome = "expired"
+	LeaverReviewOutcomeMerged    LeaverReviewOutcome = "merged"
+	LeaverReviewOutcomePurged    LeaverReviewOutcome = "purged"
+)
+
+// Valid indicates whether the value is a known member of the LeaverReviewOutcome enum.
+func (e LeaverReviewOutcome) Valid() bool {
+	switch e {
+	case LeaverReviewOutcomeCancelled:
+		return true
+	case LeaverReviewOutcomeEmpty:
+		return true
+	case LeaverReviewOutcomeExpired:
+		return true
+	case LeaverReviewOutcomeMerged:
+		return true
+	case LeaverReviewOutcomePurged:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LeaverReviewStatus.
+const (
+	LeaverReviewStatusClosed LeaverReviewStatus = "closed"
+	LeaverReviewStatusOpen   LeaverReviewStatus = "open"
+)
+
+// Valid indicates whether the value is a known member of the LeaverReviewStatus enum.
+func (e LeaverReviewStatus) Valid() bool {
+	switch e {
+	case LeaverReviewStatusClosed:
+		return true
+	case LeaverReviewStatusOpen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LeaverReviewDecisionDecision.
+const (
+	LeaverReviewDecisionDecisionKeep  LeaverReviewDecisionDecision = "keep"
+	LeaverReviewDecisionDecisionMerge LeaverReviewDecisionDecision = "merge"
+	LeaverReviewDecisionDecisionPurge LeaverReviewDecisionDecision = "purge"
+)
+
+// Valid indicates whether the value is a known member of the LeaverReviewDecisionDecision enum.
+func (e LeaverReviewDecisionDecision) Valid() bool {
+	switch e {
+	case LeaverReviewDecisionDecisionKeep:
+		return true
+	case LeaverReviewDecisionDecisionMerge:
+		return true
+	case LeaverReviewDecisionDecisionPurge:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LeaverReviewOpenDecidersKind.
+const (
+	LeaverReviewOpenDecidersKindManager LeaverReviewOpenDecidersKind = "manager"
+	LeaverReviewOpenDecidersKindSponsor LeaverReviewOpenDecidersKind = "sponsor"
+)
+
+// Valid indicates whether the value is a known member of the LeaverReviewOpenDecidersKind enum.
+func (e LeaverReviewOpenDecidersKind) Valid() bool {
+	switch e {
+	case LeaverReviewOpenDecidersKindManager:
+		return true
+	case LeaverReviewOpenDecidersKindSponsor:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PolicyDecisionDecision.
 const (
 	PolicyDecisionDecisionAllow PolicyDecisionDecision = "allow"
@@ -1430,6 +1535,9 @@ type HREvent struct {
 		// Id Stable employee id in the HR system.
 		Id      string `json:"id"`
 		JobCode string `json:"jobCode"`
+
+		// ManagerEmail Leaver: the person's manager, who decides what happens to their personal knowledge layer (E4.2). Without it the instance sponsor decides, then the tenant's privacy officers.
+		ManagerEmail *string `json:"managerEmail,omitempty"`
 	} `json:"person"`
 	Type HREventType `json:"type"`
 }
@@ -1645,6 +1753,86 @@ type KnowledgeSourceRecord struct {
 	UpdatedAt     time.Time       `json:"updatedAt"`
 }
 
+// LeaverReview The review of a leaver's personal knowledge layer (E4.2). While open, the layer is frozen. The decider merges chosen entries as a proposal, keeps the layer for one more period, or purges it; without a decision it is purged at the deadline.
+type LeaverReview struct {
+	ClosedAt *time.Time `json:"closedAt,omitempty"`
+	Deadline time.Time  `json:"deadline"`
+
+	// Decider The deciding identity; absent when any privacy officer decides.
+	Decider     *string                 `json:"decider,omitempty"`
+	DeciderKind LeaverReviewDeciderKind `json:"deciderKind"`
+
+	// Entries Only on GET of one review, to its decider: the leaver's personal entries.
+	Entries    *[]KnowledgeEntry `json:"entries,omitempty"`
+	EntryCount int               `json:"entryCount"`
+	Id         string            `json:"id"`
+
+	// Kept The decider already extended the deadline once.
+	Kept     bool      `json:"kept"`
+	OpenedAt time.Time `json:"openedAt"`
+
+	// Outcome closed: merged (chosen entries proposed, the rest purged), purged, expired (purged at the deadline), cancelled (rehired; the layer is unfrozen) or empty (nothing to review).
+	Outcome *LeaverReviewOutcome `json:"outcome,omitempty"`
+
+	// Person The leaver's identity.
+	Person string `json:"person"`
+
+	// ProposalId merged: the proposal the chosen entries became.
+	ProposalId *openapi_types.UUID `json:"proposalId,omitempty"`
+	Status     LeaverReviewStatus  `json:"status"`
+}
+
+// LeaverReviewDeciderKind defines model for LeaverReview.DeciderKind.
+type LeaverReviewDeciderKind string
+
+// LeaverReviewOutcome closed: merged (chosen entries proposed, the rest purged), purged, expired (purged at the deadline), cancelled (rehired; the layer is unfrozen) or empty (nothing to review).
+type LeaverReviewOutcome string
+
+// LeaverReviewStatus defines model for LeaverReview.Status.
+type LeaverReviewStatus string
+
+// LeaverReviewDecision The decider's choice. merge proposes the chosen entries to a pack (normal review applies, and the decider cannot approve it) and purges the rest; keep extends the deadline once; purge deletes the layer now.
+type LeaverReviewDecision struct {
+	Decision LeaverReviewDecisionDecision `json:"decision"`
+
+	// EntryIds merge: the leaver's entries to propose.
+	EntryIds *[]openapi_types.UUID `json:"entryIds,omitempty"`
+
+	// Pack merge: the pack to propose to.
+	Pack   *string `json:"pack,omitempty"`
+	Reason string  `json:"reason"`
+
+	// Summary merge: the proposal summary.
+	Summary *string `json:"summary,omitempty"`
+}
+
+// LeaverReviewDecisionDecision defines model for LeaverReviewDecision.Decision.
+type LeaverReviewDecisionDecision string
+
+// LeaverReviewOpen Sent by the control plane's leaver workflow, signed with the tenant's service secret: open the review of a leaver's personal knowledge layer and freeze it. Repeating an id is safe.
+type LeaverReviewOpen struct {
+	// Deciders Candidate deciders in order of preference: the manager, then instance sponsors. The first who is not the leaver decides; with none, the tenant's privacy officers do.
+	Deciders []struct {
+		Email string                       `json:"email"`
+		Kind  LeaverReviewOpenDecidersKind `json:"kind"`
+	} `json:"deciders"`
+
+	// Id The leaver workflow's id and run id: unique per leaving, stable across retries.
+	Id     string `json:"id"`
+	Person struct {
+		Email      string  `json:"email"`
+		HrPersonId *string `json:"hrPersonId,omitempty"`
+	} `json:"person"`
+}
+
+// LeaverReviewOpenDecidersKind defines model for LeaverReviewOpen.Deciders.Kind.
+type LeaverReviewOpenDecidersKind string
+
+// LeaverReviewPage The reviews the caller decides, open first.
+type LeaverReviewPage struct {
+	Items []LeaverReview `json:"items"`
+}
+
 // ObjectMeta Metadata shared by every Muistamo YAML kind.
 type ObjectMeta struct {
 	Labels *map[string]string `json:"labels,omitempty"`
@@ -1833,8 +2021,11 @@ type Proposal struct {
 	Id            openapi_types.UUID      `json:"id"`
 	MergedVersion *string                 `json:"mergedVersion,omitempty"`
 	Pack          string                  `json:"pack"`
-	Status        ProposalStatus          `json:"status"`
-	Summary       string                  `json:"summary"`
+
+	// ProposedBy Set when someone proposed on the contributor's behalf (a leaver's decider, E4.2). They cannot decide the proposal.
+	ProposedBy *string        `json:"proposedBy,omitempty"`
+	Status     ProposalStatus `json:"status"`
+	Summary    string         `json:"summary"`
 }
 
 // ProposalStatus defines model for Proposal.Status.

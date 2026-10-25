@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/leaverreviewopen.json",
+  "title": "LeaverReviewOpen",
+  "description": "Sent by the control plane's leaver workflow, signed with the tenant's service secret: open the review of a leaver's personal knowledge layer and freeze it. Repeating an id is safe.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "person", "deciders"],
+  "properties": {
+    "id": { "description": "The leaver workflow's id and run id: unique per leaving, stable across retries.", "type": "string", "minLength": 1, "maxLength": 255 },
+    "person": {
+      "title": "LeaverReviewPerson",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["email"],
+      "properties": {
+        "email": { "type": "string", "minLength": 3 },
+        "hrPersonId": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "deciders": {
+      "description": "Candidate deciders in order of preference: the manager, then instance sponsors. The first who is not the leaver decides; with none, the tenant's privacy officers do.",
+      "type": "array",
+      "items": {
+        "title": "LeaverReviewDecider",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["email", "kind"],
+        "properties": {
+          "email": { "type": "string", "minLength": 3 },
+          "kind": { "type": "string", "enum": ["manager", "sponsor"] }
+        }
+      }
+    }
+  }
+}

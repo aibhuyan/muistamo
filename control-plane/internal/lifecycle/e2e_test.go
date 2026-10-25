@@ -124,7 +124,7 @@ func TestJoinerLeaverRehireEndToEnd(t *testing.T) {
 	for _, e := range events {
 		actions = append(actions, e.Action)
 	}
-	for _, want := range []string{"hr.event.received", "instance.created", "identity.provisioned", "credentials.revoked", "personal-layer.decision", "identity.enabled"} {
+	for _, want := range []string{"hr.event.received", "instance.created", "identity.provisioned", "credentials.revoked", "personal-layer.review-not-opened", "identity.enabled"} {
 		if !slices.Contains(actions, want) {
 			t.Errorf("evidence lacks %s: %v", want, actions)
 		}

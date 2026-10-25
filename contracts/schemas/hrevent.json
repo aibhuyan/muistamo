@@ -23,7 +23,12 @@
       "properties": {
         "id": { "description": "Stable employee id in the HR system.", "type": "string", "minLength": 1, "maxLength": 200 },
         "email": { "type": "string", "minLength": 3 },
-        "jobCode": { "type": "string", "minLength": 1 }
+        "jobCode": { "type": "string", "minLength": 1 },
+        "managerEmail": {
+          "description": "Leaver: the person's manager, who decides what happens to their personal knowledge layer (E4.2). Without it the instance sponsor decides, then the tenant's privacy officers.",
+          "type": "string",
+          "minLength": 3
+        }
       }
     }
   }

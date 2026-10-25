@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/leaverreviewdecision.json",
+  "title": "LeaverReviewDecision",
+  "description": "The decider's choice. merge proposes the chosen entries to a pack (normal review applies, and the decider cannot approve it) and purges the rest; keep extends the deadline once; purge deletes the layer now.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "reason"],
+  "properties": {
+    "decision": { "type": "string", "enum": ["merge", "keep", "purge"] },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "pack": { "description": "merge: the pack to propose to.", "type": "string" },
+    "entryIds": { "description": "merge: the leaver's entries to propose.", "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "format": "uuid" } },
+    "summary": { "description": "merge: the proposal summary.", "type": "string", "minLength": 1, "maxLength": 2000 }
+  },
+  "if": { "properties": { "decision": { "const": "merge" } } },
+  "then": { "required": ["pack", "entryIds", "summary"] },
+  "else": { "not": { "anyOf": [{ "required": ["pack"] }, { "required": ["entryIds"] }, { "required": ["summary"] }] } }
+}

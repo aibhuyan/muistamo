@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -20,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
+	"muistamo.dev/muistamo/control-plane/internal/signature"
 )
 
 const (
@@ -34,18 +34,7 @@ type HRIntake interface {
 }
 
 // Sign returns the X-Muistamo-Signature value for body at time t. HR connectors and tests use it.
-func Sign(secret, body []byte, t time.Time) string {
-	ts := strconv.FormatInt(t.Unix(), 10)
-	return "t=" + ts + ",v1=" + hex.EncodeToString(mac(secret, ts, body))
-}
-
-func mac(secret []byte, ts string, body []byte) []byte {
-	h := hmac.New(sha256.New, secret)
-	h.Write([]byte(ts))
-	h.Write([]byte("."))
-	h.Write(body)
-	return h.Sum(nil)
-}
+func Sign(secret, body []byte, t time.Time) string { return signature.Sign(secret, body, t) }
 
 // verifyHR authenticates an HR event request and returns its tenant. Every failure is the same
 // errUnauthenticated to the caller; the reason is only logged.
@@ -78,7 +67,7 @@ func verifyHR(r *http.Request, intake HRIntake, now time.Time) (uuid.UUID, error
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("load HR secret: %w", err)
 	}
-	if !hmac.Equal(sig, mac(secret, ts, body)) {
+	if !hmac.Equal(sig, signature.MAC(secret, ts, body)) {
 		return uuid.Nil, errors.New("signature does not match")
 	}
 	return tenant, nil

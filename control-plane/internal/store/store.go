@@ -113,6 +113,26 @@ func SetHRSecret(ctx context.Context, url string, tenant uuid.UUID, secret []byt
 	return nil
 }
 
+// SetKnowledgeSecret stores the secret the leaver workflow signs knowledge-service calls with.
+// url must connect as the table owner.
+func SetKnowledgeSecret(ctx context.Context, url string, tenant uuid.UUID, secret []byte) error {
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('muistamo.tenant_id', $1, true)`, tenant.String()); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO knowledge_service_secrets (tenant_id, secret) VALUES ($1, $2)
+			ON CONFLICT (tenant_id) DO UPDATE SET secret = EXCLUDED.secret, created_at = now()`, tenant, secret); err != nil {
+			return fmt.Errorf("store knowledge secret for tenant %s: %w", tenant, err)
+		}
+		return nil
+	})
+}
+
 // SetCatalogueApprovers replaces a tenant's catalogue approver list. url must connect as the
 // table owner: the server role can read approvers but never change them.
 func SetCatalogueApprovers(ctx context.Context, url string, tenant uuid.UUID, approvers []string) error {

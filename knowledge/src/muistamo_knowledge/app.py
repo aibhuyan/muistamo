@@ -19,13 +19,18 @@ from muistamo_contracts.v1.erasurerequest import ErasureRequest
 from muistamo_contracts.v1.knowledgeentryinput import KnowledgeEntryInput
 from muistamo_contracts.v1.knowledgepack import KnowledgePack
 from muistamo_contracts.v1.knowledgesource import KnowledgeSource
+from muistamo_contracts.v1.leaverreviewdecision import LeaverReviewDecision
+from muistamo_contracts.v1.leaverreviewopen import LeaverReviewOpen
 from muistamo_contracts.v1.proposaldecision import ProposalDecision
 from muistamo_contracts.v1.proposalinput import ProposalInput
 from muistamo_contracts.v1.rollbackinput import RollbackInput
+from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 
-from muistamo_knowledge import evidence
+from muistamo_knowledge import auth, evidence
 from muistamo_knowledge.auth import Resolver, Unauthenticated, deny_all
 from muistamo_knowledge.db import UnknownTenant
+from muistamo_knowledge.leavers import Leavers
 from muistamo_knowledge.mcp_server import build as build_mcp
 from muistamo_knowledge.mcp_server import require_identity
 from muistamo_knowledge.privacy import Privacy
@@ -253,6 +258,52 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     @app.post("/v1/knowledge/privacy/access")
     def export_personal_data(body: AccessRequest, who: Who) -> JSONResponse:
         return ok(privacy().export(who, body.subject.model_dump(mode="json", exclude_none=True)))
+
+    def leavers() -> Leavers:
+        return Leavers(svc(), auth.identity_map_for(resolver))
+
+    @app.get("/v1/knowledge/leaver-reviews")
+    def list_leaver_reviews(who: Who) -> JSONResponse:
+        return ok({"items": leavers().list(who)})
+
+    @app.post("/v1/knowledge/leaver-reviews/{review_id}/decision")
+    def decide_leaver_review(review_id: str, body: LeaverReviewDecision, who: Who) -> JSONResponse:
+        return ok(leavers().decide(who, review_id, body.model_dump(mode="json", exclude_none=True)))
+
+    @app.get("/v1/knowledge/leaver-reviews/{review_id}")
+    def get_leaver_review(review_id: str, who: Who) -> JSONResponse:
+        return ok(leavers().get(who, review_id))
+
+    # Service calls from the control plane. Signed with the tenant's service secret; never a
+    # user identity. The signature is checked over the raw body before anything is parsed.
+    async def signed(request: Request) -> tuple[uuid.UUID, bytes]:
+        body = await request.body()
+        tenant = auth.service_tenant(request.headers)
+        secret = await run_in_threadpool(leavers().service_secret, tenant)
+        auth.verify_service(request.headers, body, secret)
+        return tenant, body
+
+    @app.post("/v1/knowledge/internal/leaver-reviews")
+    async def open_leaver_review(request: Request) -> JSONResponse:
+        tenant, body = await signed(request)
+        try:
+            doc = LeaverReviewOpen.model_validate_json(body)
+        except ValidationError as exc:
+            return problem(422, "Document does not match its contract", str(exc.errors()))
+        review, created = await run_in_threadpool(
+            leavers().open, tenant, doc.model_dump(mode="json", exclude_none=True)
+        )
+        return ok(review, 201 if created else 200)
+
+    @app.post("/v1/knowledge/internal/leaver-reviews/{review_id}/expire")
+    async def expire_leaver_review(review_id: str, request: Request) -> JSONResponse:
+        tenant, _ = await signed(request)
+        return ok(await run_in_threadpool(leavers().expire, tenant, review_id))
+
+    @app.post("/v1/knowledge/internal/leaver-reviews/{review_id}/cancel")
+    async def cancel_leaver_review(review_id: str, request: Request) -> JSONResponse:
+        tenant, _ = await signed(request)
+        return ok(await run_in_threadpool(leavers().cancel, tenant, review_id))
 
     if mcp_app is not None:
         app.mount("/mcp/knowledge", require_identity(mcp_app, resolver, knowledge))

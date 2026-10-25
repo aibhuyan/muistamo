@@ -1,9 +1,11 @@
 // Package lifecycle runs HR-driven instance lifecycles as Temporal workflows (FR-401, FR-402).
 //
 // Joiner: the person's job code selects templates; each gets an instance, an identity, and is
-// activated. Leaver: every instance is suspended and its credentials revoked at once; after the
-// grace period it is retired and its identity disabled. A rehire inside the grace period
-// signals the waiting leaver workflow, which reactivates instead of retiring.
+// activated. Leaver: every instance is suspended and its credentials revoked at once, then the
+// person's personal knowledge layer is frozen for review by their manager (E4.2); after the
+// grace period the instances are retired, their identities disabled, and an undecided layer is
+// purged. A rehire inside the grace period signals the waiting leaver workflow, which
+// reactivates instead of retiring and cancels the review.
 //
 // Workflow code must stay deterministic: all side effects live in Activities.
 package lifecycle
@@ -25,6 +27,9 @@ const (
 	GracePeriod = 30 * 24 * time.Hour
 	// RehiredSignal reactivates a leaver's instances during the grace period.
 	RehiredSignal = "rehired"
+	// reviewChange versions the leaver workflow: histories recorded before personal-layer
+	// reviews replay the old step (RecordPersonalLayerDecision).
+	reviewChange = "personal-layer-review"
 )
 
 // JoinerInput starts a joiner workflow.
@@ -43,6 +48,8 @@ type LeaverInput struct {
 type LeaverResult struct {
 	Instances []string
 	Rehired   bool
+	// Review is the personal-layer review's id, if one was opened.
+	Review string `json:",omitempty"`
 }
 
 // Rehire is the payload of RehiredSignal.
@@ -111,12 +118,23 @@ func Leaver(ctx workflow.Context, in LeaverInput) (LeaverResult, error) {
 			return result, err
 		}
 	}
-	for _, name := range instances {
-		if err := workflow.ExecuteActivity(ctx, a.RecordPersonalLayerDecision, in.Scope, name).Get(ctx, nil); err != nil {
+	var review ReviewOpened
+	if workflow.GetVersion(ctx, reviewChange, workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+		for _, name := range instances {
+			if err := workflow.ExecuteActivity(ctx, a.RecordPersonalLayerDecision, in.Scope, name).Get(ctx, nil); err != nil {
+				return result, err
+			}
+		}
+	} else {
+		// The layer belongs to the person, not an instance: review it even with no instances.
+		if err := workflow.ExecuteActivity(ctx, a.OpenPersonalLayerReview, in.Scope, in.Person, instances).Get(ctx, &review); err != nil {
 			return result, err
 		}
+		if review.Opened {
+			result.Review = review.ID
+		}
 	}
-	if len(instances) == 0 {
+	if len(instances) == 0 && !review.Opened {
 		return result, nil
 	}
 
@@ -133,6 +151,11 @@ func Leaver(ctx workflow.Context, in LeaverInput) (LeaverResult, error) {
 
 	if result.Rehired {
 		cancelTimer()
+		if review.Opened {
+			if err := workflow.ExecuteActivity(ctx, a.CancelPersonalLayerReview, in.Scope, in.Person.ID, review.ID).Get(ctx, nil); err != nil {
+				return result, err
+			}
+		}
 		for _, name := range instances {
 			if err := workflow.ExecuteActivity(ctx, a.SetIdentityEnabled, in.Scope, name, true).Get(ctx, nil); err != nil {
 				return result, err
@@ -148,6 +171,23 @@ func Leaver(ctx workflow.Context, in LeaverInput) (LeaverResult, error) {
 			return result, err
 		}
 		if err := workflow.ExecuteActivity(ctx, a.SetIdentityEnabled, in.Scope, name, false).Get(ctx, nil); err != nil {
+			return result, err
+		}
+	}
+	// Purge an undecided layer; a kept one comes back with a later deadline to wait for.
+	for review.Opened {
+		var state ReviewState
+		if err := workflow.ExecuteActivity(ctx, a.ExpirePersonalLayerReview, in.Scope, in.Person.ID, review.ID).Get(ctx, &state); err != nil {
+			return result, err
+		}
+		if state.Closed {
+			break
+		}
+		wait := state.Deadline.Sub(workflow.Now(ctx))
+		if wait < time.Minute {
+			wait = time.Minute
+		}
+		if err := workflow.Sleep(ctx, wait); err != nil {
 			return result, err
 		}
 	}
