@@ -84,6 +84,8 @@ func decodeExample(t *testing.T, path string, mutate func(map[string]any)) error
 		target = &muistamov1.AgentInstance{}
 	case "KnowledgePack":
 		target = &muistamov1.KnowledgePack{}
+	case "KnowledgeSource":
+		target = &muistamov1.KnowledgeSource{}
 	default:
 		t.Fatalf("%s: unknown kind %v", path, kind)
 	}

@@ -20,6 +20,7 @@ from psycopg import Cursor
 from psycopg.types.json import Jsonb
 
 from muistamo_knowledge import checks, evidence
+from muistamo_knowledge.connectors import ConnectorFactory
 from muistamo_knowledge.db import Database
 
 LAYER_PRECEDENCE = {"personal": 0, "team": 1, "role": 2, "company": 3}
@@ -54,9 +55,15 @@ def bump_minor(version: str) -> str:
 
 
 class Knowledge:
-    def __init__(self, db: Database, signer: evidence.LocalKey) -> None:
+    def __init__(
+        self,
+        db: Database,
+        signer: evidence.LocalKey,
+        connectors: dict[str, ConnectorFactory] | None = None,
+    ) -> None:
         self.db = db
         self.signer = signer
+        self.connectors = connectors or {}
 
     def _evidence(
         self,
@@ -585,38 +592,44 @@ class Knowledge:
         Within one layer, packs are taken in name order and the first holding a key wins.
         """
         with self.db.in_tenant(actor.tenant) as cur:
-            cur.execute(
-                "SELECT name FROM knowledge.packs WHERE mandatory OR name = ANY(%s) ORDER BY name",
-                (packs,),
+            return self._resolve(cur, actor, packs)[1]
+
+    def _resolve(
+        self, cur: Cursor, actor: Actor, packs: list[str]
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        """The packs in scope (requested plus mandatory) and the effective entries."""
+        cur.execute(
+            "SELECT name FROM knowledge.packs WHERE mandatory OR name = ANY(%s) ORDER BY name",
+            (packs,),
+        )
+        names = [r[0] for r in cur.fetchall()]
+        unknown = sorted(set(packs) - set(names))
+        if unknown:
+            raise NotFound(f"packs {', '.join(unknown)}")
+        candidates: list[tuple[int, str, dict[str, Any]]] = []
+        for entry in self._personal(cur, actor):
+            candidates.append(
+                (LAYER_PRECEDENCE["personal"], "", {"entry": entry, "layer": "personal"})
             )
-            names = [r[0] for r in cur.fetchall()]
-            unknown = sorted(set(packs) - set(names))
-            if unknown:
-                raise NotFound(f"packs {', '.join(unknown)}")
-            candidates: list[tuple[int, str, dict[str, Any]]] = []
-            for entry in self._personal(cur, actor):
+        for name in names:
+            info = self._pack(cur, name)
+            for e in self._version_entries(cur, name, info["latest"]):
                 candidates.append(
-                    (LAYER_PRECEDENCE["personal"], "", {"entry": entry, "layer": "personal"})
-                )
-            for name in names:
-                info = self._pack(cur, name)
-                for e in self._version_entries(cur, name, info["latest"]):
-                    candidates.append(
-                        (
-                            LAYER_PRECEDENCE[info["layer"]],
-                            name,
-                            {
-                                "entry": e["entry"],
-                                "layer": info["layer"],
-                                "pack": name,
-                                "version": info["latest"],
-                            },
-                        )
+                    (
+                        LAYER_PRECEDENCE[info["layer"]],
+                        name,
+                        {
+                            "entry": e["entry"],
+                            "layer": info["layer"],
+                            "pack": name,
+                            "version": info["latest"],
+                        },
                     )
-            effective: dict[str, dict[str, Any]] = {}
-            for _, _, item in sorted(candidates, key=lambda c: (c[0], c[1])):
-                effective.setdefault(item["entry"]["key"], item)
-            return [effective[k] for k in sorted(effective)]
+                )
+        effective: dict[str, dict[str, Any]] = {}
+        for _, _, item in sorted(candidates, key=lambda c: (c[0], c[1])):
+            effective.setdefault(item["entry"]["key"], item)
+        return names, [effective[k] for k in sorted(effective)]
 
     # Evidence -------------------------------------------------------------------------------
 

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/syncresult.json",
+  "title": "SyncResult",
+  "description": "What a sync changed in the index.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source",
+    "indexed",
+    "removed",
+    "total"
+  ],
+  "properties": {
+    "source": {
+      "type": "string"
+    },
+    "indexed": {
+      "type": "integer"
+    },
+    "removed": {
+      "type": "integer"
+    },
+    "total": {
+      "type": "integer"
+    }
+  }
+}

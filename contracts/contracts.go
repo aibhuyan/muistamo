@@ -23,9 +23,10 @@ const baseURL = "https://muistamo.dev/schemas/v1/"
 
 // kinds maps each YAML kind to its schema file under schemas/.
 var kinds = map[string]string{
-	"AgentTemplate": "agenttemplate.json",
-	"AgentInstance": "agentinstance.json",
-	"KnowledgePack": "knowledgepack.json",
+	"AgentTemplate":   "agenttemplate.json",
+	"AgentInstance":   "agentinstance.json",
+	"KnowledgePack":   "knowledgepack.json",
+	"KnowledgeSource": "knowledgesource.json",
 }
 
 var compiled = mustCompile()

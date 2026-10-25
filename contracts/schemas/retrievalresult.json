@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/retrievalresult.json",
+  "title": "RetrievalResult",
+  "description": "Results the caller may see, each cited, and which sources were consulted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "query",
+    "items",
+    "coverage"
+  ],
+  "properties": {
+    "query": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "title": "RetrievalItem",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "snippet",
+          "score",
+          "citation"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "citation": {
+            "$ref": "citation.json"
+          }
+        }
+      }
+    },
+    "coverage": {
+      "title": "RetrievalCoverage",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcesQueried",
+        "sourcesUnavailable",
+        "testConnectors"
+      ],
+      "properties": {
+        "sourcesQueried": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sourcesUnavailable": {
+          "description": "Sources whose authorisation failed; their documents were withheld, never returned unchecked.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "testConnectors": {
+          "description": "Sources served by the in-memory test connector, not a real system.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

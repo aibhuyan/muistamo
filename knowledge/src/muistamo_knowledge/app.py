@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from muistamo_contracts.v1.common.healthstatus import HealthStatus, Status
 from muistamo_contracts.v1.knowledgeentryinput import KnowledgeEntryInput
 from muistamo_contracts.v1.knowledgepack import KnowledgePack
+from muistamo_contracts.v1.knowledgesource import KnowledgeSource
 from muistamo_contracts.v1.proposaldecision import ProposalDecision
 from muistamo_contracts.v1.proposalinput import ProposalInput
 from muistamo_contracts.v1.rollbackinput import RollbackInput
@@ -21,6 +22,7 @@ from muistamo_contracts.v1.rollbackinput import RollbackInput
 from muistamo_knowledge import evidence
 from muistamo_knowledge.auth import Resolver, Unauthenticated, deny_all
 from muistamo_knowledge.db import UnknownTenant
+from muistamo_knowledge.retrieval import Sources
 from muistamo_knowledge.service import (
     Actor,
     Conflict,
@@ -155,6 +157,38 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     def resolve(who: Who, packs: str = "") -> JSONResponse:
         names = [p for p in (s.strip() for s in packs.split(",")) if p]
         return ok({"items": svc().resolve(who, names)})
+
+    def sources() -> Sources:
+        return Sources(svc())
+
+    @app.get("/v1/knowledge/sources")
+    def list_sources(who: Who) -> JSONResponse:
+        return ok({"items": sources().list(who)})
+
+    @app.get("/v1/knowledge/sources/{name}")
+    def get_source(name: str, who: Who) -> JSONResponse:
+        return ok(sources().get(who, name))
+
+    @app.put("/v1/knowledge/sources/{name}")
+    def apply_source(name: str, body: KnowledgeSource, who: Who) -> JSONResponse:
+        record, created = sources().apply(
+            who, name, body.model_dump(mode="json", exclude_none=True)
+        )
+        return ok(record, 201 if created else 200)
+
+    @app.post("/v1/knowledge/sources/{name}/sync")
+    def sync_source(name: str, who: Who) -> JSONResponse:
+        return ok(sources().sync(who, name))
+
+    @app.get("/v1/knowledge/retrieve")
+    def retrieve(
+        who: Who,
+        q: str = Query(..., min_length=1),
+        packs: str = "",
+        limit: int = Query(10, ge=1, le=50),
+    ) -> JSONResponse:
+        names = [p for p in (s.strip() for s in packs.split(",")) if p]
+        return ok(sources().retrieve(who, q, names, limit))
 
     @app.get("/v1/knowledge/events")
     def events(

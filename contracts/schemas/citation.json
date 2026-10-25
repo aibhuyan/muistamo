@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/citation.json",
+  "title": "Citation",
+  "description": "Where a retrieval result came from.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "type"
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "entry",
+        "document"
+      ]
+    },
+    "layer": {
+      "type": "string",
+      "enum": [
+        "personal",
+        "team",
+        "role",
+        "company"
+      ]
+    },
+    "pack": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "entryKey": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "connector": {
+      "type": "string"
+    },
+    "externalId": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "modifiedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

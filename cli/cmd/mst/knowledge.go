@@ -41,8 +41,19 @@ func (o *options) knowledgeCall(ctx context.Context, method, path string, body [
 	return res.StatusCode, out, err
 }
 
-func applyPack(cmd *cobra.Command, opts *options, doc manifest.Document) error {
-	status, body, err := opts.knowledgeCall(cmd.Context(), http.MethodPut, "/v1/knowledge/packs/"+url.PathEscape(doc.Name), doc.JSON)
+// knowledgeKinds maps the kinds the knowledge service owns to their collection paths.
+var knowledgeKinds = map[string]string{
+	"KnowledgePack":   "/v1/knowledge/packs/",
+	"KnowledgeSource": "/v1/knowledge/sources/",
+}
+
+func isKnowledgeKind(kind string) bool { _, ok := knowledgeKinds[kind]; return ok }
+
+func applyKnowledge(cmd *cobra.Command, opts *options, doc manifest.Document) error {
+	if doc.Kind == "KnowledgeSource" {
+		return applySource(cmd, opts, doc)
+	}
+	status, body, err := opts.knowledgeCall(cmd.Context(), http.MethodPut, knowledgeKinds[doc.Kind]+url.PathEscape(doc.Name), doc.JSON)
 	if err != nil {
 		return err
 	}
@@ -62,8 +73,24 @@ func applyPack(cmd *cobra.Command, opts *options, doc manifest.Document) error {
 	return nil
 }
 
-func fetchPack(ctx context.Context, opts *options, doc manifest.Document) ([]byte, error) {
-	status, body, err := opts.knowledgeCall(ctx, http.MethodGet, "/v1/knowledge/packs/"+url.PathEscape(doc.Name), nil)
+func applySource(cmd *cobra.Command, opts *options, doc manifest.Document) error {
+	status, body, err := opts.knowledgeCall(cmd.Context(), http.MethodPut, knowledgeKinds[doc.Kind]+url.PathEscape(doc.Name), doc.JSON)
+	if err != nil {
+		return err
+	}
+	switch status {
+	case http.StatusCreated:
+		cmd.Printf("%s/%s: created (run a sync to index it)\n", doc.Kind, doc.Name)
+	case http.StatusOK:
+		cmd.Printf("%s/%s: applied\n", doc.Kind, doc.Name)
+	default:
+		return problem(status, body)
+	}
+	return nil
+}
+
+func fetchKnowledge(ctx context.Context, opts *options, doc manifest.Document) ([]byte, error) {
+	status, body, err := opts.knowledgeCall(ctx, http.MethodGet, knowledgeKinds[doc.Kind]+url.PathEscape(doc.Name), nil)
 	if err != nil {
 		return nil, err
 	}
