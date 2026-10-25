@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agenttemplatepage.json",
+  "title": "AgentTemplatePage",
+  "description": "A page of latest template versions, ordered by name.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": { "type": "array", "items": { "$ref": "agenttemplaterecord.json" } },
+    "nextCursor": { "description": "Absent on the last page.", "type": "string" }
+  }
+}

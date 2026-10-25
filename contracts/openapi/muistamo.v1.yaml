@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: Muistamo API
-  version: 0.0.0
+  version: 0.1.0
   description: >-
-    Stub. Operations are added here before they are implemented. Schemas live in
-    ../schemas and are referenced, never copied.
+    Control-plane API. Schemas live in ../schemas and are referenced, never copied.
+    Every /v1 call is scoped to one tenant; until real authentication exists the tenant
+    comes from a development-only header that is disabled by default.
 servers:
-  - url: http://localhost
+  - url: http://localhost:8080
 paths:
   /healthz:
     get:
@@ -19,13 +20,198 @@ paths:
             application/json:
               schema:
                 $ref: "../schemas/common/healthstatus.json"
+
+  /v1/templates:
+    get:
+      operationId: listTemplates
+      summary: List the latest version of every template
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of templates.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/agenttemplatepage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/templates/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getTemplate
+      summary: Get the latest version of a template
+      responses:
+        "200":
+          $ref: "#/components/responses/TemplateRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: applyTemplate
+      summary: Apply a template; a changed document creates a new immutable version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/agenttemplate.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/TemplateRecord"
+        "201":
+          $ref: "#/components/responses/TemplateRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/templates/{name}/versions/{version}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      operationId: getTemplateVersion
+      summary: Get one version of a template
+      responses:
+        "200":
+          $ref: "#/components/responses/TemplateRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/instances:
+    get:
+      operationId: listInstances
+      summary: List instances
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of instances.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/agentinstancepage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/instances/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getInstance
+      summary: Get an instance
+      responses:
+        "200":
+          $ref: "#/components/responses/InstanceRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: applyInstance
+      summary: Create an instance, or update its sponsor, delegate and cost centre
+      description: >-
+        Creating requires spec.state = requested and no If-Match. Updating requires If-Match
+        with the current ETag; state changes go through transitions.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/agentinstance.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/InstanceRecord"
+        "201":
+          $ref: "#/components/responses/InstanceRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/instances/{name}/transitions:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    post:
+      operationId: transitionInstance
+      summary: Move an instance to another lifecycle state
+      description: Requires If-Match with the current ETag; without it the response is 428.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/instancetransition.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/InstanceRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
-  schemas:
-    HealthStatus:
-      $ref: "../schemas/common/healthstatus.json"
-    AgentTemplate:
-      $ref: "../schemas/agenttemplate.json"
-    AgentInstance:
-      $ref: "../schemas/agentinstance.json"
-    KnowledgePack:
-      $ref: "../schemas/knowledgepack.json"
+  parameters:
+    Name:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      schema:
+        type: string
+
+  headers:
+    ETag:
+      description: Template version or instance revision, quoted.
+      schema:
+        type: string
+
+  responses:
+    TemplateRecord:
+      description: A template version.
+      headers:
+        ETag:
+          $ref: "#/components/headers/ETag"
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/agenttemplaterecord.json"
+    InstanceRecord:
+      description: An instance.
+      headers:
+        ETag:
+          $ref: "#/components/headers/ETag"
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/agentinstancerecord.json"
+    Problem:
+      description: An error (RFC 9457).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../schemas/common/problem.json"

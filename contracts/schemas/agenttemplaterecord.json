@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agenttemplaterecord.json",
+  "title": "AgentTemplateRecord",
+  "description": "One immutable, server-numbered version of an AgentTemplate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "createdAt", "createdBy", "document"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "createdBy": { "type": "string" },
+    "document": { "$ref": "agenttemplate.json" }
+  }
+}

@@ -38,22 +38,33 @@ func Validate(document []byte) error {
 	if err := json.Unmarshal(document, &envelope); err != nil {
 		return fmt.Errorf("decode document: %w", err)
 	}
-	schema, ok := compiled[envelope.Kind]
+	file, ok := kinds[envelope.Kind]
 	if !ok {
 		return fmt.Errorf("unknown kind %q", envelope.Kind)
 	}
+	return ValidateAgainst(file, document)
+}
+
+// ValidateAgainst checks a JSON document against one schema file, named relative to
+// contracts/schemas (for example "instancetransition.json").
+func ValidateAgainst(file string, document []byte) error {
+	schema, ok := compiled[file]
+	if !ok {
+		return fmt.Errorf("unknown schema %q", file)
+	}
 	instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(document))
 	if err != nil {
-		return fmt.Errorf("decode %s: %w", envelope.Kind, err)
+		return fmt.Errorf("decode document: %w", err)
 	}
 	if err := schema.Validate(instance); err != nil {
-		return fmt.Errorf("validate %s: %w", envelope.Kind, err)
+		return fmt.Errorf("validate against %s: %w", file, err)
 	}
 	return nil
 }
 
 func mustCompile() map[string]*jsonschema.Schema {
 	compiler := jsonschema.NewCompiler()
+	var files []string
 	err := fs.WalkDir(schemaFS, "schemas", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil || entry.IsDir() {
 			return err
@@ -66,19 +77,21 @@ func mustCompile() map[string]*jsonschema.Schema {
 		if err != nil {
 			return fmt.Errorf("parse %s: %w", path, err)
 		}
-		return compiler.AddResource(baseURL+strings.TrimPrefix(path, "schemas/"), doc)
+		file := strings.TrimPrefix(path, "schemas/")
+		files = append(files, file)
+		return compiler.AddResource(baseURL+file, doc)
 	})
 	if err != nil {
 		panic(fmt.Errorf("load contract schemas: %w", err))
 	}
 
-	out := make(map[string]*jsonschema.Schema, len(kinds))
-	for kind, file := range kinds {
+	out := make(map[string]*jsonschema.Schema, len(files))
+	for _, file := range files {
 		schema, err := compiler.Compile(baseURL + file)
 		if err != nil {
-			panic(fmt.Errorf("compile %s schema: %w", kind, err))
+			panic(fmt.Errorf("compile schema %s: %w", file, err))
 		}
-		out[kind] = schema
+		out[file] = schema
 	}
 	return out
 }

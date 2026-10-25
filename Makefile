@@ -7,7 +7,12 @@ BIN := $(CURDIR)/bin
 GOLANGCI_LINT := $(BIN)/golangci-lint
 COMPOSE := docker compose -f deploy/dev/compose.yaml
 
-.PHONY: setup generate check-generated lint test test-authz dev dev-down
+# Host port of the dev PostgreSQL; override if 5432 is taken (make test POSTGRES_PORT=55432).
+POSTGRES_PORT ?= 5432
+export POSTGRES_PORT
+export MUISTAMO_TEST_DATABASE_URL ?= postgres://muistamo:dev-only-not-a-secret@127.0.0.1:$(POSTGRES_PORT)/muistamo
+
+.PHONY: setup generate check-generated lint test test-db test-authz dev dev-down
 
 setup:
 	@for tool in go uv npm; do command -v $$tool >/dev/null || { echo "missing required tool: $$tool" >&2; exit 1; }; done
@@ -30,20 +35,32 @@ check-generated:
 
 lint: check-generated
 	$(GOLANGCI_LINT) run ./...
+	$(GOLANGCI_LINT) run --build-tags authz ./...
 	uv run --no-sync ruff check .
 	uv run --no-sync ruff format --check .
-	uv run --no-sync datamodel-codegen --input contracts/openapi/muistamo.v1.yaml \
-		--input-file-type openapi --output-model-type pydantic_v2.BaseModel >/dev/null
 	npm run --prefix console lint
 
-test:
+# Integration tests need PostgreSQL; they fail, never skip, without it. TEST_DB_EXTERNAL=1 uses
+# MUISTAMO_TEST_DATABASE_URL as given instead of starting the compose PostgreSQL.
+test-db:
+	@if [ -n "$${TEST_DB_EXTERNAL:-}" ]; then echo "using external PostgreSQL at MUISTAMO_TEST_DATABASE_URL"; exit 0; fi; \
+	command -v docker >/dev/null || { echo "missing required tool: docker" >&2; exit 1; }; \
+	$(COMPOSE) up -d --wait postgres
+
+test: test-db
 	go test ./...
 	uv run --no-sync pytest -m "not authz"
 	npm test --prefix console
 
-# Adversarial permission suite. Never skip or weaken (CLAUDE.md).
-test-authz:
-	uv run --no-sync pytest knowledge/tests/authz -m authz -p no:cacheprovider
+# Adversarial permission suite. Never skip or weaken (CLAUDE.md). Both halves always run;
+# a skipped Go test counts as a failure, as the pytest conftest does for Python.
+test-authz: test-db
+	@status=0; \
+	go test -count=1 -tags authz -run Authz -v ./control-plane/... | tee /tmp/muistamo-authz-go.log | grep -E '^(--- |ok|FAIL|PASS)' || status=1; \
+	if grep -q -- '--- SKIP' /tmp/muistamo-authz-go.log; then echo "authz: Go tests must never be skipped" >&2; status=1; fi; \
+	if ! grep -q -- '--- PASS\|--- FAIL' /tmp/muistamo-authz-go.log; then echo "authz: no Go tests ran" >&2; status=1; fi; \
+	uv run --no-sync pytest knowledge/tests/authz -m authz -p no:cacheprovider || status=1; \
+	exit $$status
 
 dev:
 	@command -v docker >/dev/null || { echo "missing required tool: docker" >&2; exit 1; }

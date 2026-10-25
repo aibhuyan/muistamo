@@ -23,7 +23,11 @@
           "required": ["name", "version"],
           "properties": {
             "name": { "type": "string" },
-            "version": { "type": "string" }
+            "version": {
+              "description": "Template version number assigned by the server, for example \"3\".",
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
           }
         },
         "binding": {
@@ -44,8 +48,8 @@
         "delegate": { "type": "string" },
         "personalLayerRef": { "type": "string" },
         "state": {
-          "type": "string",
-          "enum": ["requested", "active", "under-review", "suspended", "retired", "quarantined"]
+          "description": "Must be requested on create; changes only through transitions.",
+          "$ref": "common/instancestate.json"
         },
         "costCentre": { "type": "string" }
       }

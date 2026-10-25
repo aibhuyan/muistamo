@@ -1,0 +1,12 @@
+# Go models, strict std net/http server interface and client from the OpenAPI document.
+package: muistamov1
+output: contracts/gen/go/muistamov1/api.gen.go
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+  client: true
+output-options:
+  skip-prune: true
+compatibility:
+  always-prefix-enum-values: true
