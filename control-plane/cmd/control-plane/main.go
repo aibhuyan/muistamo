@@ -22,6 +22,8 @@ import (
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	root := &cobra.Command{Use: "control-plane", SilenceUsage: true, SilenceErrors: true}
+	// cobra's Print helpers default to stderr; command output belongs on stdout.
+	root.SetOut(os.Stdout)
 	root.AddCommand(serveCmd(log), migrateCmd(), tenantCmd())
 	if err := root.Execute(); err != nil {
 		log.Error("control-plane failed", "err", err)
@@ -91,7 +93,7 @@ func tenantCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), id)
+			cmd.Println(id)
 			return nil
 		},
 	})

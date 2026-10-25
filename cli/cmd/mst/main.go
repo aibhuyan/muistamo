@@ -26,6 +26,8 @@ type options struct {
 func main() {
 	opts := &options{}
 	root := &cobra.Command{Use: "mst", Short: "Muistamo CLI", SilenceUsage: true, SilenceErrors: true}
+	// cobra's Print helpers default to stderr; command output belongs on stdout.
+	root.SetOut(os.Stdout)
 	flags := root.PersistentFlags()
 	flags.StringVar(&opts.server, "server", envOr("MST_SERVER", "http://127.0.0.1:8080"), "control-plane URL (MST_SERVER)")
 	flags.StringVar(&opts.tenant, "tenant", os.Getenv("MST_TENANT"), "tenant id, development only (MST_TENANT)")
@@ -35,7 +37,7 @@ func main() {
 		&cobra.Command{
 			Use:   "version",
 			Short: "Print the mst version",
-			Run:   func(cmd *cobra.Command, _ []string) { fmt.Fprintln(cmd.OutOrStdout(), version.String()) },
+			Run:   func(cmd *cobra.Command, _ []string) { cmd.Println(version.String()) },
 		},
 		applyCmd(opts), diffCmd(opts), getCmd(opts),
 	)
@@ -92,7 +94,7 @@ func diffCmd(opts *options) *cobra.Command {
 					return err
 				}
 				if current == nil {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s/%s: new\n", doc.Kind, doc.Name)
+					cmd.Printf("%s/%s: new\n", doc.Kind, doc.Name)
 					continue
 				}
 				local, err := withServerState(doc, current)
@@ -104,12 +106,12 @@ func diffCmd(opts *options) *cobra.Command {
 					return err
 				}
 				if len(changes) == 0 {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s/%s: unchanged\n", doc.Kind, doc.Name)
+					cmd.Printf("%s/%s: unchanged\n", doc.Kind, doc.Name)
 					continue
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%s/%s:\n", doc.Kind, doc.Name)
+				cmd.Printf("%s/%s:\n", doc.Kind, doc.Name)
 				for _, c := range changes {
-					fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", c)
+					cmd.Printf("  %s\n", c)
 				}
 			}
 			return nil
@@ -171,7 +173,7 @@ func getCmd(opts *options) *cobra.Command {
 			if err := json.Indent(&pretty, body, "", "  "); err != nil {
 				return fmt.Errorf("format response: %w", err)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), pretty.String())
+			cmd.Println(pretty.String())
 			return nil
 		},
 	}
@@ -187,9 +189,9 @@ func apply(cmd *cobra.Command, client *muistamov1.ClientWithResponses, doc manif
 		}
 		switch res.StatusCode() {
 		case http.StatusCreated:
-			fmt.Fprintf(cmd.OutOrStdout(), "%s/%s: created version %d\n", doc.Kind, doc.Name, res.JSON201.Version)
+			cmd.Printf("%s/%s: created version %d\n", doc.Kind, doc.Name, res.JSON201.Version)
 		case http.StatusOK:
-			fmt.Fprintf(cmd.OutOrStdout(), "%s/%s: unchanged (version %d)\n", doc.Kind, doc.Name, res.JSON200.Version)
+			cmd.Printf("%s/%s: unchanged (version %d)\n", doc.Kind, doc.Name, res.JSON200.Version)
 		default:
 			return problem(res.StatusCode(), res.Body)
 		}
@@ -211,9 +213,9 @@ func apply(cmd *cobra.Command, client *muistamov1.ClientWithResponses, doc manif
 		}
 		switch res.StatusCode() {
 		case http.StatusCreated:
-			fmt.Fprintf(cmd.OutOrStdout(), "%s/%s: created (state requested)\n", doc.Kind, doc.Name)
+			cmd.Printf("%s/%s: created (state requested)\n", doc.Kind, doc.Name)
 		case http.StatusOK:
-			fmt.Fprintf(cmd.OutOrStdout(), "%s/%s: applied (revision %d; state is changed only by transitions)\n", doc.Kind, doc.Name, res.JSON200.Revision)
+			cmd.Printf("%s/%s: applied (revision %d; state is changed only by transitions)\n", doc.Kind, doc.Name, res.JSON200.Revision)
 		default:
 			return problem(res.StatusCode(), res.Body)
 		}
