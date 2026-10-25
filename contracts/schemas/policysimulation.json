@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/policysimulation.json",
+  "title": "PolicySimulation",
+  "description": "The same request decided under the current and the proposed rules.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["current", "proposed", "changed"],
+  "properties": {
+    "current": { "$ref": "policydecision.json" },
+    "proposed": { "$ref": "policydecision.json" },
+    "changed": { "description": "Whether the decision or wouldBlock differs.", "type": "boolean" }
+  }
+}

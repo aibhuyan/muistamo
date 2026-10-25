@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/actionpolicyrecord.json",
+  "title": "ActionPolicyRecord",
+  "description": "The current ActionPolicy. Revision increments on every change.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["revision", "createdAt", "updatedAt", "updatedBy", "document"],
+  "properties": {
+    "revision": { "type": "integer", "minimum": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "updatedBy": { "type": "string" },
+    "document": { "$ref": "actionpolicy.json" }
+  }
+}

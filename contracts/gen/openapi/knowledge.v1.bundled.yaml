@@ -460,6 +460,139 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    ActionPolicy:
+      title: ActionPolicy
+      description: 'The actions agents of one template may take with their tools (PRD
+        section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the
+        action is denied whatever else allows it, so rule order does not matter. Release
+        1 effects are allow, deny and monitor; requireApproval is release 2. At most
+        one ActionPolicy applies to a template.'
+      type: object
+      additionalProperties: false
+      required:
+      - apiVersion
+      - kind
+      - metadata
+      - spec
+      properties:
+        apiVersion:
+          type: string
+          const: muistamo.dev/v1
+        kind:
+          type: string
+          const: ActionPolicy
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          title: ActionPolicySpec
+          type: object
+          additionalProperties: false
+          required:
+          - appliesTo
+          - rules
+          properties:
+            appliesTo:
+              title: ActionPolicyTarget
+              type: object
+              additionalProperties: false
+              required:
+              - template
+              properties:
+                template:
+                  type: string
+                  pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+            default:
+              description: 'What happens to actions no rule allows: deny (the default)
+                or allow. allow still yields to every deny rule.'
+              type: string
+              enum:
+              - deny
+              - allow
+            mode:
+              description: 'enforce (the default): once the gateway enforces, denied
+                actions are blocked. monitor: they are only reported.'
+              type: string
+              enum:
+              - enforce
+              - monitor
+            rules:
+              type: array
+              items:
+                title: ActionRule
+                type: object
+                additionalProperties: false
+                required:
+                - action
+                - effect
+                properties:
+                  action:
+                    description: A tool action, for example email.send.
+                    type: string
+                    pattern: ^[a-z][a-z0-9_-]{0,62}(\.[a-z0-9_-]{1,63}){0,3}$
+                  effect:
+                    description: allow, deny, or monitor (allow, and flag for review).
+                      requireApproval is release 2.
+                    type: string
+                    enum:
+                    - allow
+                    - deny
+                    - monitor
+                  when:
+                    description: 'Request attributes that must all be true for the
+                      rule to apply. An attribute the request does not supply counts
+                      against the caller: it stops an allow or monitor rule applying,
+                      and lets a deny rule apply.'
+                    type: array
+                    uniqueItems: true
+                    items:
+                      type: string
+                      pattern: ^[A-Za-z][A-Za-z0-9_]{0,63}(\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$
+                  unless:
+                    description: Request attributes any one of which, when true, stops
+                      the rule applying. A missing attribute counts against the caller,
+                      as for when.
+                    type: array
+                    uniqueItems: true
+                    items:
+                      type: string
+                      pattern: ^[A-Za-z][A-Za-z0-9_]{0,63}(\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$
+    ActionPolicyPage:
+      title: ActionPolicyPage
+      description: Every ActionPolicy in the tenant, by name.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionPolicyRecord'
+    ActionPolicyRecord:
+      title: ActionPolicyRecord
+      description: The current ActionPolicy. Revision increments on every change.
+      type: object
+      additionalProperties: false
+      required:
+      - revision
+      - createdAt
+      - updatedAt
+      - updatedBy
+      - document
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        document:
+          $ref: '#/components/schemas/ActionPolicy'
     AgentInstance:
       title: AgentInstance
       description: An agent bound to a user, team or service, with its own identity
@@ -572,6 +705,129 @@ components:
           format: date-time
         document:
           $ref: '#/components/schemas/AgentInstance'
+    AgentLink:
+      title: AgentLink
+      description: 'A one-way permission for agents of one template to call agents
+        of another (PRD section 8.1, FR-1003). Without a link, calls are denied. Release
+        1: links between Muistamo-hosted templates only; links to external A2A agents
+        are release 2.'
+      type: object
+      additionalProperties: false
+      required:
+      - apiVersion
+      - kind
+      - metadata
+      - spec
+      properties:
+        apiVersion:
+          type: string
+          const: muistamo.dev/v1
+        kind:
+          type: string
+          const: AgentLink
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          title: AgentLinkSpec
+          type: object
+          additionalProperties: false
+          required:
+          - from
+          - to
+          - allowedSkills
+          - dataClasses
+          properties:
+            from:
+              $ref: '#/components/schemas/AgentLinkEndpoint'
+              description: The calling agents.
+            to:
+              $ref: '#/components/schemas/AgentLinkEndpoint'
+              description: The called agents. The link never allows calls the other
+                way.
+            allowedSkills:
+              description: Skills of the called agent the caller may use.
+              type: array
+              minItems: 1
+              uniqueItems: true
+              items:
+                type: string
+                pattern: ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$
+            dataClasses:
+              description: Data classes a call may carry. A call carrying any other
+                class is denied.
+              type: array
+              uniqueItems: true
+              items:
+                type: string
+                pattern: ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$
+            actFor:
+              description: 'same-user (the default): the called agent acts with the
+                calling human''s own access. service: it acts as itself.'
+              type: string
+              enum:
+              - same-user
+              - service
+            maxDelegationDepth:
+              description: 'The deepest point in a delegation chain at which this
+                call is allowed. 1 (the default) means direct calls only: the called
+                agent may not pass the work on.'
+              type: integer
+              minimum: 1
+              maximum: 5
+            rateLimit:
+              description: 'For example 60/min. Stored, but not yet evaluated: it
+                needs the gateway''s counters.'
+              type: string
+              pattern: ^[1-9][0-9]{0,6}/(s|min|h|day)$
+    AgentLinkEndpoint:
+      title: AgentLinkEndpoint
+      description: One end of an AgentLink. Release 1 selects agents by template;
+        clones, instances and labels come later.
+      type: object
+      additionalProperties: false
+      required:
+      - template
+      properties:
+        template:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+    AgentLinkPage:
+      title: AgentLinkPage
+      description: Every AgentLink in the tenant, by name.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentLinkRecord'
+    AgentLinkRecord:
+      title: AgentLinkRecord
+      description: The current AgentLink. Revision increments on every change.
+      type: object
+      additionalProperties: false
+      required:
+      - revision
+      - createdAt
+      - updatedAt
+      - updatedBy
+      - document
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        document:
+          $ref: '#/components/schemas/AgentLink'
     AgentTemplate:
       title: AgentTemplate
       description: A reusable agent definition owned by the company (PRD section 5).
@@ -895,6 +1151,23 @@ components:
         modifiedAt:
           type: string
           format: date-time
+    CompiledPolicies:
+      title: CompiledPolicies
+      description: The tenant's links and action policies as the Cedar policy set
+        that is actually evaluated, for review.
+      type: object
+      additionalProperties: false
+      required:
+      - cedar
+      - rules
+      properties:
+        cedar:
+          description: Cedar policy text, ordered by policy id.
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyRuleRef'
     EvidenceEvent:
       title: EvidenceEvent
       description: One signed, hash-chained evidence event. The hashed body and signature
@@ -1532,6 +1805,244 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PackVersion'
+    PolicyDecision:
+      title: PolicyDecision
+      description: 'The policy engine''s answer. Release 1 runs in observe mode: nothing
+        is enforced yet (the gateway is not built), so enforced is always false and
+        wouldBlock says what enforcement would do.'
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      - wouldBlock
+      - monitored
+      - mode
+      - enforced
+      - reason
+      - matchedRules
+      - checked
+      - notEvaluated
+      properties:
+        decision:
+          description: What the rules say.
+          type: string
+          enum:
+          - allow
+          - deny
+        wouldBlock:
+          description: 'Whether enforcement would block this: a denial, unless the
+            denying ActionPolicy is in monitor mode.'
+          type: boolean
+        monitored:
+          description: 'A monitor rule matched, or a monitor-mode policy denied: the
+            request is flagged for review.'
+          type: boolean
+        policyMode:
+          description: 'action: the mode of the ActionPolicy for the agent, if one
+            exists.'
+          type: string
+          enum:
+          - enforce
+          - monitor
+        mode:
+          type: string
+          const: observe
+        enforced:
+          type: boolean
+          const: false
+        reason:
+          description: A plain-language explanation.
+          type: string
+        matchedRules:
+          description: 'The rules that decided: the allowing ones for an allow, the
+            denying ones for a deny. Empty for a denial by default.'
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyRuleRef'
+        checked:
+          description: The parts of the effective permission that were evaluated.
+          type: array
+          items:
+            type: string
+        notEvaluated:
+          description: Parts of the effective permission that release 1 cannot evaluate
+            yet.
+          type: array
+          items:
+            type: string
+    PolicyDecisionRequest:
+      title: PolicyDecisionRequest
+      description: 'A question for the policy engine: may this agent call that one
+        (kind call), or take this tool action (kind action)? Agents are named by template
+        in release 1.'
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      properties:
+        kind:
+          type: string
+          enum:
+          - call
+          - action
+        from:
+          description: 'call: the calling template.'
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        to:
+          description: 'call: the called template.'
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        skill:
+          description: 'call: the skill of the called agent being used.'
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$
+        dataClasses:
+          description: 'call: every data class the call carries (none if omitted).'
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$
+        depth:
+          description: 'call: position in the delegation chain; 1 (the default) is
+            a direct call.'
+          type: integer
+          minimum: 1
+          maximum: 100
+        actFor:
+          description: 'call: whose access the called agent uses (default same-user).'
+          type: string
+          enum:
+          - same-user
+          - service
+        agent:
+          description: 'action: the template taking the action.'
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        action:
+          description: 'action: the tool action, for example email.send.'
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,62}(\.[a-z0-9_-]{1,63}){0,3}$
+        attributes:
+          description: 'action: facts about the request that rules can test, for example
+            recipients.allInternal.'
+          type: object
+          propertyNames:
+            pattern: ^[A-Za-z][A-Za-z0-9_]{0,63}(\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$
+          additionalProperties:
+            type: boolean
+      allOf:
+      - if:
+          properties:
+            kind:
+              const: call
+        then:
+          required:
+          - from
+          - to
+          - skill
+          not:
+            anyOf:
+            - required:
+              - agent
+            - required:
+              - action
+            - required:
+              - attributes
+      - if:
+          properties:
+            kind:
+              const: action
+        then:
+          required:
+          - agent
+          - action
+          not:
+            anyOf:
+            - required:
+              - from
+            - required:
+              - to
+            - required:
+              - skill
+            - required:
+              - dataClasses
+            - required:
+              - depth
+            - required:
+              - actFor
+    PolicyRuleRef:
+      title: PolicyRuleRef
+      description: One compiled Cedar policy and the document it came from.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - kind
+      - name
+      - effect
+      properties:
+        id:
+          description: The Cedar policy id, for example link/analyst-intern-to-market-data
+            or action-policy/analyst-intern-actions/rule/2.
+          type: string
+        kind:
+          type: string
+          enum:
+          - AgentLink
+          - ActionPolicy
+        name:
+          description: metadata.name of the source document.
+          type: string
+        rule:
+          description: 'ActionPolicy: the 1-based index of the rule; absent for the
+            policy''s default.'
+          type: integer
+          minimum: 1
+        effect:
+          type: string
+          enum:
+          - allow
+          - deny
+          - monitor
+    PolicySimulation:
+      title: PolicySimulation
+      description: The same request decided under the current and the proposed rules.
+      type: object
+      additionalProperties: false
+      required:
+      - current
+      - proposed
+      - changed
+      properties:
+        current:
+          $ref: '#/components/schemas/PolicyDecision'
+        proposed:
+          $ref: '#/components/schemas/PolicyDecision'
+        changed:
+          description: Whether the decision or wouldBlock differs.
+          type: boolean
+    PolicySimulationRequest:
+      title: PolicySimulationRequest
+      description: Decide a request under the current rules and under proposed ones.
+        A proposed document replaces the current one of the same kind and name, or
+        is added. Nothing is stored and no evidence is written.
+      type: object
+      additionalProperties: false
+      required:
+      - request
+      properties:
+        request:
+          $ref: '#/components/schemas/PolicyDecisionRequest'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentLink'
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionPolicy'
     Problem:
       title: Problem
       description: Error body (RFC 9457 problem details).

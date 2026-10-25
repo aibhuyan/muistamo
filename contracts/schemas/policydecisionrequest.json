@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/policydecisionrequest.json",
+  "title": "PolicyDecisionRequest",
+  "description": "A question for the policy engine: may this agent call that one (kind call), or take this tool action (kind action)? Agents are named by template in release 1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind"],
+  "properties": {
+    "kind": { "type": "string", "enum": ["call", "action"] },
+    "from": { "description": "call: the calling template.", "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" },
+    "to": { "description": "call: the called template.", "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" },
+    "skill": { "description": "call: the skill of the called agent being used.", "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$" },
+    "dataClasses": {
+      "description": "call: every data class the call carries (none if omitted).",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$" }
+    },
+    "depth": { "description": "call: position in the delegation chain; 1 (the default) is a direct call.", "type": "integer", "minimum": 1, "maximum": 100 },
+    "actFor": { "description": "call: whose access the called agent uses (default same-user).", "type": "string", "enum": ["same-user", "service"] },
+    "agent": { "description": "action: the template taking the action.", "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" },
+    "action": { "description": "action: the tool action, for example email.send.", "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,62}(\\.[a-z0-9_-]{1,63}){0,3}$" },
+    "attributes": {
+      "description": "action: facts about the request that rules can test, for example recipients.allInternal.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}(\\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$" },
+      "additionalProperties": { "type": "boolean" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "call" } } },
+      "then": {
+        "required": ["from", "to", "skill"],
+        "not": { "anyOf": [{ "required": ["agent"] }, { "required": ["action"] }, { "required": ["attributes"] }] }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "action" } } },
+      "then": {
+        "required": ["agent", "action"],
+        "not": { "anyOf": [{ "required": ["from"] }, { "required": ["to"] }, { "required": ["skill"] }, { "required": ["dataClasses"] }, { "required": ["depth"] }, { "required": ["actFor"] }] }
+      }
+    }
+  ]
+}

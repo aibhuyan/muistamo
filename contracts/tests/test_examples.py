@@ -2,7 +2,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from muistamo_contracts.v1.actionpolicy import ActionPolicy
 from muistamo_contracts.v1.agentinstance import AgentInstance
+from muistamo_contracts.v1.agentlink import AgentLink
 from muistamo_contracts.v1.agenttemplate import AgentTemplate
 from muistamo_contracts.v1.knowledgepack import KnowledgePack
 from muistamo_contracts.v1.knowledgesource import KnowledgeSource
@@ -10,7 +12,14 @@ from muistamo_contracts.v1.knowledgesource import KnowledgeSource
 EXAMPLES = Path(__file__).parent.parent / "examples"
 MODELS = {
     model.__name__: model
-    for model in (AgentTemplate, AgentInstance, KnowledgePack, KnowledgeSource)
+    for model in (
+        AgentTemplate,
+        AgentInstance,
+        KnowledgePack,
+        KnowledgeSource,
+        AgentLink,
+        ActionPolicy,
+    )
 }
 
 

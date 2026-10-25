@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/policyruleref.json",
+  "title": "PolicyRuleRef",
+  "description": "One compiled Cedar policy and the document it came from.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "kind", "name", "effect"],
+  "properties": {
+    "id": { "description": "The Cedar policy id, for example link/analyst-intern-to-market-data or action-policy/analyst-intern-actions/rule/2.", "type": "string" },
+    "kind": { "type": "string", "enum": ["AgentLink", "ActionPolicy"] },
+    "name": { "description": "metadata.name of the source document.", "type": "string" },
+    "rule": { "description": "ActionPolicy: the 1-based index of the rule; absent for the policy's default.", "type": "integer", "minimum": 1 },
+    "effect": { "type": "string", "enum": ["allow", "deny", "monitor"] }
+  }
+}

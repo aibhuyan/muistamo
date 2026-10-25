@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/actionpolicy.json",
+  "title": "ActionPolicy",
+  "description": "The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "type": "string", "const": "muistamo.dev/v1" },
+    "kind": { "type": "string", "const": "ActionPolicy" },
+    "metadata": { "$ref": "common/objectmeta.json" },
+    "spec": {
+      "title": "ActionPolicySpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appliesTo", "rules"],
+      "properties": {
+        "appliesTo": {
+          "title": "ActionPolicyTarget",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["template"],
+          "properties": {
+            "template": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" }
+          }
+        },
+        "default": {
+          "description": "What happens to actions no rule allows: deny (the default) or allow. allow still yields to every deny rule.",
+          "type": "string",
+          "enum": ["deny", "allow"]
+        },
+        "mode": {
+          "description": "enforce (the default): once the gateway enforces, denied actions are blocked. monitor: they are only reported.",
+          "type": "string",
+          "enum": ["enforce", "monitor"]
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "title": "ActionRule",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["action", "effect"],
+            "properties": {
+              "action": {
+                "description": "A tool action, for example email.send.",
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,62}(\\.[a-z0-9_-]{1,63}){0,3}$"
+              },
+              "effect": {
+                "description": "allow, deny, or monitor (allow, and flag for review). requireApproval is release 2.",
+                "type": "string",
+                "enum": ["allow", "deny", "monitor"]
+              },
+              "when": {
+                "description": "Request attributes that must all be true for the rule to apply. An attribute the request does not supply counts against the caller: it stops an allow or monitor rule applying, and lets a deny rule apply.",
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}(\\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$" }
+              },
+              "unless": {
+                "description": "Request attributes any one of which, when true, stops the rule applying. A missing attribute counts against the caller, as for when.",
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}(\\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

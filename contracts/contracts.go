@@ -27,6 +27,8 @@ var kinds = map[string]string{
 	"AgentInstance":   "agentinstance.json",
 	"KnowledgePack":   "knowledgepack.json",
 	"KnowledgeSource": "knowledgesource.json",
+	"AgentLink":       "agentlink.json",
+	"ActionPolicy":    "actionpolicy.json",
 }
 
 var compiled = mustCompile()
