@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/knowledgesource.json",
+  "title": "KnowledgeSource",
+  "description": "A document source attached to a pack (PRD section 10). Its documents are indexed, and every retrieval authorises each document live against the acting person's own rights at the source.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "muistamo.dev/v1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "KnowledgeSource"
+    },
+    "metadata": {
+      "$ref": "common/objectmeta.json"
+    },
+    "spec": {
+      "title": "KnowledgeSourceSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pack",
+        "connector"
+      ],
+      "properties": {
+        "pack": {
+          "description": "The pack whose readers search this source.",
+          "type": "string"
+        },
+        "connector": {
+          "description": "sharepoint is release 1's one source (not built yet). test is an in-memory connector for development and the adversarial suite, refused unless explicitly enabled.",
+          "type": "string",
+          "enum": [
+            "sharepoint",
+            "test"
+          ]
+        },
+        "sharepoint": {
+          "title": "SharePointSourceConfig",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "siteUrl"
+          ],
+          "properties": {
+            "siteUrl": {
+              "type": "string"
+            }
+          }
+        },
+        "test": {
+          "title": "TestSourceConfig",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "documents"
+          ],
+          "properties": {
+            "documents": {
+              "type": "array",
+              "maxItems": 500,
+              "items": {
+                "title": "TestSourceDocument",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "title",
+                  "body",
+                  "readers"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "readers": {
+                    "description": "Actor names who may open the document.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

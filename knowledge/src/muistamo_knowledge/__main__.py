@@ -26,6 +26,7 @@ def serve(_: argparse.Namespace) -> None:
     import uvicorn
 
     from muistamo_knowledge.app import create_app
+    from muistamo_knowledge.connectors import default_factories
     from muistamo_knowledge.db import Database
     from muistamo_knowledge.service import Knowledge
 
@@ -43,8 +44,14 @@ def serve(_: argparse.Namespace) -> None:
             "INSECURE: trusting X-Muistamo-Tenant and X-Muistamo-Actor headers; development only"
         )
         resolver = auth.insecure_dev_headers
+    enable_test = os.environ.get("MUISTAMO_ENABLE_TEST_CONNECTOR") == "true"
+    if enable_test:
+        logging.warning(
+            "TEST CONNECTOR enabled: sources may use the in-memory test connector; development only"
+        )
     host, _, port = os.environ.get("KNOWLEDGE_ADDR", "127.0.0.1:8001").rpartition(":")
-    uvicorn.run(create_app(Knowledge(db, key), resolver), host=host, port=int(port))
+    knowledge = Knowledge(db, key, default_factories(enable_test))
+    uvicorn.run(create_app(knowledge, resolver), host=host, port=int(port))
 
 
 def run_migrate(_: argparse.Namespace) -> None:

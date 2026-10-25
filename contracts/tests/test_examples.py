@@ -5,9 +5,13 @@ import yaml
 from muistamo_contracts.v1.agentinstance import AgentInstance
 from muistamo_contracts.v1.agenttemplate import AgentTemplate
 from muistamo_contracts.v1.knowledgepack import KnowledgePack
+from muistamo_contracts.v1.knowledgesource import KnowledgeSource
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
-MODELS = {model.__name__: model for model in (AgentTemplate, AgentInstance, KnowledgePack)}
+MODELS = {
+    model.__name__: model
+    for model in (AgentTemplate, AgentInstance, KnowledgePack, KnowledgeSource)
+}
 
 
 @pytest.mark.parametrize("path", sorted(EXAMPLES.glob("*.yaml")), ids=lambda p: p.name)

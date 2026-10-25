@@ -63,8 +63,8 @@ func applyCmd(opts *options) *cobra.Command {
 				return err
 			}
 			for _, doc := range docs {
-				if doc.Kind == "KnowledgePack" {
-					if err := applyPack(cmd, opts, doc); err != nil {
+				if isKnowledgeKind(doc.Kind) {
+					if err := applyKnowledge(cmd, opts, doc); err != nil {
 						return err
 					}
 					continue
@@ -97,8 +97,8 @@ func diffCmd(opts *options) *cobra.Command {
 			}
 			for _, doc := range docs {
 				var current []byte
-				if doc.Kind == "KnowledgePack" {
-					current, err = fetchPack(cmd.Context(), opts, doc)
+				if isKnowledgeKind(doc.Kind) {
+					current, err = fetchKnowledge(cmd.Context(), opts, doc)
 				} else {
 					current, _, err = fetch(cmd.Context(), client, doc)
 				}

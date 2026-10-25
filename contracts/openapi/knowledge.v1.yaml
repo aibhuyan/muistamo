@@ -245,6 +245,99 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/knowledge/sources:
+    get:
+      operationId: listSources
+      responses:
+        "200":
+          description: The tenant's sources.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/knowledgesourcepage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/sources/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getSource
+      responses:
+        "200":
+          $ref: "#/components/responses/SourceRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: applySource
+      summary: Create or update a source (the pack's reviewers only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/knowledgesource.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/SourceRecord"
+        "201":
+          $ref: "#/components/responses/SourceRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/sources/{name}/sync:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    post:
+      operationId: syncSource
+      summary: Re-index the source's documents (the pack's reviewers only)
+      responses:
+        "200":
+          description: What changed in the index.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/syncresult.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/retrieve:
+    get:
+      operationId: retrieve
+      summary: Search the caller's effective entries and the requested packs' documents
+      description: >-
+        Every document is authorised live against the acting person's own rights at its source
+        before it is returned (invariant 1). If a source cannot authorise, its documents are
+        withheld and the source is listed as unavailable.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: packs
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: Authorised, cited results.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/retrievalresult.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/knowledge/events:
     get:
       operationId: listEvents
@@ -302,6 +395,12 @@ components:
         application/json:
           schema:
             $ref: "../schemas/packversion.json"
+    SourceRecord:
+      description: A source.
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/knowledgesourcerecord.json"
     Proposal:
       description: A proposal.
       content:

@@ -141,6 +141,48 @@ func (e CheckResultSeverity) Valid() bool {
 	}
 }
 
+// Defines values for CitationLayer.
+const (
+	CitationLayerCompany  CitationLayer = "company"
+	CitationLayerPersonal CitationLayer = "personal"
+	CitationLayerRole     CitationLayer = "role"
+	CitationLayerTeam     CitationLayer = "team"
+)
+
+// Valid indicates whether the value is a known member of the CitationLayer enum.
+func (e CitationLayer) Valid() bool {
+	switch e {
+	case CitationLayerCompany:
+		return true
+	case CitationLayerPersonal:
+		return true
+	case CitationLayerRole:
+		return true
+	case CitationLayerTeam:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CitationType.
+const (
+	CitationTypeDocument CitationType = "document"
+	CitationTypeEntry    CitationType = "entry"
+)
+
+// Valid indicates whether the value is a known member of the CitationType enum.
+func (e CitationType) Valid() bool {
+	switch e {
+	case CitationTypeDocument:
+		return true
+	case CitationTypeEntry:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HREventType.
 const (
 	HREventTypeJoiner HREventType = "joiner"
@@ -351,6 +393,54 @@ func (e KnowledgePackSpecMergePolicyRequires) Valid() bool {
 	case KnowledgePackSpecMergePolicyRequiresEvaluation:
 		return true
 	case KnowledgePackSpecMergePolicyRequiresReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KnowledgeSourceApiVersion.
+const (
+	KnowledgeSourceApiVersionMuistamoDevv1 KnowledgeSourceApiVersion = "muistamo.dev/v1"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeSourceApiVersion enum.
+func (e KnowledgeSourceApiVersion) Valid() bool {
+	switch e {
+	case KnowledgeSourceApiVersionMuistamoDevv1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KnowledgeSourceKind.
+const (
+	KnowledgeSourceKindKnowledgeSource KnowledgeSourceKind = "KnowledgeSource"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeSourceKind enum.
+func (e KnowledgeSourceKind) Valid() bool {
+	switch e {
+	case KnowledgeSourceKindKnowledgeSource:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KnowledgeSourceSpecConnector.
+const (
+	KnowledgeSourceSpecConnectorSharepoint KnowledgeSourceSpecConnector = "sharepoint"
+	KnowledgeSourceSpecConnectorTest       KnowledgeSourceSpecConnector = "test"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeSourceSpecConnector enum.
+func (e KnowledgeSourceSpecConnector) Valid() bool {
+	switch e {
+	case KnowledgeSourceSpecConnectorSharepoint:
+		return true
+	case KnowledgeSourceSpecConnectorTest:
 		return true
 	default:
 		return false
@@ -569,6 +659,26 @@ type CheckResult struct {
 // CheckResultSeverity defines model for CheckResult.Severity.
 type CheckResultSeverity string
 
+// Citation Where a retrieval result came from.
+type Citation struct {
+	Connector  *string        `json:"connector,omitempty"`
+	EntryKey   *string        `json:"entryKey,omitempty"`
+	ExternalId *string        `json:"externalId,omitempty"`
+	Layer      *CitationLayer `json:"layer,omitempty"`
+	ModifiedAt *time.Time     `json:"modifiedAt,omitempty"`
+	Pack       *string        `json:"pack,omitempty"`
+	Source     *string        `json:"source,omitempty"`
+	Type       CitationType   `json:"type"`
+	Url        *string        `json:"url,omitempty"`
+	Version    *string        `json:"version,omitempty"`
+}
+
+// CitationLayer defines model for Citation.Layer.
+type CitationLayer string
+
+// CitationType defines model for Citation.Type.
+type CitationType string
+
 // EvidenceEvent One signed, hash-chained evidence event. The hashed body and signature are defined in control-plane/evidencechain; verify chains with mst evidence verify.
 type EvidenceEvent struct {
 	Action string `json:"action"`
@@ -745,6 +855,61 @@ type KnowledgePackRecord struct {
 	UpdatedAt     time.Time     `json:"updatedAt"`
 }
 
+// KnowledgeSource A document source attached to a pack (PRD section 10). Its documents are indexed, and every retrieval authorises each document live against the acting person's own rights at the source.
+type KnowledgeSource struct {
+	ApiVersion KnowledgeSourceApiVersion `json:"apiVersion"`
+	Kind       KnowledgeSourceKind       `json:"kind"`
+
+	// Metadata Metadata shared by every Muistamo YAML kind.
+	Metadata ObjectMeta `json:"metadata"`
+	Spec     struct {
+		// Connector sharepoint is release 1's one source (not built yet). test is an in-memory connector for development and the adversarial suite, refused unless explicitly enabled.
+		Connector KnowledgeSourceSpecConnector `json:"connector"`
+
+		// Pack The pack whose readers search this source.
+		Pack       string `json:"pack"`
+		Sharepoint *struct {
+			SiteUrl string `json:"siteUrl"`
+		} `json:"sharepoint,omitempty"`
+		Test *struct {
+			Documents []struct {
+				Body string `json:"body"`
+				Id   string `json:"id"`
+
+				// Readers Actor names who may open the document.
+				Readers []string `json:"readers"`
+				Title   string   `json:"title"`
+				Url     *string  `json:"url,omitempty"`
+			} `json:"documents"`
+		} `json:"test,omitempty"`
+	} `json:"spec"`
+}
+
+// KnowledgeSourceApiVersion defines model for KnowledgeSource.ApiVersion.
+type KnowledgeSourceApiVersion string
+
+// KnowledgeSourceKind defines model for KnowledgeSource.Kind.
+type KnowledgeSourceKind string
+
+// KnowledgeSourceSpecConnector sharepoint is release 1's one source (not built yet). test is an in-memory connector for development and the adversarial suite, refused unless explicitly enabled.
+type KnowledgeSourceSpecConnector string
+
+// KnowledgeSourcePage The tenant's sources.
+type KnowledgeSourcePage struct {
+	Items []KnowledgeSourceRecord `json:"items"`
+}
+
+// KnowledgeSourceRecord A source and its index state.
+type KnowledgeSourceRecord struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Document A document source attached to a pack (PRD section 10). Its documents are indexed, and every retrieval authorises each document live against the acting person's own rights at the source.
+	Document      KnowledgeSource `json:"document"`
+	DocumentCount int             `json:"documentCount"`
+	LastSyncedAt  *time.Time      `json:"lastSyncedAt,omitempty"`
+	UpdatedAt     time.Time       `json:"updatedAt"`
+}
+
 // ObjectMeta Metadata shared by every Muistamo YAML kind.
 type ObjectMeta struct {
 	Labels *map[string]string `json:"labels,omitempty"`
@@ -866,10 +1031,39 @@ type ResolvedEntryPage struct {
 	Items []ResolvedEntry `json:"items"`
 }
 
+// RetrievalResult Results the caller may see, each cited, and which sources were consulted.
+type RetrievalResult struct {
+	Coverage struct {
+		SourcesQueried []string `json:"sourcesQueried"`
+
+		// SourcesUnavailable Sources whose authorisation failed; their documents were withheld, never returned unchecked.
+		SourcesUnavailable []string `json:"sourcesUnavailable"`
+
+		// TestConnectors Sources served by the in-memory test connector, not a real system.
+		TestConnectors []string `json:"testConnectors"`
+	} `json:"coverage"`
+	Items []struct {
+		// Citation Where a retrieval result came from.
+		Citation Citation `json:"citation"`
+		Score    float32  `json:"score"`
+		Snippet  string   `json:"snippet"`
+		Title    string   `json:"title"`
+	} `json:"items"`
+	Query string `json:"query"`
+}
+
 // RollbackInput Publish a new version with an earlier version's content.
 type RollbackInput struct {
 	Reason    string `json:"reason"`
 	ToVersion string `json:"toVersion"`
+}
+
+// SyncResult What a sync changed in the index.
+type SyncResult struct {
+	Indexed int    `json:"indexed"`
+	Removed int    `json:"removed"`
+	Source  string `json:"source"`
+	Total   int    `json:"total"`
 }
 
 // Cursor defines model for Cursor.

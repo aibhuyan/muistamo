@@ -509,6 +509,43 @@ components:
           type: string
         message:
           type: string
+    Citation:
+      title: Citation
+      description: Where a retrieval result came from.
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - entry
+          - document
+        layer:
+          type: string
+          enum:
+          - personal
+          - team
+          - role
+          - company
+        pack:
+          type: string
+        version:
+          type: string
+        entryKey:
+          type: string
+        source:
+          type: string
+        connector:
+          type: string
+        externalId:
+          type: string
+        url:
+          type: string
+        modifiedAt:
+          type: string
+          format: date-time
     EvidenceEvent:
       title: EvidenceEvent
       description: One signed, hash-chained evidence event. The hashed body and signature
@@ -879,6 +916,125 @@ components:
         updatedAt:
           type: string
           format: date-time
+    KnowledgeSource:
+      title: KnowledgeSource
+      description: A document source attached to a pack (PRD section 10). Its documents
+        are indexed, and every retrieval authorises each document live against the
+        acting person's own rights at the source.
+      type: object
+      additionalProperties: false
+      required:
+      - apiVersion
+      - kind
+      - metadata
+      - spec
+      properties:
+        apiVersion:
+          type: string
+          const: muistamo.dev/v1
+        kind:
+          type: string
+          const: KnowledgeSource
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          title: KnowledgeSourceSpec
+          type: object
+          additionalProperties: false
+          required:
+          - pack
+          - connector
+          properties:
+            pack:
+              description: The pack whose readers search this source.
+              type: string
+            connector:
+              description: sharepoint is release 1's one source (not built yet). test
+                is an in-memory connector for development and the adversarial suite,
+                refused unless explicitly enabled.
+              type: string
+              enum:
+              - sharepoint
+              - test
+            sharepoint:
+              title: SharePointSourceConfig
+              type: object
+              additionalProperties: false
+              required:
+              - siteUrl
+              properties:
+                siteUrl:
+                  type: string
+            test:
+              title: TestSourceConfig
+              type: object
+              additionalProperties: false
+              required:
+              - documents
+              properties:
+                documents:
+                  type: array
+                  maxItems: 500
+                  items:
+                    title: TestSourceDocument
+                    type: object
+                    additionalProperties: false
+                    required:
+                    - id
+                    - title
+                    - body
+                    - readers
+                    properties:
+                      id:
+                        type: string
+                        minLength: 1
+                      title:
+                        type: string
+                      body:
+                        type: string
+                      url:
+                        type: string
+                      readers:
+                        description: Actor names who may open the document.
+                        type: array
+                        items:
+                          type: string
+    KnowledgeSourcePage:
+      title: KnowledgeSourcePage
+      description: The tenant's sources.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeSourceRecord'
+    KnowledgeSourceRecord:
+      title: KnowledgeSourceRecord
+      description: A source and its index state.
+      type: object
+      additionalProperties: false
+      required:
+      - document
+      - documentCount
+      - createdAt
+      - updatedAt
+      properties:
+        document:
+          $ref: '#/components/schemas/KnowledgeSource'
+        documentCount:
+          type: integer
+        lastSyncedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     ObjectMeta:
       title: ObjectMeta
       description: Metadata shared by every Muistamo YAML kind.
@@ -1153,6 +1309,64 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ResolvedEntry'
+    RetrievalResult:
+      title: RetrievalResult
+      description: Results the caller may see, each cited, and which sources were
+        consulted.
+      type: object
+      additionalProperties: false
+      required:
+      - query
+      - items
+      - coverage
+      properties:
+        query:
+          type: string
+        items:
+          type: array
+          items:
+            title: RetrievalItem
+            type: object
+            additionalProperties: false
+            required:
+            - title
+            - snippet
+            - score
+            - citation
+            properties:
+              title:
+                type: string
+              snippet:
+                type: string
+              score:
+                type: number
+              citation:
+                $ref: '#/components/schemas/Citation'
+        coverage:
+          title: RetrievalCoverage
+          type: object
+          additionalProperties: false
+          required:
+          - sourcesQueried
+          - sourcesUnavailable
+          - testConnectors
+          properties:
+            sourcesQueried:
+              type: array
+              items:
+                type: string
+            sourcesUnavailable:
+              description: Sources whose authorisation failed; their documents were
+                withheld, never returned unchecked.
+              type: array
+              items:
+                type: string
+            testConnectors:
+              description: Sources served by the in-memory test connector, not a real
+                system.
+              type: array
+              items:
+                type: string
     RollbackInput:
       title: RollbackInput
       description: Publish a new version with an earlier version's content.
@@ -1168,3 +1382,22 @@ components:
           type: string
           minLength: 1
           maxLength: 2000
+    SyncResult:
+      title: SyncResult
+      description: What a sync changed in the index.
+      type: object
+      additionalProperties: false
+      required:
+      - source
+      - indexed
+      - removed
+      - total
+      properties:
+        source:
+          type: string
+        indexed:
+          type: integer
+        removed:
+          type: integer
+        total:
+          type: integer

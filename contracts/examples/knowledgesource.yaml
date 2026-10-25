@@ -1,0 +1,20 @@
+apiVersion: muistamo.dev/v1
+kind: KnowledgeSource
+metadata:
+  name: finance-site
+spec:
+  pack: equity-research-basics
+  # The in-memory test connector: development only, refused unless the knowledge service runs
+  # with MUISTAMO_ENABLE_TEST_CONNECTOR=true. The release-1 source is sharepoint (not built yet).
+  connector: test
+  test:
+    documents:
+      - id: doc-allowed
+        title: Quarterly report Q1
+        body: Quarterly revenue grew in the first quarter.
+        url: https://example.invalid/finance/q1
+        readers: [dev:person-a@example.invalid, dev:reviewer-b@example.invalid]
+      - id: doc-secret
+        title: Quarterly board memo
+        body: Quarterly plans for the board only.
+        readers: [dev:reviewer-b@example.invalid]
