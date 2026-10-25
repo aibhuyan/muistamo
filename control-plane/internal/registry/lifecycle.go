@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 
@@ -13,36 +14,84 @@ import (
 // PersonLabel links an instance to the HR person it was created for.
 const PersonLabel = "muistamo.dev/hr-person-id"
 
-// TemplateVersionRef names one template version.
+// TemplateVersionRef names one template version, and the clone of it a joiner gets, if any.
 type TemplateVersionRef struct {
 	Name    string
 	Version int
+	Clone   string `json:",omitempty"`
 }
 
-// MatchTemplatesByJobCode returns the catalogue-published version of every template whose
-// published version lists jobCode in spec.assignment.hrJobCodes, ordered by name. Templates that
-// are applied but not published (or pending, rejected, withdrawn) never match (FR-102).
+// MatchTemplatesByJobCode returns what a joiner with jobCode gets, ordered by template name
+// (FR-102, FR-103). For each template published to the catalogue:
+//   - an assignable clone of it that lists jobCode wins, at the published version;
+//   - with none, the template itself if its published version lists jobCode;
+//   - two or more matching clones of one template are ambiguous: the joiner gets neither, and
+//     the ambiguity is recorded, rather than one being picked silently.
+//
+// Templates that are not published, and clones that are not assignable, never match.
 func (s *Service) MatchTemplatesByJobCode(ctx context.Context, actor Actor, jobCode string) ([]TemplateVersionRef, error) {
 	var refs []TemplateVersionRef
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT p.template, p.version
+			SELECT p.template, p.version, coalesce(v.document -> 'spec' -> 'assignment' -> 'hrJobCodes' ? $1, false)
 			FROM catalogue_published p
 			JOIN agent_template_versions v ON v.tenant_id = p.tenant_id AND v.name = p.template AND v.version = p.version
-			WHERE v.document -> 'spec' -> 'assignment' -> 'hrJobCodes' ? $1
 			ORDER BY p.template`, jobCode)
 		if err != nil {
 			return fmt.Errorf("match templates for job code %q: %w", jobCode, err)
 		}
-		defer rows.Close()
+		type published struct {
+			ref     TemplateVersionRef
+			matches bool
+		}
+		var candidates []published
 		for rows.Next() {
-			var ref TemplateVersionRef
-			if err := rows.Scan(&ref.Name, &ref.Version); err != nil {
+			var c published
+			if err := rows.Scan(&c.ref.Name, &c.ref.Version, &c.matches); err != nil {
+				rows.Close()
 				return fmt.Errorf("scan template: %w", err)
 			}
-			refs = append(refs, ref)
+			candidates = append(candidates, c)
 		}
-		return rows.Err()
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		for _, c := range candidates {
+			clones, err := listClones(ctx, tx, c.ref.Name)
+			if err != nil {
+				return err
+			}
+			var matching []string
+			for _, clone := range clones {
+				overlay := clone.doc.Spec.Overlay
+				if overlay == nil || overlay.Assignment == nil || overlay.Assignment.HrJobCodes == nil ||
+					!slices.Contains(*overlay.Assignment.HrJobCodes, jobCode) {
+					continue
+				}
+				r, err := resolveClone(ctx, tx, clone)
+				if err != nil {
+					return err
+				}
+				if r.assignable && r.version != nil && *r.version == c.ref.Version {
+					matching = append(matching, clone.doc.Metadata.Name)
+				}
+			}
+			switch {
+			case len(matching) == 1:
+				refs = append(refs, TemplateVersionRef{Name: c.ref.Name, Version: c.ref.Version, Clone: matching[0]})
+			case len(matching) > 1:
+				if err := recordEvidence(ctx, tx, s.signer, actor, "assignment.ambiguous", "AgentTemplate", c.ref.Name, nil,
+					map[string]any{"jobCode": jobCode, "clones": matching,
+						"reason": "more than one clone of this template lists the job code; the joiner gets none of them"}); err != nil {
+					return err
+				}
+			case c.matches:
+				refs = append(refs, c.ref)
+			}
+		}
+		return nil
 	})
 	return refs, err
 }

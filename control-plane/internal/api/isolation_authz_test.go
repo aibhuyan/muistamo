@@ -22,7 +22,7 @@ import (
 )
 
 var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_events", "evidence_heads", "hr_events", "hr_webhook_secrets",
-	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published", "policy_documents", "privacy_officers", "erasure_requests", "knowledge_service_secrets"}
+	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published", "policy_documents", "privacy_officers", "erasure_requests", "knowledge_service_secrets", "agent_clones"}
 
 // seedTenantA gives tenant A a template, an instance, an HR secret and one HR event.
 func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
@@ -66,6 +66,11 @@ func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
 		if err := store.SetPrivacyOfficers(context.Background(), h.db.OwnerURL, tenant, []string{"dev:" + officer}); err != nil {
 			t.Fatal(err)
 		}
+	}
+	clone := `{"apiVersion":"muistamo.dev/v1","kind":"AgentClone","metadata":{"name":"analyst-intern-fi"},
+	  "spec":{"template":"analyst-intern","sync":"follow","overlay":{"budget":{"perInstanceMonthlyEUR":1}}}}`
+	if got := h.call(t, a, http.MethodPut, "/v1/clones/analyst-intern-fi", clone); got.status != http.StatusCreated {
+		t.Fatalf("seed clone = %d: %s", got.status, got.raw)
 	}
 	if err := store.SetKnowledgeSecret(context.Background(), h.db.OwnerURL, a, []byte("mks_tenant-a-test-only-not-a-secret-000000")); err != nil {
 		t.Fatal(err)
@@ -500,5 +505,41 @@ func TestAuthzKnowledgeSecretsAreTenantScoped(t *testing.T) {
 	}
 	if secret, err := svc.KnowledgeSecret(context.Background(), registry.Actor{Tenant: a, Name: "workflow:x"}); err != nil || len(secret) == 0 {
 		t.Errorf("A's worker got no secret (%v)", err)
+	}
+}
+
+func TestAuthzClonesAreTenantScoped(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a, b := seedTenantA(t, h)
+	for _, path := range []string{"/v1/clones/analyst-intern-fi", "/v1/templates/analyst-intern/clones"} {
+		if got := h.call(t, b, http.MethodGet, path, ""); got.status != http.StatusNotFound {
+			t.Errorf("B GET %s = %d, want 404", path, got.status)
+		}
+	}
+	if got := h.call(t, b, http.MethodGet, "/v1/clones", ""); len(got.body["items"].([]any)) != 0 {
+		t.Errorf("B lists A's clones: %s", got.raw)
+	}
+	if got := h.call(t, b, http.MethodPost, "/v1/clones/analyst-intern-fi/sync", ""); got.status != http.StatusNotFound {
+		t.Errorf("B syncs A's clone = %d", got.status)
+	}
+	// B cannot clone A's template: it does not exist for B.
+	clone := `{"apiVersion":"muistamo.dev/v1","kind":"AgentClone","metadata":{"name":"stolen"},"spec":{"template":"analyst-intern","sync":"follow"}}`
+	if got := h.call(t, b, http.MethodPut, "/v1/clones/stolen", clone); got.status != http.StatusUnprocessableEntity {
+		t.Errorf("B clones A's template = %d, want 422", got.status)
+	}
+	// Nor reach A's instances' effective spec.
+	if got := h.call(t, b, http.MethodGet, "/v1/instances/analyst-intern-person-a/effective", ""); got.status != http.StatusNotFound {
+		t.Errorf("B reads A's effective spec = %d", got.status)
+	}
+	for name, stmt := range map[string]string{
+		"plant a clone in A": `INSERT INTO agent_clones (tenant_id, name, template, sync, revision, digest, document, updated_by)
+			VALUES ($1, 'planted', 'analyst-intern', 'follow', 1, 'x', '{}', 'x')`,
+	} {
+		if err := testdb.ExecErr(h.db.AppURL, b, stmt, a); err == nil || !strings.Contains(err.Error(), "row-level security") {
+			t.Errorf("%s as B: err = %v, want a row-level security violation", name, err)
+		}
+	}
+	if n := testdb.CountIn(t, h.db.AppURL, b, `SELECT count(*) FROM agent_clones WHERE tenant_id = $1`, a); n != 0 {
+		t.Errorf("B sees %d of A's clones by SQL", n)
 	}
 }

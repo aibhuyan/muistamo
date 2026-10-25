@@ -81,6 +81,7 @@ func (p *muistamo) Resources(context.Context) []func() resource.Resource {
 		func() resource.Resource { return newDocumentResource(templateKind, "agent_template", templateDocs) },
 		func() resource.Resource { return newDocumentResource(packKind, "knowledge_pack", packDocs) },
 		func() resource.Resource { return newDocumentResource(sourceKind, "knowledge_source", sourceDocs) },
+		func() resource.Resource { return newDocumentResource(cloneKind, "agent_clone", cloneDocs) },
 		func() resource.Resource { return newDocumentResource(linkKind, "agent_link", linkDocs) },
 		func() resource.Resource {
 			return newDocumentResource(actionPolicyKind, "action_policy", actionPolicyDocs)
@@ -98,7 +99,9 @@ const (
 	packDocs = "A knowledge pack definition. Content changes only through reviewed proposals; version is the latest published content version. " +
 		"Destroy only removes it from state: pack history is retained."
 	sourceDocs = "A knowledge source attached to a pack. Destroy only removes it from state."
-	linkDocs   = "A one-way agent link: agents of spec.from.template may call agents of spec.to.template with the listed skills and data classes. " +
+	cloneDocs  = "A clone of a template: an overlay of knowledge packs, budget and HR assignment, with a sync policy. version is the revision. " +
+		"Destroy only removes it from state: its instances depend on it."
+	linkDocs = "A one-way agent link: agents of spec.from.template may call agents of spec.to.template with the listed skills and data classes. " +
 		"version is the revision. Destroy deletes the link, so the calls it allowed are denied again; its history stays in the evidence log."
 	actionPolicyDocs = "The action policy for one template (at most one per template). version is the revision. " +
 		"Destroy deletes the policy, so the template's actions are denied by default again; its history stays in the evidence log."

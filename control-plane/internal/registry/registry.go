@@ -347,6 +347,11 @@ func createInstance(ctx context.Context, tx pgx.Tx, signer evidence.Signer, acto
 		}
 		return muistamov1.AgentInstanceRecord{}, err
 	}
+	if doc.Spec.CloneRef != nil {
+		if err := cloneForInstance(ctx, tx, *doc.Spec.CloneRef, ref.Name, version); err != nil {
+			return muistamov1.AgentInstanceRecord{}, err
+		}
+	}
 	body, err := json.Marshal(doc)
 	if err != nil {
 		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("encode instance: %w", err)

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/knowledgepackref.json",
+  "title": "KnowledgePackRef",
+  "description": "A knowledge pack an agent uses, optionally constrained to a version range.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name"],
+  "properties": {
+    "name": { "type": "string" },
+    "version": {
+      "description": "Version constraint, for example 3.x to follow minor updates.",
+      "type": "string"
+    }
+  }
+}

@@ -41,6 +41,13 @@ class AgentInstanceSpec(BaseModel):
         extra="forbid",
     )
     templateRef: Annotated[TemplateRef, Field(title="TemplateRef")]
+    cloneRef: Annotated[
+        str | None,
+        Field(
+            description="Set when the instance belongs to a clone of templateRef's template. Its effective spec then comes through the clone.",
+            pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+        ),
+    ] = None
     binding: Annotated[InstanceBinding, Field(title="InstanceBinding")]
     identityRef: Annotated[
         str | None, Field(description="Identity ID of the instance in the identity provider.")

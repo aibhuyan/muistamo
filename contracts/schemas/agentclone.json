@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agentclone.json",
+  "title": "AgentClone",
+  "description": "A variant of a template with its own instances (PRD section 5, FR-103). The overlay can add knowledge packs and set its own budget and HR assignment; nothing else of the template can change, so a clone never widens what the catalogue approved.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "type": "string", "const": "muistamo.dev/v1" },
+    "kind": { "type": "string", "const": "AgentClone" },
+    "metadata": { "$ref": "common/objectmeta.json" },
+    "spec": {
+      "title": "AgentCloneSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["template", "sync"],
+      "properties": {
+        "template": { "description": "The source template's name.", "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" },
+        "sync": {
+          "description": "follow: always the template's catalogue-published version. pin: the version below. manual: stays on its version and reports a newer published one until synced.",
+          "type": "string",
+          "enum": ["follow", "pin", "manual"]
+        },
+        "version": { "description": "pin only: the template version to use.", "type": "integer", "minimum": 1 },
+        "overlay": {
+          "title": "AgentCloneOverlay",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "knowledgePacks": {
+              "description": "Packs added to the template's. For a pack the template already uses, this version constraint wins.",
+              "type": "array",
+              "items": { "$ref": "knowledgepackref.json" }
+            },
+            "budget": {
+              "title": "AgentCloneBudget",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "perInstanceMonthlyEUR": { "type": "number", "minimum": 0 }
+              }
+            },
+            "assignment": {
+              "title": "AgentCloneAssignment",
+              "description": "Joiners whose job code is listed get this clone instead of the plain template.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "hrJobCodes": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      },
+      "if": { "properties": { "sync": { "const": "pin" } } },
+      "then": { "required": ["version"] },
+      "else": { "not": { "required": ["version"] } }
+    }
+  }
+}

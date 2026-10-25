@@ -27,6 +27,8 @@ func validateDocuments(next http.Handler) http.Handler {
 			validate = func(b []byte) error { return contracts.ValidateAgainst("cataloguedecision.json", b) }
 		case r.Method == http.MethodPost && r.URL.Path == hrEventsPath:
 			validate = func(b []byte) error { return contracts.ValidateAgainst("hrevent.json", b) }
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/clones/") && strings.HasSuffix(r.URL.Path, "/sync"):
+			validate = emptyBody
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/policy/decisions":
 			validate = func(b []byte) error { return contracts.ValidateAgainst("policydecisionrequest.json", b) }
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/policy/simulate":

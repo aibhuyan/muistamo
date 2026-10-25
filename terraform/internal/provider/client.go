@@ -172,6 +172,13 @@ var (
 		document:   recordDocument,
 		version:    func([]byte) string { return "" },
 	}
+	cloneKind = kind{
+		name:       "AgentClone",
+		service:    func(c *client) string { return c.controlPlane },
+		collection: "/v1/clones/",
+		document:   recordDocument,
+		version:    revision,
+	}
 	linkKind = kind{
 		name:       "AgentLink",
 		service:    func(c *client) string { return c.controlPlane },

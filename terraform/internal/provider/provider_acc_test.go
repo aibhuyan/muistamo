@@ -179,6 +179,43 @@ func TestAccCatalogueDataSource(t *testing.T) {
 	})
 }
 
+func TestAccAgentClone(t *testing.T) {
+	requireTofu(t)
+	cp := controlplanetest.New(t)
+	tenant := cp.Tenant.String()
+	prefix := providerBlock(cp.URL, "", tenant)
+	config := func(budget int) string {
+		return templateConfig(prefix, "Support interns") + fmt.Sprintf(`
+resource "muistamo_agent_clone" "fi" {
+  name = "analyst-intern-fi"
+  spec = jsonencode({
+    template = muistamo_agent_template.intern.name
+    sync     = "follow"
+    overlay  = { budget = { perInstanceMonthlyEUR = %d }, assignment = { hrJobCodes = ["ANALYST_INTERN_FI"] } }
+  })
+}
+`, budget)
+	}
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: config(40), Check: resource.TestCheckResourceAttr("muistamo_agent_clone.fi", "version", "1")},
+			{Config: config(40), PlanOnly: true},
+			{Config: config(55), Check: resource.TestCheckResourceAttr("muistamo_agent_clone.fi", "version", "2")},
+			{ResourceName: "muistamo_agent_clone.fi", ImportState: true, ImportStateVerify: true},
+			{
+				Config: prefix + `
+resource "muistamo_agent_clone" "bad" {
+  name = "bad"
+  spec = jsonencode({ template = "analyst-intern", sync = "follow", overlay = { tools = ["email.send"] } })
+}`,
+				ExpectError: regexp.MustCompile(`does not match the Muistamo contract`),
+			},
+			{Config: config(55)},
+		},
+	})
+}
+
 func policyConfig(prefix, skills string) string {
 	return prefix + fmt.Sprintf(`
 resource "muistamo_agent_link" "intern_to_market" {

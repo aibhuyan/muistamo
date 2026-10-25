@@ -171,6 +171,75 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/clones:
+    get:
+      operationId: listClones
+      summary: List every clone and how it resolves
+      responses:
+        "200":
+          description: Clones, by name.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/agentclonepage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/clones/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getClone
+      responses:
+        "200":
+          $ref: "#/components/responses/CloneRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: applyClone
+      summary: Create or change a clone; its template cannot change
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/agentclone.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/CloneRecord"
+        "201":
+          $ref: "#/components/responses/CloneRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/clones/{name}/sync:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    post:
+      operationId: syncClone
+      summary: Move a manual clone to its template's published version
+      responses:
+        "200":
+          $ref: "#/components/responses/CloneRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/templates/{name}/clones:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: listTemplateClones
+      summary: The clones of one template
+      responses:
+        "200":
+          description: Clones, by name.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/agentclonepage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/instances:
     get:
       operationId: listInstances
@@ -218,6 +287,23 @@ paths:
           $ref: "#/components/responses/InstanceRecord"
         "201":
           $ref: "#/components/responses/InstanceRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/instances/{name}/effective:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getEffectiveSpec
+      summary: The spec the instance runs with, through its clone if it has one
+      description: Refused with 409 when the instance's clone cannot resolve to a template version.
+      responses:
+        "200":
+          description: The effective spec.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/effectiveagentspec.json"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -575,6 +661,15 @@ components:
         application/json:
           schema:
             $ref: "../schemas/agentinstancerecord.json"
+    CloneRecord:
+      description: A clone.
+      headers:
+        ETag:
+          $ref: "#/components/headers/ETag"
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/agentclonerecord.json"
     LinkRecord:
       description: An agent link.
       headers:

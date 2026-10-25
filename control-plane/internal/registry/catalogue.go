@@ -173,8 +173,13 @@ func (s *Service) Withdraw(ctx context.Context, actor Actor, template string) er
 		if _, err := tx.Exec(ctx, `UPDATE catalogue_requests SET state = 'withdrawn', closed_at = now() WHERE id = $1`, requestID); err != nil {
 			return fmt.Errorf("close request: %w", err)
 		}
+		following, err := followClones(ctx, tx, template)
+		if err != nil {
+			return err
+		}
+		// Follow clones resolve to nothing now, so joiners stop getting them too.
 		return recordEvidence(ctx, tx, s.signer, actor, "catalogue.withdrawn", "AgentTemplate", template,
-			map[string]any{"version": version}, nil)
+			map[string]any{"version": version}, map[string]any{"unassignableClones": following})
 	})
 }
 
@@ -262,8 +267,31 @@ func publish(ctx context.Context, tx pgx.Tx, s *Service, actor Actor, id uuid.UU
 	if previousVersion != 0 {
 		before = map[string]any{"version": previousVersion}
 	}
+	following, err := followClones(ctx, tx, template)
+	if err != nil {
+		return err
+	}
 	return recordEvidence(ctx, tx, s.signer, actor, "catalogue.published", "AgentTemplate", template, before,
-		map[string]any{"version": version, "request": id})
+		map[string]any{"version": version, "request": id, "followClones": following})
+}
+
+// followClones names the clones that follow template's published version: a publication or a
+// withdrawal moves them.
+func followClones(ctx context.Context, tx pgx.Tx, template string) ([]string, error) {
+	rows, err := tx.Query(ctx, `SELECT name FROM agent_clones WHERE template = $1 AND sync = 'follow' ORDER BY name`, template)
+	if err != nil {
+		return nil, fmt.Errorf("list follow clones of %q: %w", template, err)
+	}
+	defer rows.Close()
+	names := []string{}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	return names, rows.Err()
 }
 
 func isApprover(ctx context.Context, tx pgx.Tx, name string) (bool, error) {

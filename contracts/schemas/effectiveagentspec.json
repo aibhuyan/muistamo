@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/effectiveagentspec.json",
+  "title": "EffectiveAgentSpec",
+  "description": "What an instance actually runs with: its template version's spec, with its clone's overlay applied if it belongs to a clone.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["instance", "template", "version", "spec"],
+  "properties": {
+    "instance": { "type": "string" },
+    "template": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "clone": { "type": "string" },
+    "spec": { "$ref": "agenttemplatespec.json" }
+  }
+}
