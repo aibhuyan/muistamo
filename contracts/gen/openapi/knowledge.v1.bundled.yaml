@@ -690,6 +690,152 @@ components:
           type: string
         document:
           $ref: '#/components/schemas/AgentTemplate'
+    CatalogueApproval:
+      description: One approver's decision on a catalogue request.
+      title: CatalogueApproval
+      type: object
+      additionalProperties: false
+      required:
+      - approver
+      - decision
+      - reason
+      - decidedAt
+      properties:
+        approver:
+          type: string
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+        reason:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+    CatalogueDecision:
+      title: CatalogueDecision
+      description: An approver's decision on a catalogue request.
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      - reason
+      properties:
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    CatalogueEntry:
+      title: CatalogueEntry
+      description: A template version published to the catalogue and so assignable
+        to joiners.
+      type: object
+      additionalProperties: false
+      required:
+      - template
+      - version
+      - requestId
+      - publishedAt
+      properties:
+        template:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        requestId:
+          type: string
+          format: uuid
+        publishedAt:
+          type: string
+          format: date-time
+    CatalogueEntryPage:
+      title: CatalogueEntryPage
+      description: The published catalogue.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogueEntry'
+    CatalogueRequest:
+      title: CatalogueRequest
+      description: A request to publish a template version to the catalogue. Low risk
+        publishes at once; medium needs one approver; high needs two distinct approvers;
+        never the requester.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - template
+      - version
+      - requestedBy
+      - riskTier
+      - neededApprovals
+      - state
+      - approvals
+      - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        template:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        requestedBy:
+          type: string
+        riskTier:
+          description: From the template version; a version without one is treated
+            as high.
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+        neededApprovals:
+          type: integer
+          minimum: 0
+          maximum: 2
+        state:
+          type: string
+          enum:
+          - pending
+          - published
+          - rejected
+          - withdrawn
+          - superseded
+        approvals:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogueApproval'
+        createdAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
+    CatalogueRequestPage:
+      title: CatalogueRequestPage
+      description: Catalogue requests, newest first.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogueRequest'
     CheckResult:
       title: CheckResult
       description: One automated check finding. Matched secret values are never echoed.

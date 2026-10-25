@@ -221,6 +221,69 @@ func (s *server) ReceiveHrEvent(ctx context.Context, req muistamov1.ReceiveHrEve
 	return muistamov1.ReceiveHrEvent202JSONResponse(accepted), nil
 }
 
+func (s *server) RequestPublication(ctx context.Context, req muistamov1.RequestPublicationRequestObject) (muistamov1.RequestPublicationResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err != nil {
+		return muistamov1.RequestPublicationdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	rec, err := s.svc.RequestPublication(ctx, actor, req.Name, req.Version)
+	if err != nil {
+		return muistamov1.RequestPublicationdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	return muistamov1.RequestPublication201JSONResponse{CatalogueRequestJSONResponse: muistamov1.CatalogueRequestJSONResponse(rec)}, nil
+}
+
+func (s *server) DecideCatalogueRequest(ctx context.Context, req muistamov1.DecideCatalogueRequestRequestObject) (muistamov1.DecideCatalogueRequestResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err != nil {
+		return muistamov1.DecideCatalogueRequestdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	rec, err := s.svc.DecideCatalogueRequest(ctx, actor, req.Id, string(req.Body.Decision), req.Body.Reason)
+	if err != nil {
+		return muistamov1.DecideCatalogueRequestdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	return muistamov1.DecideCatalogueRequest200JSONResponse{CatalogueRequestJSONResponse: muistamov1.CatalogueRequestJSONResponse(rec)}, nil
+}
+
+func (s *server) WithdrawFromCatalogue(ctx context.Context, req muistamov1.WithdrawFromCatalogueRequestObject) (muistamov1.WithdrawFromCatalogueResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err == nil {
+		err = s.svc.Withdraw(ctx, actor, req.Name)
+	}
+	if err != nil {
+		return muistamov1.WithdrawFromCataloguedefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	return muistamov1.WithdrawFromCatalogue204Response{}, nil
+}
+
+func (s *server) ListCatalogue(ctx context.Context, _ muistamov1.ListCatalogueRequestObject) (muistamov1.ListCatalogueResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err != nil {
+		return muistamov1.ListCataloguedefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	items, err := s.svc.ListCatalogue(ctx, actor)
+	if err != nil {
+		return muistamov1.ListCataloguedefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	return muistamov1.ListCatalogue200JSONResponse{Items: items}, nil
+}
+
+func (s *server) ListCatalogueRequests(ctx context.Context, req muistamov1.ListCatalogueRequestsRequestObject) (muistamov1.ListCatalogueRequestsResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err != nil {
+		return muistamov1.ListCatalogueRequestsdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	state := ""
+	if req.Params.State != nil {
+		state = string(*req.Params.State)
+	}
+	items, err := s.svc.ListCatalogueRequests(ctx, actor, state)
+	if err != nil {
+		return muistamov1.ListCatalogueRequestsdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	return muistamov1.ListCatalogueRequests200JSONResponse{Items: items}, nil
+}
+
 func (s *server) actor(ctx context.Context) (registry.Actor, error) {
 	actor, ok := actorFrom(ctx)
 	if !ok {
@@ -246,6 +309,8 @@ func (s *server) problem(ctx context.Context, err error) problemResponse {
 		status, title = http.StatusNotFound, "Not found"
 	case errors.Is(err, registry.ErrInvalid):
 		status, title = http.StatusUnprocessableEntity, "Invalid request"
+	case errors.Is(err, registry.ErrForbidden):
+		status, title = http.StatusForbidden, "Forbidden"
 	case errors.Is(err, registry.ErrConflict):
 		status, title = http.StatusConflict, "Conflict"
 	case errors.Is(err, registry.ErrPrecondition):

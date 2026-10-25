@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -20,6 +21,10 @@ func validateDocuments(next http.Handler) http.Handler {
 		switch {
 		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/v1/"):
 			validate = contracts.Validate
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/publication") && strings.HasPrefix(r.URL.Path, "/v1/templates/"):
+			validate = emptyBody
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/catalogue/requests/") && strings.HasSuffix(r.URL.Path, "/decision"):
+			validate = func(b []byte) error { return contracts.ValidateAgainst("cataloguedecision.json", b) }
 		case r.Method == http.MethodPost && r.URL.Path == hrEventsPath:
 			validate = func(b []byte) error { return contracts.ValidateAgainst("hrevent.json", b) }
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/transitions"):
@@ -37,7 +42,7 @@ func validateDocuments(next http.Handler) http.Handler {
 			writeProblem(w, http.StatusRequestEntityTooLarge, "Request body too large", "")
 			return
 		}
-		if !json.Valid(body) {
+		if len(body) > 0 && !json.Valid(body) {
 			writeProblem(w, http.StatusBadRequest, "Request body is not valid JSON", "")
 			return
 		}
@@ -48,6 +53,14 @@ func validateDocuments(next http.Handler) http.Handler {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		next.ServeHTTP(w, r)
 	})
+}
+
+// emptyBody accepts a request that carries no document.
+func emptyBody(b []byte) error {
+	if len(bytes.TrimSpace(b)) > 0 && string(bytes.TrimSpace(b)) != "{}" {
+		return errors.New("this request takes no body")
+	}
+	return nil
 }
 
 func writeProblem(w http.ResponseWriter, status int, title, detail string) {

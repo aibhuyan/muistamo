@@ -80,6 +80,95 @@ paths:
           $ref: '#/components/responses/TemplateRecord'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/templates/{name}/versions/{version}/publication:
+    parameters:
+    - $ref: '#/components/parameters/Name'
+    - name: version
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    post:
+      operationId: requestPublication
+      summary: Ask for this template version to be published to the catalogue
+      responses:
+        '201':
+          $ref: '#/components/responses/CatalogueRequest'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/catalogue:
+    get:
+      operationId: listCatalogue
+      summary: Template versions published to the catalogue (assignable to joiners)
+      responses:
+        '200':
+          description: The catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogueEntryPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/catalogue/{name}:
+    parameters:
+    - $ref: '#/components/parameters/Name'
+    delete:
+      operationId: withdrawFromCatalogue
+      summary: Withdraw a template; new joiners stop receiving it, existing instances
+        are untouched
+      responses:
+        '204':
+          description: Withdrawn.
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/catalogue/requests:
+    get:
+      operationId: listCatalogueRequests
+      parameters:
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - pending
+          - published
+          - rejected
+          - withdrawn
+          - superseded
+      responses:
+        '200':
+          description: Requests, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogueRequestPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/catalogue/requests/{id}/decision:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      operationId: decideCatalogueRequest
+      summary: Approve or reject (catalogue approvers only; never the requester, never
+        twice)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogueDecision'
+      responses:
+        '200':
+          $ref: '#/components/responses/CatalogueRequest'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/instances:
     get:
       operationId: listInstances
@@ -250,6 +339,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/AgentInstanceRecord'
+    CatalogueRequest:
+      description: A catalogue request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CatalogueRequest'
     Problem:
       description: An error (RFC 9457).
       content:
@@ -487,6 +582,152 @@ components:
           type: string
         document:
           $ref: '#/components/schemas/AgentTemplate'
+    CatalogueApproval:
+      description: One approver's decision on a catalogue request.
+      title: CatalogueApproval
+      type: object
+      additionalProperties: false
+      required:
+      - approver
+      - decision
+      - reason
+      - decidedAt
+      properties:
+        approver:
+          type: string
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+        reason:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+    CatalogueDecision:
+      title: CatalogueDecision
+      description: An approver's decision on a catalogue request.
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      - reason
+      properties:
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    CatalogueEntry:
+      title: CatalogueEntry
+      description: A template version published to the catalogue and so assignable
+        to joiners.
+      type: object
+      additionalProperties: false
+      required:
+      - template
+      - version
+      - requestId
+      - publishedAt
+      properties:
+        template:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        requestId:
+          type: string
+          format: uuid
+        publishedAt:
+          type: string
+          format: date-time
+    CatalogueEntryPage:
+      title: CatalogueEntryPage
+      description: The published catalogue.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogueEntry'
+    CatalogueRequest:
+      title: CatalogueRequest
+      description: A request to publish a template version to the catalogue. Low risk
+        publishes at once; medium needs one approver; high needs two distinct approvers;
+        never the requester.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - template
+      - version
+      - requestedBy
+      - riskTier
+      - neededApprovals
+      - state
+      - approvals
+      - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        template:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        requestedBy:
+          type: string
+        riskTier:
+          description: From the template version; a version without one is treated
+            as high.
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+        neededApprovals:
+          type: integer
+          minimum: 0
+          maximum: 2
+        state:
+          type: string
+          enum:
+          - pending
+          - published
+          - rejected
+          - withdrawn
+          - superseded
+        approvals:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogueApproval'
+        createdAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
+    CatalogueRequestPage:
+      title: CatalogueRequestPage
+      description: Catalogue requests, newest first.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogueRequest'
     CheckResult:
       title: CheckResult
       description: One automated check finding. Matched secret values are never echoed.

@@ -19,17 +19,18 @@ type TemplateVersionRef struct {
 	Version int
 }
 
-// MatchTemplatesByJobCode returns the latest version of every template whose
-// spec.assignment.hrJobCodes contains jobCode, ordered by name.
+// MatchTemplatesByJobCode returns the catalogue-published version of every template whose
+// published version lists jobCode in spec.assignment.hrJobCodes, ordered by name. Templates that
+// are applied but not published (or pending, rejected, withdrawn) never match (FR-102).
 func (s *Service) MatchTemplatesByJobCode(ctx context.Context, actor Actor, jobCode string) ([]TemplateVersionRef, error) {
 	var refs []TemplateVersionRef
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT t.name, t.latest_version
-			FROM agent_templates t
-			JOIN agent_template_versions v ON v.tenant_id = t.tenant_id AND v.name = t.name AND v.version = t.latest_version
+			SELECT p.template, p.version
+			FROM catalogue_published p
+			JOIN agent_template_versions v ON v.tenant_id = p.tenant_id AND v.name = p.template AND v.version = p.version
 			WHERE v.document -> 'spec' -> 'assignment' -> 'hrJobCodes' ? $1
-			ORDER BY t.name`, jobCode)
+			ORDER BY p.template`, jobCode)
 		if err != nil {
 			return fmt.Errorf("match templates for job code %q: %w", jobCode, err)
 		}

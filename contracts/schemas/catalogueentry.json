@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/catalogueentry.json",
+  "title": "CatalogueEntry",
+  "description": "A template version published to the catalogue and so assignable to joiners.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "template",
+    "version",
+    "requestId",
+    "publishedAt"
+  ],
+  "properties": {
+    "template": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "requestId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "publishedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

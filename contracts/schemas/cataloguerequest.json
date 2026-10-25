@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/cataloguerequest.json",
+  "title": "CatalogueRequest",
+  "description": "A request to publish a template version to the catalogue. Low risk publishes at once; medium needs one approver; high needs two distinct approvers; never the requester.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "template",
+    "version",
+    "requestedBy",
+    "riskTier",
+    "neededApprovals",
+    "state",
+    "approvals",
+    "createdAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "template": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "requestedBy": {
+      "type": "string"
+    },
+    "riskTier": {
+      "description": "From the template version; a version without one is treated as high.",
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "neededApprovals": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "published",
+        "rejected",
+        "withdrawn",
+        "superseded"
+      ]
+    },
+    "approvals": {
+      "type": "array",
+      "items": {
+        "$ref": "catalogueapproval.json"
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "closedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/catalogueapproval.json",
+  "description": "One approver's decision on a catalogue request.",
+  "title": "CatalogueApproval",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "approver",
+    "decision",
+    "reason",
+    "decidedAt"
+  ],
+  "properties": {
+    "approver": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "reject"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "decidedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

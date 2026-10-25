@@ -21,7 +21,8 @@ import (
 	"muistamo.dev/muistamo/control-plane/internal/testdb"
 )
 
-var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_events", "evidence_heads", "hr_events", "hr_webhook_secrets"}
+var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_events", "evidence_heads", "hr_events", "hr_webhook_secrets",
+	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published"}
 
 // seedTenantA gives tenant A a template, an instance, an HR secret and one HR event.
 func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
@@ -35,6 +36,25 @@ func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
 	}
 	if got := h.call(t, a, http.MethodPut, "/v1/instances/analyst-intern-person-a", instanceJSON); got.status != http.StatusCreated {
 		t.Fatalf("seed instance = %d: %s", got.status, got.raw)
+	}
+	// A high-risk template (no tier) published through two approvers, so every catalogue table
+	// has rows of A's for the attacks to target.
+	for _, tenant := range []uuid.UUID{a, b} {
+		if err := store.SetCatalogueApprovers(context.Background(), h.db.OwnerURL, tenant,
+			[]string{"dev:cat-1@example.invalid", "dev:cat-2@example.invalid"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	req := h.call(t, a, http.MethodPost, "/v1/templates/analyst-intern/versions/1/publication", "")
+	if req.status != http.StatusCreated {
+		t.Fatalf("seed publication request = %d: %s", req.status, req.raw)
+	}
+	for _, approver := range []string{"cat-1@example.invalid", "cat-2@example.invalid"} {
+		got := h.call(t, a, http.MethodPost, "/v1/catalogue/requests/"+req.body["id"].(string)+"/decision",
+			`{"decision":"approve","reason":"ok"}`, "X-Muistamo-Actor", approver)
+		if got.status != http.StatusOK {
+			t.Fatalf("seed approval by %s = %d: %s", approver, got.status, got.raw)
+		}
 	}
 	return a, b
 }
@@ -162,8 +182,9 @@ func TestAuthzAppRoleCannotReachAnotherTenantBySQL(t *testing.T) {
 	if err := testdb.ExecErr(h.db.AppURL, b, `UPDATE evidence_heads SET seq = 0 WHERE tenant_id = $1`, a); err != nil {
 		t.Fatalf("UPDATE head as B: %v", err)
 	}
-	if n := testdb.Count(t, h.db.OwnerURL, `SELECT seq FROM evidence_heads WHERE tenant_id = $1`, a); n != 3 {
-		t.Errorf("A's chain head after B's UPDATE = %d, want 3 (HR event, template, instance)", n)
+	events := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM evidence_events WHERE tenant_id = $1`, a)
+	if n := testdb.Count(t, h.db.OwnerURL, `SELECT seq FROM evidence_heads WHERE tenant_id = $1`, a); n != events || n == 0 {
+		t.Errorf("A's chain head after B's UPDATE = %d, want %d (A's own event count)", n, events)
 	}
 }
 
@@ -220,5 +241,44 @@ func TestAuthzHRCredentialsAndLifecycleAreTenantScoped(t *testing.T) {
 		if err == nil || (!strings.Contains(err.Error(), "row-level security") && !strings.Contains(err.Error(), "permission denied")) {
 			t.Errorf("%s as B: err = %v, want refusal", name, err)
 		}
+	}
+}
+
+func TestAuthzCatalogueIsTenantScoped(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a, b := seedTenantA(t, h)
+	requests := h.call(t, a, http.MethodGet, "/v1/catalogue/requests", "")
+	id := requests.body["items"].([]any)[0].(map[string]any)["id"].(string)
+
+	// B, even as one of B's own catalogue approvers, cannot see, decide or withdraw A's catalogue.
+	cat := []string{"X-Muistamo-Actor", "cat-1@example.invalid"}
+	if got := h.call(t, b, http.MethodGet, "/v1/catalogue", "", cat...); len(got.body["items"].([]any)) != 0 {
+		t.Errorf("B sees A's catalogue: %s", got.raw)
+	}
+	if got := h.call(t, b, http.MethodGet, "/v1/catalogue/requests", "", cat...); len(got.body["items"].([]any)) != 0 {
+		t.Errorf("B sees A's requests: %s", got.raw)
+	}
+	if got := h.call(t, b, http.MethodPost, "/v1/catalogue/requests/"+id+"/decision", `{"decision":"reject","reason":"x"}`, cat...); got.status != http.StatusNotFound {
+		t.Errorf("B decides A's request = %d, want 404", got.status)
+	}
+	if got := h.call(t, b, http.MethodDelete, "/v1/catalogue/analyst-intern", "", cat...); got.status != http.StatusNotFound {
+		t.Errorf("B withdraws A's template = %d, want 404", got.status)
+	}
+	if got := h.call(t, a, http.MethodGet, "/v1/catalogue", ""); len(got.body["items"].([]any)) != 1 {
+		t.Errorf("A's catalogue after B's attempts: %s", got.raw)
+	}
+
+	keyAttacks := map[string]string{
+		"publish into A's catalogue": `INSERT INTO catalogue_published (tenant_id, template, version, request_id) VALUES ($1, 'analyst-intern', 1, gen_random_uuid())`,
+		"approve as A's approver":    `INSERT INTO catalogue_approvals (tenant_id, request_id, approver, decision, reason) VALUES ($1, gen_random_uuid(), 'x', 'approve', 'x')`,
+	}
+	for name, stmt := range keyAttacks {
+		err := testdb.ExecErr(h.db.AppURL, b, stmt, a)
+		if err == nil || !strings.Contains(err.Error(), "row-level security") {
+			t.Errorf("%s as B: err = %v, want a row-level security violation", name, err)
+		}
+	}
+	if err := testdb.ExecErr(h.db.AppURL, a, `INSERT INTO catalogue_approvers (tenant_id, approver) VALUES ($1, 'dev:self-appointed')`, a); err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Errorf("server role adding an approver: err = %v, want permission denied", err)
 	}
 }

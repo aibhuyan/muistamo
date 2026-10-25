@@ -60,9 +60,47 @@ func (f fixture) template(t *testing.T, name string, jobCodes ...string) {
 			HrJobCodes *[]string `json:"hrJobCodes,omitempty"`
 		}{HrJobCodes: &jobCodes}
 	}
+	low := muistamov1.AgentTemplateSpecRiskTierLow
+	doc.Spec.RiskTier = &low
+	actor := registry.Actor{Tenant: f.scope.Tenant, Name: "dev:admin@example.invalid", RequestID: "seed"}
+	rec, _, err := f.svc.ApplyTemplate(context.Background(), actor, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Low risk publishes to the catalogue on request; only published versions are assignable.
+	if req, err := f.svc.RequestPublication(context.Background(), actor, name, rec.Version); err != nil || req.State != "published" {
+		t.Fatalf("publish %s: state %v, %v", name, req.State, err)
+	}
+}
+
+// templateUnpublished applies a template without publishing it to the catalogue.
+func (f fixture) templateUnpublished(t *testing.T, name string, jobCodes ...string) {
+	t.Helper()
+	var doc muistamov1.AgentTemplate
+	doc.ApiVersion = muistamov1.AgentTemplateApiVersionMuistamoDevv1
+	doc.Kind = muistamov1.AgentTemplateKindAgentTemplate
+	doc.Metadata.Name = name
+	doc.Spec.Purpose = "test"
+	doc.Spec.ModelAlias = "reasoning-default"
+	doc.Spec.Assignment = &struct {
+		HrJobCodes *[]string `json:"hrJobCodes,omitempty"`
+	}{HrJobCodes: &jobCodes}
 	actor := registry.Actor{Tenant: f.scope.Tenant, Name: "dev:admin@example.invalid", RequestID: "seed"}
 	if _, _, err := f.svc.ApplyTemplate(context.Background(), actor, doc); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOnlyCataloguePublishedTemplatesMatchJoiners(t *testing.T) {
+	f := setup(t)
+	f.template(t, "published", "ANALYST_INTERN")
+	f.templateUnpublished(t, "applied-only", "ANALYST_INTERN")
+	matched, err := f.acts.MatchTemplates(context.Background(), f.scope, "ANALYST_INTERN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matched) != 1 || matched[0].Name != "published" {
+		t.Fatalf("matched = %+v, want only the published template", matched)
 	}
 }
 
