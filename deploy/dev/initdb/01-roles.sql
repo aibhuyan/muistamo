@@ -3,3 +3,7 @@
 -- login the dev server uses. Production roles and credentials are provisioned separately.
 CREATE ROLE muistamo_app NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
 CREATE ROLE muistamo_server LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'dev-only-not-a-secret' IN ROLE muistamo_app;
+-- The knowledge service's roles: muistamo_knowledge_app holds its privileges on the knowledge
+-- schema only (granted by knowledge migrations); muistamo_knowledge_server is its dev login.
+CREATE ROLE muistamo_knowledge_app NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+CREATE ROLE muistamo_knowledge_server LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'dev-only-not-a-secret' IN ROLE muistamo_knowledge_app;

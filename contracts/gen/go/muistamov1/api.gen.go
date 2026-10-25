@@ -123,6 +123,24 @@ func (e AgentTemplateSpecRiskTier) Valid() bool {
 	}
 }
 
+// Defines values for CheckResultSeverity.
+const (
+	CheckResultSeverityBlocking CheckResultSeverity = "blocking"
+	CheckResultSeverityWarning  CheckResultSeverity = "warning"
+)
+
+// Valid indicates whether the value is a known member of the CheckResultSeverity enum.
+func (e CheckResultSeverity) Valid() bool {
+	switch e {
+	case CheckResultSeverityBlocking:
+		return true
+	case CheckResultSeverityWarning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HREventType.
 const (
 	HREventTypeJoiner HREventType = "joiner"
@@ -186,6 +204,90 @@ func (e InstanceState) Valid() bool {
 	}
 }
 
+// Defines values for KnowledgeEntryDataClass.
+const (
+	KnowledgeEntryDataClassConfidential KnowledgeEntryDataClass = "confidential"
+	KnowledgeEntryDataClassInternal     KnowledgeEntryDataClass = "internal"
+	KnowledgeEntryDataClassPublic       KnowledgeEntryDataClass = "public"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeEntryDataClass enum.
+func (e KnowledgeEntryDataClass) Valid() bool {
+	switch e {
+	case KnowledgeEntryDataClassConfidential:
+		return true
+	case KnowledgeEntryDataClassInternal:
+		return true
+	case KnowledgeEntryDataClassPublic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KnowledgeEntryType.
+const (
+	KnowledgeEntryTypeExample KnowledgeEntryType = "example"
+	KnowledgeEntryTypeFact    KnowledgeEntryType = "fact"
+	KnowledgeEntryTypeSkill   KnowledgeEntryType = "skill"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeEntryType enum.
+func (e KnowledgeEntryType) Valid() bool {
+	switch e {
+	case KnowledgeEntryTypeExample:
+		return true
+	case KnowledgeEntryTypeFact:
+		return true
+	case KnowledgeEntryTypeSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KnowledgeEntryInputDataClass.
+const (
+	KnowledgeEntryInputDataClassConfidential KnowledgeEntryInputDataClass = "confidential"
+	KnowledgeEntryInputDataClassInternal     KnowledgeEntryInputDataClass = "internal"
+	KnowledgeEntryInputDataClassPublic       KnowledgeEntryInputDataClass = "public"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeEntryInputDataClass enum.
+func (e KnowledgeEntryInputDataClass) Valid() bool {
+	switch e {
+	case KnowledgeEntryInputDataClassConfidential:
+		return true
+	case KnowledgeEntryInputDataClassInternal:
+		return true
+	case KnowledgeEntryInputDataClassPublic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KnowledgeEntryInputType.
+const (
+	KnowledgeEntryInputTypeExample KnowledgeEntryInputType = "example"
+	KnowledgeEntryInputTypeFact    KnowledgeEntryInputType = "fact"
+	KnowledgeEntryInputTypeSkill   KnowledgeEntryInputType = "skill"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeEntryInputType enum.
+func (e KnowledgeEntryInputType) Valid() bool {
+	switch e {
+	case KnowledgeEntryInputTypeExample:
+		return true
+	case KnowledgeEntryInputTypeFact:
+		return true
+	case KnowledgeEntryInputTypeSkill:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for KnowledgePackApiVersion.
 const (
 	KnowledgePackApiVersionMuistamoDevv1 KnowledgePackApiVersion = "muistamo.dev/v1"
@@ -218,18 +320,15 @@ func (e KnowledgePackKind) Valid() bool {
 
 // Defines values for KnowledgePackSpecLayer.
 const (
-	KnowledgePackSpecLayerCompany  KnowledgePackSpecLayer = "company"
-	KnowledgePackSpecLayerPersonal KnowledgePackSpecLayer = "personal"
-	KnowledgePackSpecLayerRole     KnowledgePackSpecLayer = "role"
-	KnowledgePackSpecLayerTeam     KnowledgePackSpecLayer = "team"
+	KnowledgePackSpecLayerCompany KnowledgePackSpecLayer = "company"
+	KnowledgePackSpecLayerRole    KnowledgePackSpecLayer = "role"
+	KnowledgePackSpecLayerTeam    KnowledgePackSpecLayer = "team"
 )
 
 // Valid indicates whether the value is a known member of the KnowledgePackSpecLayer enum.
 func (e KnowledgePackSpecLayer) Valid() bool {
 	switch e {
 	case KnowledgePackSpecLayerCompany:
-		return true
-	case KnowledgePackSpecLayerPersonal:
 		return true
 	case KnowledgePackSpecLayerRole:
 		return true
@@ -252,6 +351,90 @@ func (e KnowledgePackSpecMergePolicyRequires) Valid() bool {
 	case KnowledgePackSpecMergePolicyRequiresEvaluation:
 		return true
 	case KnowledgePackSpecMergePolicyRequiresReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProposalStatus.
+const (
+	ProposalStatusApproved     ProposalStatus = "approved"
+	ProposalStatusChecksFailed ProposalStatus = "checks-failed"
+	ProposalStatusInReview     ProposalStatus = "in-review"
+	ProposalStatusRejected     ProposalStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the ProposalStatus enum.
+func (e ProposalStatus) Valid() bool {
+	switch e {
+	case ProposalStatusApproved:
+		return true
+	case ProposalStatusChecksFailed:
+		return true
+	case ProposalStatusInReview:
+		return true
+	case ProposalStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProposalDecisionDecision.
+const (
+	ProposalDecisionDecisionApprove ProposalDecisionDecision = "approve"
+	ProposalDecisionDecisionReject  ProposalDecisionDecision = "reject"
+)
+
+// Valid indicates whether the value is a known member of the ProposalDecisionDecision enum.
+func (e ProposalDecisionDecision) Valid() bool {
+	switch e {
+	case ProposalDecisionDecisionApprove:
+		return true
+	case ProposalDecisionDecisionReject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProposalDecisionRecordDecision.
+const (
+	ProposalDecisionRecordDecisionApprove ProposalDecisionRecordDecision = "approve"
+	ProposalDecisionRecordDecisionReject  ProposalDecisionRecordDecision = "reject"
+)
+
+// Valid indicates whether the value is a known member of the ProposalDecisionRecordDecision enum.
+func (e ProposalDecisionRecordDecision) Valid() bool {
+	switch e {
+	case ProposalDecisionRecordDecisionApprove:
+		return true
+	case ProposalDecisionRecordDecisionReject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ResolvedEntryLayer.
+const (
+	ResolvedEntryLayerCompany  ResolvedEntryLayer = "company"
+	ResolvedEntryLayerPersonal ResolvedEntryLayer = "personal"
+	ResolvedEntryLayerRole     ResolvedEntryLayer = "role"
+	ResolvedEntryLayerTeam     ResolvedEntryLayer = "team"
+)
+
+// Valid indicates whether the value is a known member of the ResolvedEntryLayer enum.
+func (e ResolvedEntryLayer) Valid() bool {
+	switch e {
+	case ResolvedEntryLayerCompany:
+		return true
+	case ResolvedEntryLayerPersonal:
+		return true
+	case ResolvedEntryLayerRole:
+		return true
+	case ResolvedEntryLayerTeam:
 		return true
 	default:
 		return false
@@ -375,6 +558,17 @@ type AgentTemplateRecord struct {
 	Version  int           `json:"version"`
 }
 
+// CheckResult One automated check finding. Matched secret values are never echoed.
+type CheckResult struct {
+	EntryKey string              `json:"entryKey"`
+	Message  string              `json:"message"`
+	RuleId   string              `json:"ruleId"`
+	Severity CheckResultSeverity `json:"severity"`
+}
+
+// CheckResultSeverity defines model for CheckResult.Severity.
+type CheckResultSeverity string
+
 // EvidenceEvent One signed, hash-chained evidence event. The hashed body and signature are defined in control-plane/evidencechain; verify chains with mst evidence verify.
 type EvidenceEvent struct {
 	Action string `json:"action"`
@@ -453,6 +647,52 @@ type InstanceTransition struct {
 	To InstanceState `json:"to"`
 }
 
+// KnowledgeEntry An immutable entry revision.
+type KnowledgeEntry struct {
+	Body        string                  `json:"body"`
+	Contributor string                  `json:"contributor"`
+	CreatedAt   time.Time               `json:"createdAt"`
+	DataClass   KnowledgeEntryDataClass `json:"dataClass"`
+	Id          openapi_types.UUID      `json:"id"`
+
+	// Key Stable key; the most specific layer wins for the same key.
+	Key    string             `json:"key"`
+	Source *string            `json:"source,omitempty"`
+	Title  string             `json:"title"`
+	Type   KnowledgeEntryType `json:"type"`
+}
+
+// KnowledgeEntryDataClass defines model for KnowledgeEntry.DataClass.
+type KnowledgeEntryDataClass string
+
+// KnowledgeEntryType defines model for KnowledgeEntry.Type.
+type KnowledgeEntryType string
+
+// KnowledgeEntryInput A new entry captured into the caller's personal layer.
+type KnowledgeEntryInput struct {
+	Body      string                        `json:"body"`
+	DataClass *KnowledgeEntryInputDataClass `json:"dataClass,omitempty"`
+
+	// Key Stable key; the most specific layer wins for the same key.
+	Key string `json:"key"`
+
+	// Source Where this knowledge comes from (URL, document, person).
+	Source *string                 `json:"source,omitempty"`
+	Title  string                  `json:"title"`
+	Type   KnowledgeEntryInputType `json:"type"`
+}
+
+// KnowledgeEntryInputDataClass defines model for KnowledgeEntryInput.DataClass.
+type KnowledgeEntryInputDataClass string
+
+// KnowledgeEntryInputType defines model for KnowledgeEntryInput.Type.
+type KnowledgeEntryInputType string
+
+// KnowledgeEntryPage The caller's personal entries.
+type KnowledgeEntryPage struct {
+	Items []KnowledgeEntry `json:"items"`
+}
+
 // KnowledgePack A versioned, reviewed body of company knowledge (PRD section 5).
 type KnowledgePack struct {
 	ApiVersion KnowledgePackApiVersion `json:"apiVersion"`
@@ -461,6 +701,7 @@ type KnowledgePack struct {
 	// Metadata Metadata shared by every Muistamo YAML kind.
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     struct {
+		// Layer Personal layers are per person and are not packs.
 		Layer KnowledgePackSpecLayer `json:"layer"`
 
 		// Mandatory Users and agents cannot switch a mandatory pack off.
@@ -468,13 +709,12 @@ type KnowledgePack struct {
 		MergePolicy *struct {
 			Requires *[]KnowledgePackSpecMergePolicyRequires `json:"requires,omitempty"`
 		} `json:"mergePolicy,omitempty"`
+
+		// Reviewers People (actor names) who may approve or reject proposals and roll back versions.
 		Reviewers *[]string `json:"reviewers,omitempty"`
 
 		// StorageLocation Customer-bound object storage location for pack content.
 		StorageLocation *string `json:"storageLocation,omitempty"`
-
-		// Version Semantic version of the pack.
-		Version string `json:"version"`
 	} `json:"spec"`
 }
 
@@ -484,11 +724,26 @@ type KnowledgePackApiVersion string
 // KnowledgePackKind defines model for KnowledgePack.Kind.
 type KnowledgePackKind string
 
-// KnowledgePackSpecLayer defines model for KnowledgePack.Spec.Layer.
+// KnowledgePackSpecLayer Personal layers are per person and are not packs.
 type KnowledgePackSpecLayer string
 
 // KnowledgePackSpecMergePolicyRequires defines model for KnowledgePack.Spec.MergePolicy.Requires.
 type KnowledgePackSpecMergePolicyRequires string
+
+// KnowledgePackPage The tenant's packs.
+type KnowledgePackPage struct {
+	Items []KnowledgePackRecord `json:"items"`
+}
+
+// KnowledgePackRecord A pack definition and its latest content version.
+type KnowledgePackRecord struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Document A versioned, reviewed body of company knowledge (PRD section 5).
+	Document      KnowledgePack `json:"document"`
+	LatestVersion string        `json:"latestVersion"`
+	UpdatedAt     time.Time     `json:"updatedAt"`
+}
 
 // ObjectMeta Metadata shared by every Muistamo YAML kind.
 type ObjectMeta struct {
@@ -501,12 +756,120 @@ type ObjectMeta struct {
 	Owner *string `json:"owner,omitempty"`
 }
 
+// PackEntry An entry in a pack version, with lineage.
+type PackEntry struct {
+	// Entry An immutable entry revision.
+	Entry KnowledgeEntry `json:"entry"`
+
+	// Proposal The proposal that merged it.
+	Proposal openapi_types.UUID `json:"proposal"`
+	Reviewer string             `json:"reviewer"`
+}
+
+// PackVersion An immutable version of a pack's content.
+type PackVersion struct {
+	CreatedAt time.Time   `json:"createdAt"`
+	CreatedBy string      `json:"createdBy"`
+	Entries   []PackEntry `json:"entries"`
+	Pack      string      `json:"pack"`
+	Parent    *string     `json:"parent,omitempty"`
+	Reason    string      `json:"reason"`
+	Version   string      `json:"version"`
+}
+
+// PackVersionPage A pack's versions, newest first.
+type PackVersionPage struct {
+	Items []PackVersion `json:"items"`
+}
+
 // Problem Error body (RFC 9457 problem details).
 type Problem struct {
 	Detail *string `json:"detail,omitempty"`
 	Status int     `json:"status"`
 	Title  string  `json:"title"`
 	Type   *string `json:"type,omitempty"`
+}
+
+// Proposal A proposal of entries to a pack, with check results and the decision.
+type Proposal struct {
+	Checks      []CheckResult `json:"checks"`
+	Contributor string        `json:"contributor"`
+	CreatedAt   time.Time     `json:"createdAt"`
+
+	// Decision The reviewer's decision.
+	Decision      *ProposalDecisionRecord `json:"decision,omitempty"`
+	Entries       []KnowledgeEntry        `json:"entries"`
+	Id            openapi_types.UUID      `json:"id"`
+	MergedVersion *string                 `json:"mergedVersion,omitempty"`
+	Pack          string                  `json:"pack"`
+	Status        ProposalStatus          `json:"status"`
+	Summary       string                  `json:"summary"`
+}
+
+// ProposalStatus defines model for Proposal.Status.
+type ProposalStatus string
+
+// ProposalDecision A reviewer's decision on a proposal.
+type ProposalDecision struct {
+	Decision ProposalDecisionDecision `json:"decision"`
+
+	// Edits Approve with edits: replacement bodies by entry key.
+	Edits *[]struct {
+		Body string `json:"body"`
+
+		// Key Stable key; the most specific layer wins for the same key.
+		Key string `json:"key"`
+	} `json:"edits,omitempty"`
+	Reason string `json:"reason"`
+}
+
+// ProposalDecisionDecision defines model for ProposalDecision.Decision.
+type ProposalDecisionDecision string
+
+// ProposalDecisionRecord The reviewer's decision.
+type ProposalDecisionRecord struct {
+	DecidedAt time.Time                      `json:"decidedAt"`
+	Decision  ProposalDecisionRecordDecision `json:"decision"`
+	Reason    string                         `json:"reason"`
+	Reviewer  string                         `json:"reviewer"`
+}
+
+// ProposalDecisionRecordDecision defines model for ProposalDecisionRecord.Decision.
+type ProposalDecisionRecordDecision string
+
+// ProposalInput Propose personal entries to a pack.
+type ProposalInput struct {
+	EntryIds []openapi_types.UUID `json:"entryIds"`
+	Pack     string               `json:"pack"`
+	Summary  string               `json:"summary"`
+}
+
+// ProposalPage Proposals visible to the caller.
+type ProposalPage struct {
+	Items []Proposal `json:"items"`
+}
+
+// ResolvedEntry An effective entry for the caller, and where it came from.
+type ResolvedEntry struct {
+	// Entry An immutable entry revision.
+	Entry   KnowledgeEntry     `json:"entry"`
+	Layer   ResolvedEntryLayer `json:"layer"`
+	Pack    *string            `json:"pack,omitempty"`
+	Version *string            `json:"version,omitempty"`
+}
+
+// ResolvedEntryLayer defines model for ResolvedEntry.Layer.
+type ResolvedEntryLayer string
+
+// ResolvedEntryPage The caller's effective knowledge.
+type ResolvedEntryPage struct {
+	Items []ResolvedEntry `json:"items"`
+}
+
+// RollbackInput Publish a new version with an earlier version's content.
+type RollbackInput struct {
+	Reason    string `json:"reason"`
+	ToVersion string `json:"toVersion"`
 }
 
 // Cursor defines model for Cursor.

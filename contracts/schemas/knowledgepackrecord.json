@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/knowledgepackrecord.json",
+  "title": "KnowledgePackRecord",
+  "description": "A pack definition and its latest content version.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "document",
+    "latestVersion",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "document": {
+      "$ref": "knowledgepack.json"
+    },
+    "latestVersion": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

@@ -12,7 +12,6 @@ class Layer(StrEnum):
     company = "company"
     role = "role"
     team = "team"
-    personal = "personal"
 
 
 class Require(StrEnum):
@@ -31,18 +30,17 @@ class KnowledgePackSpec(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    version: Annotated[
-        str,
-        Field(
-            description="Semantic version of the pack.",
-            pattern="^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
-        ),
-    ]
-    layer: Layer
+    layer: Annotated[Layer, Field(description="Personal layers are per person and are not packs.")]
     mandatory: Annotated[
         bool | None, Field(description="Users and agents cannot switch a mandatory pack off.")
     ] = None
-    reviewers: list[str] | None = None
+    reviewers: Annotated[
+        list[str] | None,
+        Field(
+            description="People (actor names) who may approve or reject proposals and roll back versions.",
+            min_length=1,
+        ),
+    ] = None
     mergePolicy: Annotated[MergePolicy | None, Field(title="MergePolicy")] = None
     storageLocation: Annotated[
         str | None, Field(description="Customer-bound object storage location for pack content.")

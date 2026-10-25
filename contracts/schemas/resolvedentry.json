@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/resolvedentry.json",
+  "title": "ResolvedEntry",
+  "description": "An effective entry for the caller, and where it came from.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "entry",
+    "layer"
+  ],
+  "properties": {
+    "entry": {
+      "$ref": "knowledgeentry.json"
+    },
+    "layer": {
+      "type": "string",
+      "enum": [
+        "personal",
+        "team",
+        "role",
+        "company"
+      ]
+    },
+    "pack": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  }
+}

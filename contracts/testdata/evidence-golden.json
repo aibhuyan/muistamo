@@ -1,0 +1,27 @@
+{
+  "description": "Shared evidence-format vector. Go (control-plane/evidencechain) and Python (muistamo_knowledge.evidence) must both reproduce canonical, hash, keyId and signature exactly. The seed is test-only.",
+  "body": {
+    "tenant": "00000000-0000-0000-0000-000000000001",
+    "seq": 1,
+    "occurredAt": "2026-10-25T10:00:00.000000Z",
+    "actor": "dev:person-a@example.invalid",
+    "action": "template.version.created",
+    "subject": {
+      "kind": "AgentTemplate",
+      "name": "analyst-intern"
+    },
+    "before": null,
+    "after": {
+      "version": 1,
+      "digest": "ab"
+    },
+    "requestId": "req-1",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "canonical": "{\"action\":\"template.version.created\",\"actor\":\"dev:person-a@example.invalid\",\"after\":{\"digest\":\"ab\",\"version\":1},\"before\":null,\"occurredAt\":\"2026-10-25T10:00:00.000000Z\",\"prevHash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"requestId\":\"req-1\",\"seq\":1,\"subject\":{\"kind\":\"AgentTemplate\",\"name\":\"analyst-intern\"},\"tenant\":\"00000000-0000-0000-0000-000000000001\"}",
+  "hash": "ebe569a43f8ee8c172bbd93f0e74190d65b535ab966213c9f90a40a25a9d64c5",
+  "testSeedHex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+  "publicKeyHex": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+  "keyId": "65b60673d6ed884bf01c2c222d82ada0",
+  "signature": "Y9WzvkRVR+8CfeKUc9Z99GN+rYMuvz1JEIKNO3v3F8jw+bz2CC1Z55nhhDTyawlrCardwplw2AnoqfRnl4SlBQ=="
+}

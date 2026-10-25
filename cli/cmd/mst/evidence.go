@@ -26,6 +26,7 @@ func evidenceCmd(opts *options) *cobra.Command {
 
 func exportCmd(opts *options) *cobra.Command {
 	var out string
+	var fromKnowledge bool
 	cmd := &cobra.Command{
 		Use:   "export -o FILE.jsonl",
 		Short: "Write the tenant's whole evidence chain, one event per line",
@@ -34,23 +35,34 @@ func exportCmd(opts *options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var buf bytes.Buffer
-			count, after := 0, 0
-			for {
+			// Each service keeps its own chain; both have the same format and verify the same way.
+			fetchPage := func(after int) (int, []byte, error) {
+				if fromKnowledge {
+					return opts.knowledgeCall(cmd.Context(), http.MethodGet, fmt.Sprintf("/v1/knowledge/events?afterSeq=%d&limit=200", after), nil)
+				}
 				limit := 200
 				res, err := client.ListEventsWithResponse(cmd.Context(), &muistamov1.ListEventsParams{AfterSeq: &after, Limit: &limit})
 				if err != nil {
-					return fmt.Errorf("list events: %w", err)
+					return 0, nil, fmt.Errorf("list events: %w", err)
 				}
-				if res.StatusCode() != http.StatusOK {
-					return problem(res.StatusCode(), res.Body)
+				return res.StatusCode(), res.Body, nil
+			}
+			var buf bytes.Buffer
+			count, after := 0, 0
+			for {
+				status, body, err := fetchPage(after)
+				if err != nil {
+					return err
+				}
+				if status != http.StatusOK {
+					return problem(status, body)
 				}
 				// Keep each event exactly as the server sent it.
 				var page struct {
 					Items        []json.RawMessage `json:"items"`
 					NextAfterSeq *int              `json:"nextAfterSeq"`
 				}
-				if err := json.Unmarshal(res.Body, &page); err != nil {
+				if err := json.Unmarshal(body, &page); err != nil {
 					return fmt.Errorf("decode events: %w", err)
 				}
 				for _, item := range page.Items {
@@ -75,6 +87,7 @@ func exportCmd(opts *options) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&out, "output", "o", "", "file to write")
+	cmd.Flags().BoolVar(&fromKnowledge, "knowledge", false, "export the knowledge service's chain (--knowledge-server)")
 	_ = cmd.MarkFlagRequired("output")
 	return cmd
 }

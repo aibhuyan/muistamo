@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/proposaldecision.json",
+  "title": "ProposalDecision",
+  "description": "A reviewer's decision on a proposal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision",
+    "reason"
+  ],
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "reject"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "edits": {
+      "description": "Approve with edits: replacement bodies by entry key.",
+      "type": "array",
+      "items": {
+        "title": "EntryEdit",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "body"
+        ],
+        "properties": {
+          "key": {
+            "description": "Stable key; the most specific layer wins for the same key.",
+            "type": "string",
+            "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$",
+            "maxLength": 120
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        }
+      }
+    }
+  }
+}

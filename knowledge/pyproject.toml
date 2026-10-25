@@ -2,7 +2,15 @@
 name = "muistamo-knowledge"
 version = "0.0.0"
 requires-python = ">=3.12"
-dependencies = ["fastapi", "uvicorn", "muistamo-contracts"]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "muistamo-contracts",
+    "psycopg[binary]>=3.3,<3.4",
+    "psycopg-pool>=3.3,<3.4",
+    "rfc8785>=0.1.4,<0.2",
+    "cryptography>=50,<51",
+]
 
 [tool.uv.sources]
 muistamo-contracts = { workspace = true }

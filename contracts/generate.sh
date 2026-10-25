@@ -25,7 +25,9 @@ uv run --no-sync datamodel-codegen \
   --formatters ruff-format
 
 # oapi-codegen inlines external $refs as anonymous types, so it reads a bundled document.
-uv run --no-sync python contracts/bundle.py "$bundle"
+uv run --no-sync python contracts/bundle.py contracts/openapi/muistamo.v1.yaml "$bundle"
+# The knowledge service's API; bundling also proves every $ref in it resolves.
+uv run --no-sync python contracts/bundle.py contracts/openapi/knowledge.v1.yaml "$(dirname "$bundle")/knowledge.v1.bundled.yaml"
 go tool oapi-codegen -config contracts/oapi-codegen.yaml "$bundle"
 
 gofmt -w "$go_out"
