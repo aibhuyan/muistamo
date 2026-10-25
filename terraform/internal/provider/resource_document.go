@@ -203,10 +203,20 @@ func (r *documentResource) Read(ctx context.Context, req resource.ReadRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &m)...)
 }
 
-// Delete never deletes: these objects are history the product keeps. It says so plainly.
-func (r *documentResource) Delete(_ context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+// Delete removes links and action policies, because keeping them would keep granting what they
+// allow. Other kinds are history the product keeps, so Delete only forgets them, and says so.
+func (r *documentResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var m documentModel
-	resp.Diagnostics.Append(req.State.Get(context.Background(), &m)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &m)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if r.kind.deletable {
+		if err := r.client.delete(ctx, r.kind, m.Name.ValueString()); err != nil {
+			resp.Diagnostics.AddError("Delete "+r.kind.name, err.Error())
+		}
+		return
+	}
 	detail := fmt.Sprintf("%s %q was removed from Terraform state but still exists in Muistamo: its history is retained.",
 		r.kind.name, m.Name.ValueString())
 	if r.kind.name == "AgentTemplate" {
