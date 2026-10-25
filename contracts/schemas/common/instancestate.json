@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/common/instancestate.json",
+  "title": "InstanceState",
+  "description": "Lifecycle state of an agent instance (PRD section 5).",
+  "type": "string",
+  "enum": ["requested", "active", "under-review", "suspended", "retired", "quarantined"]
+}

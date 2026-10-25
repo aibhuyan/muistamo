@@ -5,11 +5,11 @@ metadata:
 spec:
   templateRef:
     name: analyst-intern
-    version: "3.1.0"
+    version: "1"
   binding:
     type: user
     ref: person-a@example.invalid
   identityRef: 00000000-0000-0000-0000-000000000000
   sponsor: person-b@example.invalid
-  state: active
+  state: requested
   costCentre: CC-0000

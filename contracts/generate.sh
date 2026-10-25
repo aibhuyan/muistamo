@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Regenerates every language's types from contracts/schemas. Run via `make generate`.
+# Regenerates every language's types from contracts/. Run via `make generate`.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 schemas=contracts/schemas
+bundle=contracts/gen/openapi/muistamo.v1.bundled.yaml
 py_out=contracts/gen/python/src/muistamo_contracts/v1
 go_out=contracts/gen/go/muistamov1
 
-rm -rf "$py_out" "$go_out"
+rm -rf "$py_out" "$go_out" "$(dirname "$bundle")"
 mkdir -p "$py_out" "$go_out"
 
 uv run --no-sync datamodel-codegen \
@@ -23,10 +24,8 @@ uv run --no-sync datamodel-codegen \
   --disable-timestamp \
   --formatters ruff-format
 
-go tool go-jsonschema \
-  --package muistamov1 \
-  --struct-name-from-title \
-  --output "$go_out/types.gen.go" \
-  "$schemas"/common/*.json "$schemas"/*.json
+# oapi-codegen inlines external $refs as anonymous types, so it reads a bundled document.
+uv run --no-sync python contracts/bundle.py "$bundle"
+go tool oapi-codegen -config contracts/oapi-codegen.yaml "$bundle"
 
 gofmt -w "$go_out"

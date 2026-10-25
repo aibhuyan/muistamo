@@ -76,7 +76,7 @@ func decodeExample(t *testing.T, path string, mutate func(map[string]any)) error
 		return err
 	}
 
-	var target json.Unmarshaler
+	var target any
 	switch kind := doc["kind"]; kind {
 	case "AgentTemplate":
 		target = &muistamov1.AgentTemplate{}
@@ -87,5 +87,5 @@ func decodeExample(t *testing.T, path string, mutate func(map[string]any)) error
 	default:
 		t.Fatalf("%s: unknown kind %v", path, kind)
 	}
-	return target.UnmarshalJSON(body)
+	return json.Unmarshal(body, target)
 }

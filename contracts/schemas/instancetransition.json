@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/instancetransition.json",
+  "title": "InstanceTransition",
+  "description": "Request to move an instance to another lifecycle state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["to"],
+  "properties": {
+    "to": { "$ref": "common/instancestate.json" }
+  }
+}

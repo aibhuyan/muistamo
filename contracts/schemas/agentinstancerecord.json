@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agentinstancerecord.json",
+  "title": "AgentInstanceRecord",
+  "description": "The current state of an AgentInstance. Revision increments on every change.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["revision", "createdAt", "updatedAt", "document"],
+  "properties": {
+    "revision": { "type": "integer", "minimum": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "document": { "$ref": "agentinstance.json" }
+  }
+}

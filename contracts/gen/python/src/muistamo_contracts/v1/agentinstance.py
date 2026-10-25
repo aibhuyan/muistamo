@@ -2,10 +2,10 @@
 #   filename:  agentinstance.json
 
 from __future__ import annotations
+from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from enum import StrEnum
-from typing import Annotated, Literal
-from .common import objectmeta
+from .common import instancestate, objectmeta
 
 
 class TemplateRef(BaseModel):
@@ -13,7 +13,13 @@ class TemplateRef(BaseModel):
         extra="forbid",
     )
     name: str
-    version: str
+    version: Annotated[
+        str,
+        Field(
+            description='Template version number assigned by the server, for example "3".',
+            pattern="^[1-9][0-9]*$",
+        ),
+    ]
 
 
 class Type(StrEnum):
@@ -30,15 +36,6 @@ class InstanceBinding(BaseModel):
     ref: str
 
 
-class State(StrEnum):
-    requested = "requested"
-    active = "active"
-    under_review = "under-review"
-    suspended = "suspended"
-    retired = "retired"
-    quarantined = "quarantined"
-
-
 class AgentInstanceSpec(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -51,7 +48,10 @@ class AgentInstanceSpec(BaseModel):
     sponsor: str | None = None
     delegate: str | None = None
     personalLayerRef: str | None = None
-    state: State
+    state: Annotated[
+        instancestate.InstanceState,
+        Field(description="Must be requested on create; changes only through transitions."),
+    ]
     costCentre: str | None = None
 
 

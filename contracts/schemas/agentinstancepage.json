@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agentinstancepage.json",
+  "title": "AgentInstancePage",
+  "description": "A page of instances, ordered by name.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": { "type": "array", "items": { "$ref": "agentinstancerecord.json" } },
+    "nextCursor": { "description": "Absent on the last page.", "type": "string" }
+  }
+}
