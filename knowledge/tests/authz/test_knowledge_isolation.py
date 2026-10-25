@@ -8,8 +8,12 @@ import uuid
 
 import psycopg
 import pytest
+from muistamo_knowledge.privacy import PERSONAL_DATA_TABLES, replace_officers, rows_mentioning
 
 pytestmark = pytest.mark.authz
+
+DPO = "dpo@example.invalid"
+SEEDED_ERASURE = "6f1c2c1e-1d0b-4b0e-9a54-6a3f1c2b7d10"
 
 PACK = {
     "apiVersion": "muistamo.dev/v1",
@@ -34,6 +38,8 @@ TABLES = [
     "evidence_heads",
     "evidence_events",
     "reads",
+    "privacy_officers",
+    "erasure_requests",
 ]
 
 
@@ -70,6 +76,15 @@ def seed(world) -> dict:
     assert approved.status_code == 200, approved.text
     # One recorded read, so the reads table holds rows for the SQL attacks to target.
     assert a.get("/v1/knowledge/retrieve", params={"q": "fiscal"}).status_code == 200
+    # Both tenants have a privacy officer; tenant 1 has one completed erasure (of nobody).
+    for tenant in (world.tenant, world.other_tenant):
+        replace_officers(world.db.owner_url, tenant, ["dev:" + DPO])
+    nobody = {"identities": ["dev:nobody@example.invalid"], "email": "nobody@example.invalid"}
+    done = world.client(DPO).post(
+        "/v1/knowledge/privacy/erasures",
+        json={"id": SEEDED_ERASURE, "reason": "seed", "subject": nobody},
+    )
+    assert done.status_code == 201, done.text
     return {"private": private["id"], "proposed": proposed["id"], "proposal": proposal["id"]}
 
 
@@ -270,3 +285,63 @@ def test_services_cannot_reach_each_others_data(world) -> None:
             " AND has_table_privilege('muistamo_app', format('%I.%I', schemaname, tablename), 'SELECT')"
         ).fetchone()[0]
         assert inside == 0, "the control plane's role can read knowledge tables"
+
+
+def _mentions(world, tenant: uuid.UUID) -> dict[str, int]:
+    """Per table, tenant's rows naming person A, read as the server's role."""
+    out = {}
+    with world.knowledge.db.in_tenant(tenant) as cur:
+        for table in PERSONAL_DATA_TABLES:
+            if n := len(rows_mentioning(cur, table, ["dev:" + A, A])):
+                out[table] = n
+    return out
+
+
+def test_privacy_requests_are_tenant_scoped(world) -> None:
+    seed(world)
+    # Person A also exists in tenant 2, so tenant 2's officer has a real target of its own.
+    a2 = world.client(A, world.other_tenant)
+    assert (
+        a2.post("/v1/knowledge/personal/entries", json=entry("x", "tenant 2 note")).status_code
+        == 201
+    )
+    before = _mentions(world, world.tenant)
+    assert len(before) >= 4, before
+
+    officer2 = world.client(DPO, world.other_tenant)
+    subject = {"identities": ["dev:" + A], "email": A}
+    done = officer2.post(
+        "/v1/knowledge/privacy/erasures",
+        json={"id": str(uuid.uuid4()), "reason": "DSR", "subject": subject},
+    )
+    assert done.status_code == 201, done.text
+    assert done.json()["counts"]["personal_entries"] == 1  # tenant 2's note only
+    assert _mentions(world, world.tenant) == before, "tenant 2's erasure reached tenant 1"
+
+    # Tenant 2's officer cannot read tenant 1's proof or export tenant 1's records.
+    assert officer2.get(f"/v1/knowledge/privacy/erasures/{SEEDED_ERASURE}").status_code == 404
+    export = officer2.post("/v1/knowledge/privacy/access", json={"subject": subject}).json()
+    for table, rows in export["sections"].items():
+        assert all(r.get("tenant_id") != str(world.tenant) for r in rows), table
+
+    # The definer function: tenant 2's setting reaches tenant 2 only; no setting, a free-form
+    # pseudonym or a short subject is refused; the server role has no other way to rewrite.
+    call = "SELECT knowledge.erase_subject(%s, %s, %s)"
+    pseudonym = f"erased:{uuid.uuid4()}"
+    assert _exec(world.db.app_url, world.other_tenant, call, ["dev:" + A], pseudonym, []) is None
+    assert _mentions(world, world.tenant) == before
+    for tenant, values, name in (
+        (None, ["dev:" + A], pseudonym),
+        (world.other_tenant, ["dev:" + A], "attacker-chosen"),
+        (world.other_tenant, [], pseudonym),
+        (world.other_tenant, ["a"], pseudonym),
+    ):
+        err = _exec(world.db.app_url, tenant, call, values, name, [])
+        assert err is not None and "erase_subject" in str(err), (tenant, values, name, err)
+    for stmt in (
+        "UPDATE knowledge.entries SET contributor = 'x'",
+        "UPDATE knowledge.erasure_requests SET reason = 'x'",
+        "INSERT INTO knowledge.privacy_officers (tenant_id, officer) VALUES (current_setting('muistamo.tenant_id')::uuid, 'dev:self')",
+    ):
+        err = _exec(world.db.app_url, world.other_tenant, stmt)
+        assert err is not None and "permission denied" in str(err), (stmt, err)

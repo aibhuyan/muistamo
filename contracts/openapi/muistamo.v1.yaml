@@ -398,6 +398,77 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/privacy/erasures:
+    post:
+      operationId: erasePersonalData
+      summary: Erase a person's data (privacy officers only); repeating an id returns the stored proof
+      description: >-
+        Deletes the person's own data, replaces their identifiers with a pseudonym where records
+        must stay (lineage, published history), and records a signed privacy.erasure.completed
+        event. Evidence events are retained under GDPR Art 17(3); the proof says so.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/erasurerequest.json"
+      responses:
+        "200":
+          description: This id was already completed; the stored proof.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/erasureproof.json"
+        "201":
+          description: Erased.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/erasureproof.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/privacy/erasures/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getErasure
+      summary: The proof of a completed erasure (privacy officers only)
+      responses:
+        "200":
+          description: The proof.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/erasureproof.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/privacy/access:
+    post:
+      operationId: exportPersonalData
+      summary: Export everything held about a person (privacy officers, or the person themselves)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/accessrequest.json"
+      responses:
+        "200":
+          description: The export.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/accessexport.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/events:
     get:
       operationId: listEvents

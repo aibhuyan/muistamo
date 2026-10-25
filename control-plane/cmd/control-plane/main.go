@@ -31,7 +31,7 @@ func main() {
 	root := &cobra.Command{Use: "control-plane", SilenceUsage: true, SilenceErrors: true}
 	// cobra's Print helpers default to stderr; command output belongs on stdout.
 	root.SetOut(os.Stdout)
-	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd(), catalogueCmd())
+	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd(), catalogueCmd(), privacyCmd())
 	if err := root.Execute(); err != nil {
 		log.Error("control-plane failed", "err", err)
 		os.Exit(1)
@@ -282,4 +282,31 @@ func envOr(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func privacyCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "privacy", Short: "Manage privacy officers (erasure and access requests)"}
+	officers := &cobra.Command{Use: "officers", Short: "Manage privacy officers"}
+	var tenant string
+	set := &cobra.Command{
+		Use:   "set --tenant ID OFFICER...",
+		Short: "Replace the tenant's privacy officers (MUISTAMO_MIGRATE_DATABASE_URL)",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := uuid.Parse(tenant)
+			if err != nil {
+				return fmt.Errorf("tenant id: %w", err)
+			}
+			if err := store.SetPrivacyOfficers(cmd.Context(), requireEnv("MUISTAMO_MIGRATE_DATABASE_URL"), id, args); err != nil {
+				return err
+			}
+			cmd.Printf("tenant %s now has %d privacy officers\n", id, len(args))
+			return nil
+		},
+	}
+	set.Flags().StringVar(&tenant, "tenant", "", "tenant id")
+	_ = set.MarkFlagRequired("tenant")
+	officers.AddCommand(set)
+	cmd.AddCommand(officers)
+	return cmd
 }

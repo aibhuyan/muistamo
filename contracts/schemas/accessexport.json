@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/accessexport.json",
+  "title": "AccessExport",
+  "description": "Everything one service holds about a person: one section per data location, each a list of records as stored, plus the evidence events they took part in.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["service", "generatedAt", "sections"],
+  "properties": {
+    "service": { "type": "string", "enum": ["control-plane", "knowledge"] },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "sections": {
+      "type": "object",
+      "additionalProperties": { "type": "array", "items": { "type": "object" } }
+    }
+  }
+}

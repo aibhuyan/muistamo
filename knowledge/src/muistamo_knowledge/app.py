@@ -13,7 +13,9 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from muistamo_contracts.v1.accessrequest import AccessRequest
 from muistamo_contracts.v1.common.healthstatus import HealthStatus, Status
+from muistamo_contracts.v1.erasurerequest import ErasureRequest
 from muistamo_contracts.v1.knowledgeentryinput import KnowledgeEntryInput
 from muistamo_contracts.v1.knowledgepack import KnowledgePack
 from muistamo_contracts.v1.knowledgesource import KnowledgeSource
@@ -26,6 +28,7 @@ from muistamo_knowledge.auth import Resolver, Unauthenticated, deny_all
 from muistamo_knowledge.db import UnknownTenant
 from muistamo_knowledge.mcp_server import build as build_mcp
 from muistamo_knowledge.mcp_server import require_identity
+from muistamo_knowledge.privacy import Privacy
 from muistamo_knowledge.retrieval import Sources
 from muistamo_knowledge.service import (
     Actor,
@@ -234,6 +237,22 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     @app.get("/v1/knowledge/reads")
     def reads(who: Who, limit: int = Query(100, ge=1, le=500)) -> JSONResponse:
         return ok({"items": sources().reads(who, limit)})
+
+    def privacy() -> Privacy:
+        return Privacy(svc())
+
+    @app.post("/v1/knowledge/privacy/erasures")
+    def erase(body: ErasureRequest, who: Who) -> JSONResponse:
+        proof, created = privacy().erase(who, body.model_dump(mode="json", exclude_none=True))
+        return ok(proof, 201 if created else 200)
+
+    @app.get("/v1/knowledge/privacy/erasures/{erasure_id}")
+    def get_erasure(erasure_id: uuid.UUID, who: Who) -> JSONResponse:
+        return ok(privacy().get_erasure(who, erasure_id))
+
+    @app.post("/v1/knowledge/privacy/access")
+    def export_personal_data(body: AccessRequest, who: Who) -> JSONResponse:
+        return ok(privacy().export(who, body.subject.model_dump(mode="json", exclude_none=True)))
 
     if mcp_app is not None:
         app.mount("/mcp/knowledge", require_identity(mcp_app, resolver, knowledge))
