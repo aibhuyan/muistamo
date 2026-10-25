@@ -1746,7 +1746,9 @@ components:
               - team
               description: Personal layers are per person and are not packs.
             mandatory:
-              description: Users and agents cannot switch a mandatory pack off.
+              description: 'Company packs only. Users and agents cannot switch a mandatory
+                pack off or shadow its entries: for its keys it wins over every other
+                layer. Only privacy officers can set or clear it.'
               type: boolean
             reviewers:
               type: array
@@ -1770,6 +1772,16 @@ components:
             storageLocation:
               description: Customer-bound object storage location for pack content.
               type: string
+          if:
+            properties:
+              mandatory:
+                const: true
+            required:
+            - mandatory
+          then:
+            properties:
+              layer:
+                const: company
     KnowledgePackPage:
       title: KnowledgePackPage
       description: The tenant's packs.
@@ -2716,6 +2728,30 @@ components:
           type: string
         version:
           type: string
+        mandatory:
+          description: The entry comes from a mandatory pack, so no other layer can
+            replace it.
+          type: boolean
+        overrides:
+          description: Entries with the same key that this mandatory entry overrides,
+            for example the caller's own personal entry.
+          type: array
+          items:
+            title: ResolvedOverride
+            type: object
+            additionalProperties: false
+            required:
+            - layer
+            properties:
+              layer:
+                type: string
+                enum:
+                - personal
+                - team
+                - role
+                - company
+              pack:
+                type: string
     ResolvedEntryPage:
       title: ResolvedEntryPage
       description: The caller's effective knowledge.

@@ -1068,6 +1068,30 @@ func (e ResolvedEntryLayer) Valid() bool {
 	}
 }
 
+// Defines values for ResolvedEntryOverridesLayer.
+const (
+	ResolvedEntryOverridesLayerCompany  ResolvedEntryOverridesLayer = "company"
+	ResolvedEntryOverridesLayerPersonal ResolvedEntryOverridesLayer = "personal"
+	ResolvedEntryOverridesLayerRole     ResolvedEntryOverridesLayer = "role"
+	ResolvedEntryOverridesLayerTeam     ResolvedEntryOverridesLayer = "team"
+)
+
+// Valid indicates whether the value is a known member of the ResolvedEntryOverridesLayer enum.
+func (e ResolvedEntryOverridesLayer) Valid() bool {
+	switch e {
+	case ResolvedEntryOverridesLayerCompany:
+		return true
+	case ResolvedEntryOverridesLayerPersonal:
+		return true
+	case ResolvedEntryOverridesLayerRole:
+		return true
+	case ResolvedEntryOverridesLayerTeam:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListCatalogueRequestsParamsState.
 const (
 	ListCatalogueRequestsParamsStatePending    ListCatalogueRequestsParamsState = "pending"
@@ -1628,7 +1652,7 @@ type KnowledgePack struct {
 		// Layer Personal layers are per person and are not packs.
 		Layer KnowledgePackSpecLayer `json:"layer"`
 
-		// Mandatory Users and agents cannot switch a mandatory pack off.
+		// Mandatory Company packs only. Users and agents cannot switch a mandatory pack off or shadow its entries: for its keys it wins over every other layer. Only privacy officers can set or clear it.
 		Mandatory   *bool `json:"mandatory,omitempty"`
 		MergePolicy *struct {
 			Requires *[]KnowledgePackSpecMergePolicyRequires `json:"requires,omitempty"`
@@ -2074,14 +2098,26 @@ type ProposalPage struct {
 // ResolvedEntry An effective entry for the caller, and where it came from.
 type ResolvedEntry struct {
 	// Entry An immutable entry revision.
-	Entry   KnowledgeEntry     `json:"entry"`
-	Layer   ResolvedEntryLayer `json:"layer"`
-	Pack    *string            `json:"pack,omitempty"`
-	Version *string            `json:"version,omitempty"`
+	Entry KnowledgeEntry     `json:"entry"`
+	Layer ResolvedEntryLayer `json:"layer"`
+
+	// Mandatory The entry comes from a mandatory pack, so no other layer can replace it.
+	Mandatory *bool `json:"mandatory,omitempty"`
+
+	// Overrides Entries with the same key that this mandatory entry overrides, for example the caller's own personal entry.
+	Overrides *[]struct {
+		Layer ResolvedEntryOverridesLayer `json:"layer"`
+		Pack  *string                     `json:"pack,omitempty"`
+	} `json:"overrides,omitempty"`
+	Pack    *string `json:"pack,omitempty"`
+	Version *string `json:"version,omitempty"`
 }
 
 // ResolvedEntryLayer defines model for ResolvedEntry.Layer.
 type ResolvedEntryLayer string
+
+// ResolvedEntryOverridesLayer defines model for ResolvedEntry.Overrides.Layer.
+type ResolvedEntryOverridesLayer string
 
 // ResolvedEntryPage The caller's effective knowledge.
 type ResolvedEntryPage struct {

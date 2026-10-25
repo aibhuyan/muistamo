@@ -141,7 +141,7 @@ def test_personal_layer_wins_and_is_immediately_visible(world) -> None:
     company = dict(
         PACK,
         metadata={"name": "company-basics"},
-        spec={**PACK["spec"], "layer": "company", "mandatory": True},
+        spec={**PACK["spec"], "layer": "company"},
     )
     a.put("/v1/knowledge/packs/company-basics", json=company)
     for pack, body in (
@@ -166,11 +166,8 @@ def test_personal_layer_wins_and_is_immediately_visible(world) -> None:
     assert (
         resolved["fiscal-year"]["layer"] == "role" and resolved["fiscal-year"]["version"] == "0.1.0"
     )
-    # Mandatory packs are included even when not asked for.
-    only_company = a.get("/v1/knowledge/resolve").json()["items"]
-    assert [(i["layer"], i["entry"]["body"]) for i in only_company] == [
-        ("company", "Company says 31 December.")
-    ]
+    # A pack that is not named and not mandatory is not in scope.
+    assert a.get("/v1/knowledge/resolve").json()["items"] == []
 
     capture(a, "fiscal-year", "For me: 30 June, and remind me in May.")
     mine = {

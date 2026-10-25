@@ -428,3 +428,35 @@ def test_leaver_reviews_and_service_secrets_are_tenant_scoped(world) -> None:
     with world.knowledge.db.in_tenant(world.tenant) as cur:
         cur.execute("SELECT status FROM knowledge.leaver_reviews WHERE id = 'leaver:1'")
         assert cur.fetchone()[0] == "open", "tenant 2 closed tenant 1's review by SQL"
+
+
+def test_mandatory_packs_are_tenant_scoped(world) -> None:
+    seed(world)
+    rules = {
+        "apiVersion": "muistamo.dev/v1",
+        "kind": "KnowledgePack",
+        "metadata": {"name": "company-rules"},
+        "spec": {
+            "layer": "company",
+            "mandatory": True,
+            "reviewers": ["dev:" + R],
+            "mergePolicy": {"requires": ["review"]},
+        },
+    }
+    assert world.client(DPO).put("/v1/knowledge/packs/company-rules", json=rules).status_code == 201
+    # Tenant 1's mandatory pack is not in scope for tenant 2's people.
+    assert world.client(A, world.other_tenant).get("/v1/knowledge/resolve").json()["items"] == []
+    # Tenant 2's officer, applying the same name, gets tenant 2's own pack and cannot touch tenant 1's flag.
+    cleared = dict(rules, spec={**rules["spec"], "mandatory": False})
+    other = world.client(DPO, world.other_tenant).put(
+        "/v1/knowledge/packs/company-rules", json=cleared
+    )
+    assert other.status_code == 201
+    assert (
+        _count(
+            world.db.app_url,
+            world.tenant,
+            "SELECT count(*) FROM knowledge.packs WHERE name = 'company-rules' AND mandatory",
+        )
+        == 1
+    )
