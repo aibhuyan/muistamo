@@ -21,6 +21,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AccessExportService.
+const (
+	AccessExportServiceControlPlane AccessExportService = "control-plane"
+	AccessExportServiceKnowledge    AccessExportService = "knowledge"
+)
+
+// Valid indicates whether the value is a known member of the AccessExportService enum.
+func (e AccessExportService) Valid() bool {
+	switch e {
+	case AccessExportServiceControlPlane:
+		return true
+	case AccessExportServiceKnowledge:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ActionPolicyApiVersion.
 const (
 	ActionPolicyApiVersionMuistamoDevv1 ActionPolicyApiVersion = "muistamo.dev/v1"
@@ -396,6 +414,24 @@ func (e CitationType) Valid() bool {
 	case CitationTypeDocument:
 		return true
 	case CitationTypeEntry:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ErasureProofService.
+const (
+	ErasureProofServiceControlPlane ErasureProofService = "control-plane"
+	ErasureProofServiceKnowledge    ErasureProofService = "knowledge"
+)
+
+// Valid indicates whether the value is a known member of the ErasureProofService enum.
+func (e ErasureProofService) Valid() bool {
+	switch e {
+	case ErasureProofServiceControlPlane:
+		return true
+	case ErasureProofServiceKnowledge:
 		return true
 	default:
 		return false
@@ -954,6 +990,22 @@ func (e ListCatalogueRequestsParamsState) Valid() bool {
 	}
 }
 
+// AccessExport Everything one service holds about a person: one section per data location, each a list of records as stored, plus the evidence events they took part in.
+type AccessExport struct {
+	GeneratedAt time.Time                           `json:"generatedAt"`
+	Sections    map[string][]map[string]interface{} `json:"sections"`
+	Service     AccessExportService                 `json:"service"`
+}
+
+// AccessExportService defines model for AccessExport.Service.
+type AccessExportService string
+
+// AccessRequest Export everything a service holds about a person (GDPR Art 15, FR-309).
+type AccessRequest struct {
+	// Subject The person an erasure or access request is about, by every identifier Muistamo may hold for them.
+	Subject PrivacySubject `json:"subject"`
+}
+
 // ActionPolicy The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template.
 type ActionPolicy struct {
 	ApiVersion ActionPolicyApiVersion `json:"apiVersion"`
@@ -1292,6 +1344,45 @@ type CompiledPolicies struct {
 	// Cedar Cedar policy text, ordered by policy id.
 	Cedar string          `json:"cedar"`
 	Rules []PolicyRuleRef `json:"rules"`
+}
+
+// ErasureProof What one service erased for a request, and what it kept and why. It holds no identifier of the person: subjectDigest lets someone who already knows the identifiers confirm which person it was.
+type ErasureProof struct {
+	CompletedAt time.Time `json:"completedAt"`
+
+	// Counts Rows changed per data location, for example entries.contributor.
+	Counts map[string]int     `json:"counts"`
+	Id     openapi_types.UUID `json:"id"`
+
+	// Pseudonym What the person's identifiers were replaced with.
+	Pseudonym   string `json:"pseudonym"`
+	RequestedBy string `json:"requestedBy"`
+	Retained    []struct {
+		Data   string `json:"data"`
+		Reason string `json:"reason"`
+	} `json:"retained"`
+	Service ErasureProofService `json:"service"`
+
+	// SubjectDigest SHA-256 (hex) over the tenant id and the sorted identifiers.
+	SubjectDigest string    `json:"subjectDigest"`
+	Warnings      *[]string `json:"warnings,omitempty"`
+}
+
+// ErasureProofService defines model for ErasureProof.Service.
+type ErasureProofService string
+
+// ErasureRequest Erase a person's data (GDPR Art 17, FR-309). The client chooses the id and sends the same request to every service; repeating it returns the stored proof.
+type ErasureRequest struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Reason Why, for example the reference of the data subject's request.
+	Reason string `json:"reason"`
+
+	// RedactEntries Knowledge service only: entry revisions whose title and body are themselves personal data. They and every revision derived from them are redacted.
+	RedactEntries *[]openapi_types.UUID `json:"redactEntries,omitempty"`
+
+	// Subject The person an erasure or access request is about, by every identifier Muistamo may hold for them.
+	Subject PrivacySubject `json:"subject"`
 }
 
 // EvidenceEvent One signed, hash-chained evidence event. The hashed body and signature are defined in control-plane/evidencechain; verify chains with mst evidence verify.
@@ -1711,6 +1802,17 @@ type PolicySimulationRequest struct {
 	Request PolicyDecisionRequest `json:"request"`
 }
 
+// PrivacySubject The person an erasure or access request is about, by every identifier Muistamo may hold for them.
+type PrivacySubject struct {
+	Email string `json:"email"`
+
+	// HrPersonId The HR system's person id, if the person came through HR events.
+	HrPersonId *string `json:"hrPersonId,omitempty"`
+
+	// Identities Actor identities exactly as Muistamo records them, for example dev:person-a@example.invalid.
+	Identities []string `json:"identities"`
+}
+
 // Problem Error body (RFC 9457 problem details).
 type Problem struct {
 	Detail *string `json:"detail,omitempty"`
@@ -1910,6 +2012,12 @@ type DecidePolicyJSONRequestBody = PolicyDecisionRequest
 
 // SimulatePolicyJSONRequestBody defines body for SimulatePolicy for application/json ContentType.
 type SimulatePolicyJSONRequestBody = PolicySimulationRequest
+
+// ExportPersonalDataJSONRequestBody defines body for ExportPersonalData for application/json ContentType.
+type ExportPersonalDataJSONRequestBody = AccessRequest
+
+// ErasePersonalDataJSONRequestBody defines body for ErasePersonalData for application/json ContentType.
+type ErasePersonalDataJSONRequestBody = ErasureRequest
 
 // ApplyTemplateJSONRequestBody defines body for ApplyTemplate for application/json ContentType.
 type ApplyTemplateJSONRequestBody = AgentTemplate
@@ -2179,6 +2287,43 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
 	SimulatePolicy(ctx context.Context, body SimulatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportPersonalDataWithBody Export everything held about a person (privacy officers, or the person themselves)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/privacy/access (the `ExportPersonalData` operationId).
+	ExportPersonalDataWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportPersonalData Export everything held about a person (privacy officers, or the person themselves)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/privacy/access (the `ExportPersonalData` operationId).
+	ExportPersonalData(ctx context.Context, body ExportPersonalDataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ErasePersonalDataWithBody Erase a person's data (privacy officers only); repeating an id returns the stored proof
+	//
+	// Deletes the person's own data, replaces their identifiers with a pseudonym where records must stay (lineage, published history), and records a signed privacy.erasure.completed event. Evidence events are retained under GDPR Art 17(3); the proof says so.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/privacy/erasures (the `ErasePersonalData` operationId).
+	ErasePersonalDataWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ErasePersonalData Erase a person's data (privacy officers only); repeating an id returns the stored proof
+	//
+	// Deletes the person's own data, replaces their identifiers with a pseudonym where records must stay (lineage, published history), and records a signed privacy.erasure.completed event. Evidence events are retained under GDPR Art 17(3); the proof says so.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/privacy/erasures (the `ErasePersonalData` operationId).
+	ErasePersonalData(ctx context.Context, body ErasePersonalDataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetErasure The proof of a completed erasure (privacy officers only)
+	//
+	// Corresponds with GET /v1/privacy/erasures/{id} (the `GetErasure` operationId).
+	GetErasure(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTemplates List the latest version of every template
 	//
@@ -2697,6 +2842,93 @@ func (c *Client) SimulatePolicyWithBody(ctx context.Context, contentType string,
 // Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
 func (c *Client) SimulatePolicy(ctx context.Context, body SimulatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSimulatePolicyRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportPersonalDataWithBody Export everything held about a person (privacy officers, or the person themselves)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/privacy/access (the `ExportPersonalData` operationId).
+func (c *Client) ExportPersonalDataWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportPersonalDataRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportPersonalData Export everything held about a person (privacy officers, or the person themselves)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/privacy/access (the `ExportPersonalData` operationId).
+func (c *Client) ExportPersonalData(ctx context.Context, body ExportPersonalDataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportPersonalDataRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ErasePersonalDataWithBody Erase a person's data (privacy officers only); repeating an id returns the stored proof
+//
+// Deletes the person's own data, replaces their identifiers with a pseudonym where records must stay (lineage, published history), and records a signed privacy.erasure.completed event. Evidence events are retained under GDPR Art 17(3); the proof says so.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/privacy/erasures (the `ErasePersonalData` operationId).
+func (c *Client) ErasePersonalDataWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewErasePersonalDataRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ErasePersonalData Erase a person's data (privacy officers only); repeating an id returns the stored proof
+//
+// Deletes the person's own data, replaces their identifiers with a pseudonym where records must stay (lineage, published history), and records a signed privacy.erasure.completed event. Evidence events are retained under GDPR Art 17(3); the proof says so.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/privacy/erasures (the `ErasePersonalData` operationId).
+func (c *Client) ErasePersonalData(ctx context.Context, body ErasePersonalDataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewErasePersonalDataRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetErasure The proof of a completed erasure (privacy officers only)
+//
+// Corresponds with GET /v1/privacy/erasures/{id} (the `GetErasure` operationId).
+func (c *Client) GetErasure(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetErasureRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -3711,6 +3943,120 @@ func NewSimulatePolicyRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
+// NewExportPersonalDataRequest calls the generic ExportPersonalData builder with application/json body
+func NewExportPersonalDataRequest(server string, body ExportPersonalDataJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewExportPersonalDataRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewExportPersonalDataRequestWithBody constructs an http.Request for the ExportPersonalData method, with any body, and a specified content type
+func NewExportPersonalDataRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/privacy/access")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewErasePersonalDataRequest calls the generic ErasePersonalData builder with application/json body
+func NewErasePersonalDataRequest(server string, body ErasePersonalDataJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewErasePersonalDataRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewErasePersonalDataRequestWithBody constructs an http.Request for the ErasePersonalData method, with any body, and a specified content type
+func NewErasePersonalDataRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/privacy/erasures")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetErasureRequest constructs an http.Request for the GetErasure method
+func NewGetErasureRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/privacy/erasures/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListTemplatesRequest constructs an http.Request for the ListTemplates method
 func NewListTemplatesRequest(server string, params *ListTemplatesParams) (*http.Request, error) {
 	var err error
@@ -4203,6 +4549,45 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/policy/simulate (the `SimulatePolicy` operationId).
 	SimulatePolicyWithResponse(ctx context.Context, body SimulatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*SimulatePolicyResponse, error)
+
+	// ExportPersonalDataWithBodyWithResponse Export everything held about a person (privacy officers, or the person themselves)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/privacy/access (the `ExportPersonalData` operationId).
+	ExportPersonalDataWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExportPersonalDataResponse, error)
+
+	// ExportPersonalDataWithResponse Export everything held about a person (privacy officers, or the person themselves)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/privacy/access (the `ExportPersonalData` operationId).
+	ExportPersonalDataWithResponse(ctx context.Context, body ExportPersonalDataJSONRequestBody, reqEditors ...RequestEditorFn) (*ExportPersonalDataResponse, error)
+
+	// ErasePersonalDataWithBodyWithResponse Erase a person's data (privacy officers only); repeating an id returns the stored proof
+	//
+	// Deletes the person's own data, replaces their identifiers with a pseudonym where records must stay (lineage, published history), and records a signed privacy.erasure.completed event. Evidence events are retained under GDPR Art 17(3); the proof says so.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/privacy/erasures (the `ErasePersonalData` operationId).
+	ErasePersonalDataWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ErasePersonalDataResponse, error)
+
+	// ErasePersonalDataWithResponse Erase a person's data (privacy officers only); repeating an id returns the stored proof
+	//
+	// Deletes the person's own data, replaces their identifiers with a pseudonym where records must stay (lineage, published history), and records a signed privacy.erasure.completed event. Evidence events are retained under GDPR Art 17(3); the proof says so.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/privacy/erasures (the `ErasePersonalData` operationId).
+	ErasePersonalDataWithResponse(ctx context.Context, body ErasePersonalDataJSONRequestBody, reqEditors ...RequestEditorFn) (*ErasePersonalDataResponse, error)
+
+	// GetErasureWithResponse The proof of a completed erasure (privacy officers only)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/privacy/erasures/{id} (the `GetErasure` operationId).
+	GetErasureWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetErasureResponse, error)
 
 	// ListTemplatesWithResponse List the latest version of every template
 	//
@@ -5373,6 +5758,157 @@ func (r SimulatePolicyResponse) ContentType() string {
 	return ""
 }
 
+type ExportPersonalDataResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AccessExport
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExportPersonalDataResponse) GetJSON200() *AccessExport {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ExportPersonalDataResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportPersonalDataResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportPersonalDataResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportPersonalDataResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportPersonalDataResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ErasePersonalDataResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ErasureProof
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ErasureProof
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ErasePersonalDataResponse) GetJSON200() *ErasureProof {
+	return r.JSON200
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r ErasePersonalDataResponse) GetJSON201() *ErasureProof {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ErasePersonalDataResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ErasePersonalDataResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ErasePersonalDataResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ErasePersonalDataResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ErasePersonalDataResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetErasureResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ErasureProof
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetErasureResponse) GetJSON200() *ErasureProof {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetErasureResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetErasureResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetErasureResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetErasureResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetErasureResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListTemplatesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6046,6 +6582,75 @@ func (c *ClientWithResponses) SimulatePolicyWithResponse(ctx context.Context, bo
 		return nil, err
 	}
 	return ParseSimulatePolicyResponse(rsp)
+}
+
+// ExportPersonalDataWithBodyWithResponse Export everything held about a person (privacy officers, or the person themselves)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/privacy/access (the `ExportPersonalData` operationId).
+func (c *ClientWithResponses) ExportPersonalDataWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExportPersonalDataResponse, error) {
+	rsp, err := c.ExportPersonalDataWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportPersonalDataResponse(rsp)
+}
+
+// ExportPersonalDataWithResponse Export everything held about a person (privacy officers, or the person themselves)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/privacy/access (the `ExportPersonalData` operationId).
+func (c *ClientWithResponses) ExportPersonalDataWithResponse(ctx context.Context, body ExportPersonalDataJSONRequestBody, reqEditors ...RequestEditorFn) (*ExportPersonalDataResponse, error) {
+	rsp, err := c.ExportPersonalData(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportPersonalDataResponse(rsp)
+}
+
+// ErasePersonalDataWithBodyWithResponse Erase a person's data (privacy officers only); repeating an id returns the stored proof
+//
+// Deletes the person's own data, replaces their identifiers with a pseudonym where records must stay (lineage, published history), and records a signed privacy.erasure.completed event. Evidence events are retained under GDPR Art 17(3); the proof says so.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/privacy/erasures (the `ErasePersonalData` operationId).
+func (c *ClientWithResponses) ErasePersonalDataWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ErasePersonalDataResponse, error) {
+	rsp, err := c.ErasePersonalDataWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseErasePersonalDataResponse(rsp)
+}
+
+// ErasePersonalDataWithResponse Erase a person's data (privacy officers only); repeating an id returns the stored proof
+//
+// Deletes the person's own data, replaces their identifiers with a pseudonym where records must stay (lineage, published history), and records a signed privacy.erasure.completed event. Evidence events are retained under GDPR Art 17(3); the proof says so.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/privacy/erasures (the `ErasePersonalData` operationId).
+func (c *ClientWithResponses) ErasePersonalDataWithResponse(ctx context.Context, body ErasePersonalDataJSONRequestBody, reqEditors ...RequestEditorFn) (*ErasePersonalDataResponse, error) {
+	rsp, err := c.ErasePersonalData(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseErasePersonalDataResponse(rsp)
+}
+
+// GetErasureWithResponse The proof of a completed erasure (privacy officers only)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/privacy/erasures/{id} (the `GetErasure` operationId).
+func (c *ClientWithResponses) GetErasureWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetErasureResponse, error) {
+	rsp, err := c.GetErasure(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetErasureResponse(rsp)
 }
 
 // ListTemplatesWithResponse List the latest version of every template
@@ -6982,6 +7587,112 @@ func ParseSimulatePolicyResponse(rsp *http.Response) (*SimulatePolicyResponse, e
 	return response, nil
 }
 
+// ParseExportPersonalDataResponse parses an HTTP response from a ExportPersonalDataWithResponse call
+func ParseExportPersonalDataResponse(rsp *http.Response) (*ExportPersonalDataResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportPersonalDataResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AccessExport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseErasePersonalDataResponse parses an HTTP response from a ErasePersonalDataWithResponse call
+func ParseErasePersonalDataResponse(rsp *http.Response) (*ErasePersonalDataResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ErasePersonalDataResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ErasureProof
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ErasureProof
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetErasureResponse parses an HTTP response from a GetErasureWithResponse call
+func ParseGetErasureResponse(rsp *http.Response) (*GetErasureResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetErasureResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ErasureProof
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListTemplatesResponse parses an HTTP response from a ListTemplatesWithResponse call
 func ParseListTemplatesResponse(rsp *http.Response) (*ListTemplatesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7271,6 +7982,15 @@ type ServerInterface interface {
 	// SimulatePolicy Decide a request under the current and proposed rules, changing nothing
 	// (POST /v1/policy/simulate)
 	SimulatePolicy(w http.ResponseWriter, r *http.Request)
+	// ExportPersonalData Export everything held about a person (privacy officers, or the person themselves)
+	// (POST /v1/privacy/access)
+	ExportPersonalData(w http.ResponseWriter, r *http.Request)
+	// ErasePersonalData Erase a person's data (privacy officers only); repeating an id returns the stored proof
+	// (POST /v1/privacy/erasures)
+	ErasePersonalData(w http.ResponseWriter, r *http.Request)
+	// GetErasure The proof of a completed erasure (privacy officers only)
+	// (GET /v1/privacy/erasures/{id})
+	GetErasure(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// ListTemplates List the latest version of every template
 	// (GET /v1/templates)
 	ListTemplates(w http.ResponseWriter, r *http.Request, params ListTemplatesParams)
@@ -7868,6 +8588,60 @@ func (siw *ServerInterfaceWrapper) SimulatePolicy(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ExportPersonalData operation middleware
+func (siw *ServerInterfaceWrapper) ExportPersonalData(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportPersonalData(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ErasePersonalData operation middleware
+func (siw *ServerInterfaceWrapper) ErasePersonalData(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ErasePersonalData(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetErasure operation middleware
+func (siw *ServerInterfaceWrapper) GetErasure(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetErasure(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTemplates operation middleware
 func (siw *ServerInterfaceWrapper) ListTemplates(w http.ResponseWriter, r *http.Request) {
 
@@ -8181,6 +8955,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/policy/decisions", wrapper.DecidePolicy)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/policy/simulate", wrapper.SimulatePolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/policy/cedar", wrapper.GetCompiledPolicies)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/privacy/erasures", wrapper.ErasePersonalData)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/privacy/erasures/{id}", wrapper.GetErasure)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/privacy/access", wrapper.ExportPersonalData)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events", wrapper.ListEvents)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/hr/events", wrapper.ReceiveHrEvent)
 
@@ -9159,6 +9936,137 @@ func (response SimulatePolicydefaultApplicationProblemPlusJSONResponse) VisitSim
 	return err
 }
 
+type ExportPersonalDataRequestObject struct {
+	Body *ExportPersonalDataJSONRequestBody
+}
+
+type ExportPersonalDataResponseObject interface {
+	VisitExportPersonalDataResponse(w http.ResponseWriter) error
+}
+
+type ExportPersonalData200JSONResponse AccessExport
+
+func (response ExportPersonalData200JSONResponse) VisitExportPersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportPersonalDatadefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ExportPersonalDatadefaultApplicationProblemPlusJSONResponse) VisitExportPersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ErasePersonalDataRequestObject struct {
+	Body *ErasePersonalDataJSONRequestBody
+}
+
+type ErasePersonalDataResponseObject interface {
+	VisitErasePersonalDataResponse(w http.ResponseWriter) error
+}
+
+type ErasePersonalData200JSONResponse ErasureProof
+
+func (response ErasePersonalData200JSONResponse) VisitErasePersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ErasePersonalData201JSONResponse ErasureProof
+
+func (response ErasePersonalData201JSONResponse) VisitErasePersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ErasePersonalDatadefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ErasePersonalDatadefaultApplicationProblemPlusJSONResponse) VisitErasePersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetErasureRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetErasureResponseObject interface {
+	VisitGetErasureResponse(w http.ResponseWriter) error
+}
+
+type GetErasure200JSONResponse ErasureProof
+
+func (response GetErasure200JSONResponse) VisitGetErasureResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetErasuredefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetErasuredefaultApplicationProblemPlusJSONResponse) VisitGetErasureResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTemplatesRequestObject struct {
 	Params ListTemplatesParams
 }
@@ -9458,6 +10366,15 @@ type StrictServerInterface interface {
 	// SimulatePolicy Decide a request under the current and proposed rules, changing nothing
 	// (POST /v1/policy/simulate)
 	SimulatePolicy(ctx context.Context, request SimulatePolicyRequestObject) (SimulatePolicyResponseObject, error)
+	// ExportPersonalData Export everything held about a person (privacy officers, or the person themselves)
+	// (POST /v1/privacy/access)
+	ExportPersonalData(ctx context.Context, request ExportPersonalDataRequestObject) (ExportPersonalDataResponseObject, error)
+	// ErasePersonalData Erase a person's data (privacy officers only); repeating an id returns the stored proof
+	// (POST /v1/privacy/erasures)
+	ErasePersonalData(ctx context.Context, request ErasePersonalDataRequestObject) (ErasePersonalDataResponseObject, error)
+	// GetErasure The proof of a completed erasure (privacy officers only)
+	// (GET /v1/privacy/erasures/{id})
+	GetErasure(ctx context.Context, request GetErasureRequestObject) (GetErasureResponseObject, error)
 	// ListTemplates List the latest version of every template
 	// (GET /v1/templates)
 	ListTemplates(ctx context.Context, request ListTemplatesRequestObject) (ListTemplatesResponseObject, error)
@@ -10121,6 +11038,94 @@ func (sh *strictHandler) SimulatePolicy(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SimulatePolicyResponseObject); ok {
 		if err := validResponse.VisitSimulatePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportPersonalData operation middleware
+func (sh *strictHandler) ExportPersonalData(w http.ResponseWriter, r *http.Request) {
+	var request ExportPersonalDataRequestObject
+
+	var body ExportPersonalDataJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportPersonalData(ctx, request.(ExportPersonalDataRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportPersonalData")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportPersonalDataResponseObject); ok {
+		if err := validResponse.VisitExportPersonalDataResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ErasePersonalData operation middleware
+func (sh *strictHandler) ErasePersonalData(w http.ResponseWriter, r *http.Request) {
+	var request ErasePersonalDataRequestObject
+
+	var body ErasePersonalDataJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ErasePersonalData(ctx, request.(ErasePersonalDataRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ErasePersonalData")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ErasePersonalDataResponseObject); ok {
+		if err := validResponse.VisitErasePersonalDataResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetErasure operation middleware
+func (sh *strictHandler) GetErasure(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetErasureRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetErasure(ctx, request.(GetErasureRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetErasure")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetErasureResponseObject); ok {
+		if err := validResponse.VisitGetErasureResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

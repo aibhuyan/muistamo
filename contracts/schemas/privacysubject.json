@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/privacysubject.json",
+  "title": "PrivacySubject",
+  "description": "The person an erasure or access request is about, by every identifier Muistamo may hold for them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["identities", "email"],
+  "properties": {
+    "identities": {
+      "description": "Actor identities exactly as Muistamo records them, for example dev:person-a@example.invalid.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 3, "maxLength": 320 }
+    },
+    "email": { "type": "string", "minLength": 3, "maxLength": 320 },
+    "hrPersonId": { "description": "The HR system's person id, if the person came through HR events.", "type": "string", "minLength": 1, "maxLength": 128 }
+  }
+}

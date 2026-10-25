@@ -1,4 +1,4 @@
-"""Knowledge service commands: serve, migrate, tenant register, evidence keygen."""
+"""Knowledge service commands: serve, migrate, tenant register, privacy officers, evidence keygen."""
 
 from __future__ import annotations
 
@@ -66,6 +66,14 @@ def register_tenant(args: argparse.Namespace) -> None:
     print(f"registered tenant {tenant}")
 
 
+def set_privacy_officers(args: argparse.Namespace) -> None:
+    from muistamo_knowledge.privacy import replace_officers
+
+    tenant = uuid.UUID(args.tenant)
+    replace_officers(require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant, args.officers)
+    print(f"tenant {tenant} now has {len(args.officers)} privacy officers")
+
+
 def keygen(args: argparse.Namespace) -> None:
     out = Path(args.out)
     key, pem = evidence.LocalKey.generate()
@@ -93,6 +101,11 @@ def main() -> None:
     reg = tenant.add_parser("register", help="accept requests for a tenant (owner URL)")
     reg.add_argument("tenant")
     reg.set_defaults(fn=register_tenant)
+    priv = sub.add_parser("privacy", help="privacy officers").add_subparsers(required=True)
+    po = priv.add_parser("officers", help="replace the tenant's privacy officers (owner URL)")
+    po.add_argument("tenant")
+    po.add_argument("officers", nargs="+")
+    po.set_defaults(fn=set_privacy_officers)
     ev = sub.add_parser("evidence", help="evidence signing keys").add_subparsers(required=True)
     kg = ev.add_parser("keygen", help="create and register a signing key (owner URL)")
     kg.add_argument("--out", required=True)

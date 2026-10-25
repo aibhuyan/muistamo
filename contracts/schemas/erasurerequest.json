@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/erasurerequest.json",
+  "title": "ErasureRequest",
+  "description": "Erase a person's data (GDPR Art 17, FR-309). The client chooses the id and sends the same request to every service; repeating it returns the stored proof.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "subject", "reason"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "subject": { "$ref": "privacysubject.json" },
+    "reason": { "description": "Why, for example the reference of the data subject's request.", "type": "string", "minLength": 1, "maxLength": 2000 },
+    "redactEntries": {
+      "description": "Knowledge service only: entry revisions whose title and body are themselves personal data. They and every revision derived from them are redacted.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "format": "uuid" }
+    }
+  }
+}

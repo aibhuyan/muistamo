@@ -116,18 +116,30 @@ func SetHRSecret(ctx context.Context, url string, tenant uuid.UUID, secret []byt
 // SetCatalogueApprovers replaces a tenant's catalogue approver list. url must connect as the
 // table owner: the server role can read approvers but never change them.
 func SetCatalogueApprovers(ctx context.Context, url string, tenant uuid.UUID, approvers []string) error {
+	return replaceTenantList(ctx, url, tenant, "catalogue_approvers", "approver", approvers)
+}
+
+// SetPrivacyOfficers replaces the tenant's privacy officers, who may file erasure and access
+// requests (FR-309). Like the approver list, only an operator changes it, as owner.
+func SetPrivacyOfficers(ctx context.Context, url string, tenant uuid.UUID, officers []string) error {
+	return replaceTenantList(ctx, url, tenant, "privacy_officers", "officer", officers)
+}
+
+// replaceTenantList replaces one tenant's rows in a (tenant_id, value) table. table and column are
+// constants from this package, never input.
+func replaceTenantList(ctx context.Context, url string, tenant uuid.UUID, table, column string, values []string) error {
 	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}
 	defer func() { _ = conn.Close(ctx) }()
 	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DELETE FROM catalogue_approvers WHERE tenant_id = $1`, tenant); err != nil {
-			return fmt.Errorf("clear approvers: %w", err)
+		if _, err := tx.Exec(ctx, `DELETE FROM `+table+` WHERE tenant_id = $1`, tenant); err != nil {
+			return fmt.Errorf("clear %s: %w", table, err)
 		}
-		for _, a := range approvers {
-			if _, err := tx.Exec(ctx, `INSERT INTO catalogue_approvers (tenant_id, approver) VALUES ($1, $2)`, tenant, a); err != nil {
-				return fmt.Errorf("add approver %q: %w", a, err)
+		for _, v := range values {
+			if _, err := tx.Exec(ctx, `INSERT INTO `+table+` (tenant_id, `+column+`) VALUES ($1, $2)`, tenant, v); err != nil {
+				return fmt.Errorf("add %s %q: %w", column, v, err)
 			}
 		}
 		return nil

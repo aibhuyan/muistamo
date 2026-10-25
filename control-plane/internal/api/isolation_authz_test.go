@@ -22,7 +22,7 @@ import (
 )
 
 var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_events", "evidence_heads", "hr_events", "hr_webhook_secrets",
-	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published", "policy_documents"}
+	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published", "policy_documents", "privacy_officers", "erasure_requests"}
 
 // seedTenantA gives tenant A a template, an instance, an HR secret and one HR event.
 func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
@@ -61,8 +61,20 @@ func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
 			t.Fatalf("seed %s = %d: %s", path, got.status, got.raw)
 		}
 	}
+	// Both tenants have a privacy officer; A has one completed erasure (of someone with no data).
+	for _, tenant := range []uuid.UUID{a, b} {
+		if err := store.SetPrivacyOfficers(context.Background(), h.db.OwnerURL, tenant, []string{"dev:" + officer}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nobody := `{"id":"` + seededErasure + `","reason":"seed","subject":{"identities":["dev:nobody@example.invalid"],"email":"nobody@example.invalid"}}`
+	if got := h.call(t, a, http.MethodPost, "/v1/privacy/erasures", nobody, asOfficer()...); got.status != http.StatusCreated {
+		t.Fatalf("seed erasure = %d: %s", got.status, got.raw)
+	}
 	return a, b
 }
+
+const seededErasure = "6f1c2c1e-1d0b-4b0e-9a54-6a3f1c2b7d10"
 
 func TestAuthzTenantCannotReadAnotherTenantsRecords(t *testing.T) {
 	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
@@ -375,5 +387,81 @@ func TestAuthzPolicyIsTenantScoped(t *testing.T) {
 		VALUES ($1, 'ActionPolicy', 'second', 'analyst-intern', 1, 'x', '{}', 'x')`, a)
 	if err == nil || !strings.Contains(err.Error(), "policy_documents_one_policy_per_template") {
 		t.Errorf("second action policy for a template by SQL: err = %v, want the unique index to refuse it", err)
+	}
+}
+
+func TestAuthzPrivacyIsTenantScoped(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a, b := seedTenantA(t, h)
+	// A holds person A (template author, instance binding, HR event) and so does B.
+	if got := h.call(t, b, http.MethodPut, "/v1/templates/analyst-intern", templateJSON); got.status != http.StatusCreated {
+		t.Fatalf("seed B template = %d", got.status)
+	}
+	aBefore := remaining(t, h, a)
+	if len(aBefore) < 3 {
+		t.Fatalf("A holds person A in %v; the test proves nothing", aBefore)
+	}
+
+	// B's officer erases person A in B. A's records are untouched.
+	got := h.call(t, b, http.MethodPost, "/v1/privacy/erasures", erasureBody(uuid.New(), "DSR"), asOfficer()...)
+	if got.status != http.StatusCreated {
+		t.Fatalf("B's erasure = %d: %s", got.status, got.raw)
+	}
+	if aAfter := remaining(t, h, a); len(aAfter) != len(aBefore) || aAfter["agent_template_versions"] != aBefore["agent_template_versions"] {
+		t.Errorf("B's erasure changed A's records: before %v, after %v", aBefore, aAfter)
+	}
+	if n := remaining(t, h, b)["agent_template_versions"]; n != 0 {
+		t.Errorf("B's own template still names person A: %d", n)
+	}
+	// B's officer cannot read A's proof or export A's records.
+	if got := h.call(t, b, http.MethodGet, "/v1/privacy/erasures/"+seededErasure, "", asOfficer()...); got.status != http.StatusNotFound {
+		t.Errorf("B reads A's proof = %d, want 404", got.status)
+	}
+	export := h.call(t, b, http.MethodPost, "/v1/privacy/access", accessBody, asOfficer()...)
+	if strings.Contains(export.raw, "Support interns") && strings.Contains(export.raw, a.String()) {
+		t.Errorf("B's export contains A's records: %s", export.raw)
+	}
+	for table, rows := range export.body["sections"].(map[string]any) {
+		for _, row := range rows.([]any) {
+			if tenant, _ := row.(map[string]any)["tenant_id"].(string); tenant == a.String() {
+				t.Errorf("B's export has A's %s row", table)
+			}
+		}
+	}
+
+	// The definer function: tenant B's setting reaches only B; no setting or a free-form
+	// pseudonym is refused; the server role has no other way to rewrite history.
+	if err := testdb.ExecErr(h.db.AppURL, b, `SELECT erase_subject(ARRAY['dev:person-a@example.invalid'], 'erased:'||gen_random_uuid())`); err != nil {
+		t.Fatalf("erase_subject as B: %v", err)
+	}
+	if aAfter := remaining(t, h, a); aAfter["agent_template_versions"] != aBefore["agent_template_versions"] {
+		t.Errorf("erase_subject in B's tenant reached A")
+	}
+	for name, stmt := range map[string]string{
+		"no tenant":           `SELECT erase_subject(ARRAY['dev:person-a@example.invalid'], 'erased:'||gen_random_uuid())`,
+		"free-form pseudonym": `SELECT erase_subject(ARRAY['dev:person-a@example.invalid'], 'attacker-chosen')`,
+		"empty subject":       `SELECT erase_subject(ARRAY[]::text[], 'erased:'||gen_random_uuid())`,
+		"short subject":       `SELECT erase_subject(ARRAY['a'], 'erased:'||gen_random_uuid())`,
+	} {
+		tenant := b
+		if name == "no tenant" {
+			tenant = uuid.Nil
+		}
+		if err := testdb.ExecErr(h.db.AppURL, tenant, stmt); err == nil || !strings.Contains(err.Error(), "erase_subject") {
+			t.Errorf("%s: err = %v, want erase_subject to refuse", name, err)
+		}
+	}
+	for name, stmt := range map[string]string{
+		"rewrite authorship directly": `UPDATE agent_template_versions SET created_by = 'x'`,
+		"appoint an officer":          `INSERT INTO privacy_officers (tenant_id, officer) VALUES ($1, 'dev:self-appointed')`,
+		"alter a proof":               `UPDATE erasure_requests SET reason = 'x'`,
+	} {
+		var args []any
+		if strings.Contains(stmt, "$1") {
+			args = []any{b}
+		}
+		if err := testdb.ExecErr(h.db.AppURL, b, stmt, args...); err == nil || !strings.Contains(err.Error(), "permission denied") {
+			t.Errorf("%s as the server role: err = %v, want permission denied", name, err)
+		}
 	}
 }

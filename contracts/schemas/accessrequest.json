@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/accessrequest.json",
+  "title": "AccessRequest",
+  "description": "Export everything a service holds about a person (GDPR Art 15, FR-309).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["subject"],
+  "properties": {
+    "subject": { "$ref": "privacysubject.json" }
+  }
+}

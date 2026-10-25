@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/erasureproof.json",
+  "title": "ErasureProof",
+  "description": "What one service erased for a request, and what it kept and why. It holds no identifier of the person: subjectDigest lets someone who already knows the identifiers confirm which person it was.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "service", "completedAt", "requestedBy", "pseudonym", "counts", "retained", "subjectDigest"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "service": { "type": "string", "enum": ["control-plane", "knowledge"] },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "requestedBy": { "type": "string" },
+    "pseudonym": { "description": "What the person's identifiers were replaced with.", "type": "string" },
+    "counts": {
+      "description": "Rows changed per data location, for example entries.contributor.",
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "retained": {
+      "type": "array",
+      "items": {
+        "title": "ErasureRetention",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "reason"],
+        "properties": {
+          "data": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "subjectDigest": { "description": "SHA-256 (hex) over the tenant id and the sorted identifiers.", "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

@@ -387,6 +387,76 @@ paths:
                 $ref: '#/components/schemas/CompiledPolicies'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/privacy/erasures:
+    post:
+      operationId: erasePersonalData
+      summary: Erase a person's data (privacy officers only); repeating an id returns
+        the stored proof
+      description: Deletes the person's own data, replaces their identifiers with
+        a pseudonym where records must stay (lineage, published history), and records
+        a signed privacy.erasure.completed event. Evidence events are retained under
+        GDPR Art 17(3); the proof says so.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ErasureRequest'
+      responses:
+        '200':
+          description: This id was already completed; the stored proof.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErasureProof'
+        '201':
+          description: Erased.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErasureProof'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/privacy/erasures/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      operationId: getErasure
+      summary: The proof of a completed erasure (privacy officers only)
+      responses:
+        '200':
+          description: The proof.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErasureProof'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/privacy/access:
+    post:
+      operationId: exportPersonalData
+      summary: Export everything held about a person (privacy officers, or the person
+        themselves)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessRequest'
+      responses:
+        '200':
+          description: The export.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessExport'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/events:
     get:
       operationId: listEvents
@@ -520,6 +590,43 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    AccessExport:
+      title: AccessExport
+      description: 'Everything one service holds about a person: one section per data
+        location, each a list of records as stored, plus the evidence events they
+        took part in.'
+      type: object
+      additionalProperties: false
+      required:
+      - service
+      - generatedAt
+      - sections
+      properties:
+        service:
+          type: string
+          enum:
+          - control-plane
+          - knowledge
+        generatedAt:
+          type: string
+          format: date-time
+        sections:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+    AccessRequest:
+      title: AccessRequest
+      description: Export everything a service holds about a person (GDPR Art 15,
+        FR-309).
+      type: object
+      additionalProperties: false
+      required:
+      - subject
+      properties:
+        subject:
+          $ref: '#/components/schemas/PrivacySubject'
     ActionPolicy:
       title: ActionPolicy
       description: 'The actions agents of one template may take with their tools (PRD
@@ -1228,6 +1335,98 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PolicyRuleRef'
+    ErasureProof:
+      title: ErasureProof
+      description: 'What one service erased for a request, and what it kept and why.
+        It holds no identifier of the person: subjectDigest lets someone who already
+        knows the identifiers confirm which person it was.'
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - service
+      - completedAt
+      - requestedBy
+      - pseudonym
+      - counts
+      - retained
+      - subjectDigest
+      properties:
+        id:
+          type: string
+          format: uuid
+        service:
+          type: string
+          enum:
+          - control-plane
+          - knowledge
+        completedAt:
+          type: string
+          format: date-time
+        requestedBy:
+          type: string
+        pseudonym:
+          description: What the person's identifiers were replaced with.
+          type: string
+        counts:
+          description: Rows changed per data location, for example entries.contributor.
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        retained:
+          type: array
+          items:
+            title: ErasureRetention
+            type: object
+            additionalProperties: false
+            required:
+            - data
+            - reason
+            properties:
+              data:
+                type: string
+              reason:
+                type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        subjectDigest:
+          description: SHA-256 (hex) over the tenant id and the sorted identifiers.
+          type: string
+          pattern: ^[0-9a-f]{64}$
+    ErasureRequest:
+      title: ErasureRequest
+      description: Erase a person's data (GDPR Art 17, FR-309). The client chooses
+        the id and sends the same request to every service; repeating it returns the
+        stored proof.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - subject
+      - reason
+      properties:
+        id:
+          type: string
+          format: uuid
+        subject:
+          $ref: '#/components/schemas/PrivacySubject'
+        reason:
+          description: Why, for example the reference of the data subject's request.
+          type: string
+          minLength: 1
+          maxLength: 2000
+        redactEntries:
+          description: 'Knowledge service only: entry revisions whose title and body
+            are themselves personal data. They and every revision derived from them
+            are redacted.'
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
     EvidenceEvent:
       title: EvidenceEvent
       description: One signed, hash-chained evidence event. The hashed body and signature
@@ -2103,6 +2302,35 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ActionPolicy'
+    PrivacySubject:
+      title: PrivacySubject
+      description: The person an erasure or access request is about, by every identifier
+        Muistamo may hold for them.
+      type: object
+      additionalProperties: false
+      required:
+      - identities
+      - email
+      properties:
+        identities:
+          description: Actor identities exactly as Muistamo records them, for example
+            dev:person-a@example.invalid.
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 3
+            maxLength: 320
+        email:
+          type: string
+          minLength: 3
+          maxLength: 320
+        hrPersonId:
+          description: The HR system's person id, if the person came through HR events.
+          type: string
+          minLength: 1
+          maxLength: 128
     Problem:
       title: Problem
       description: Error body (RFC 9457 problem details).
