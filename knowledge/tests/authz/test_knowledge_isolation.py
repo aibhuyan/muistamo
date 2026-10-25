@@ -1,0 +1,266 @@
+"""Adversarial suite for the knowledge core. Never skip or weaken (CLAUDE.md invariants 1-3).
+
+Person B and tenant B attack person A's personal layer, proposals and tenant data through the
+API and through direct SQL as the knowledge service's own role.
+"""
+
+import uuid
+
+import psycopg
+import pytest
+
+pytestmark = pytest.mark.authz
+
+PACK = {
+    "apiVersion": "muistamo.dev/v1",
+    "kind": "KnowledgePack",
+    "metadata": {"name": "equity-research-basics"},
+    "spec": {
+        "layer": "role",
+        "reviewers": ["dev:reviewer-r@example.invalid"],
+        "mergePolicy": {"requires": ["review"]},
+    },
+}
+A, B, R = "person-a@example.invalid", "person-b@example.invalid", "reviewer-r@example.invalid"
+TABLES = [
+    "tenants",
+    "packs",
+    "entries",
+    "personal_entries",
+    "pack_versions",
+    "proposals",
+    "proposal_entries",
+    "pack_version_entries",
+    "evidence_heads",
+    "evidence_events",
+]
+
+
+def entry(key: str, body: str) -> dict:
+    return {"key": key, "type": "fact", "title": key, "body": body}
+
+
+def seed(world) -> dict:
+    """Person A has a personal entry and an open proposal in tenant 1."""
+    a = world.client(A)
+    assert a.put("/v1/knowledge/packs/equity-research-basics", json=PACK).status_code == 201
+    private = a.post(
+        "/v1/knowledge/personal/entries", json=entry("a-private", "A's private working note")
+    ).json()
+    proposed = a.post(
+        "/v1/knowledge/personal/entries", json=entry("fiscal-year", "Ends 30 June.")
+    ).json()
+    proposal = a.post(
+        "/v1/knowledge/proposals",
+        json={"pack": "equity-research-basics", "entryIds": [proposed["id"]], "summary": "s"},
+    ).json()
+    # A second proposal is merged, so version tables hold rows for the SQL attacks to target.
+    merged = a.post(
+        "/v1/knowledge/personal/entries", json=entry("report-deadline", "Ten working days.")
+    ).json()
+    to_merge = a.post(
+        "/v1/knowledge/proposals",
+        json={"pack": "equity-research-basics", "entryIds": [merged["id"]], "summary": "s"},
+    ).json()
+    approved = world.client(R).post(
+        f"/v1/knowledge/proposals/{to_merge['id']}/decision",
+        json={"decision": "approve", "reason": "ok"},
+    )
+    assert approved.status_code == 200, approved.text
+    return {"private": private["id"], "proposed": proposed["id"], "proposal": proposal["id"]}
+
+
+def test_personal_layer_is_private_to_its_owner(world) -> None:
+    ids = seed(world)
+    b = world.client(B)
+    assert b.get("/v1/knowledge/personal/entries").json()["items"] == []
+    assert b.delete(f"/v1/knowledge/personal/entries/{ids['private']}").status_code == 404
+    stolen = b.post(
+        "/v1/knowledge/proposals",
+        json={"pack": "equity-research-basics", "entryIds": [ids["private"]], "summary": "s"},
+    )
+    assert stolen.status_code == 404
+    resolved = b.get("/v1/knowledge/resolve").json()["items"]
+    assert all(i["entry"]["key"] != "a-private" for i in resolved)
+    # A's entry still exists for A.
+    assert [
+        e["key"] for e in world.client(A).get("/v1/knowledge/personal/entries").json()["items"]
+    ] == ["a-private", "fiscal-year", "report-deadline"]
+
+
+def test_proposals_are_visible_to_contributor_and_reviewers_only(world) -> None:
+    ids = seed(world)
+    b = world.client(B)
+    assert b.get(f"/v1/knowledge/proposals/{ids['proposal']}").status_code == 404
+    assert b.get("/v1/knowledge/proposals", params={"role": "reviewer"}).json()["items"] == []
+    assert world.client(R).get(f"/v1/knowledge/proposals/{ids['proposal']}").status_code == 200
+
+
+def test_only_other_reviewers_decide_and_roll_back(world) -> None:
+    ids = seed(world)
+    decide = {"decision": "approve", "reason": "x"}
+    # A non-reviewer gets not-found, so the proposal's existence does not leak.
+    assert (
+        world.client(B)
+        .post(f"/v1/knowledge/proposals/{ids['proposal']}/decision", json=decide)
+        .status_code
+        == 404
+    )
+    # The contributor is refused outright.
+    assert (
+        world.client(A)
+        .post(f"/v1/knowledge/proposals/{ids['proposal']}/decision", json=decide)
+        .status_code
+        == 403
+    )
+    # A reviewer cannot approve their own proposal.
+    r = world.client(R)
+    own = r.post(
+        "/v1/knowledge/personal/entries", json=entry("reviewer-note", "Reviewed things.")
+    ).json()
+    mine = r.post(
+        "/v1/knowledge/proposals",
+        json={"pack": "equity-research-basics", "entryIds": [own["id"]], "summary": "s"},
+    ).json()
+    assert r.post(f"/v1/knowledge/proposals/{mine['id']}/decision", json=decide).status_code == 403
+    assert (
+        world.client(B)
+        .post(
+            "/v1/knowledge/packs/equity-research-basics/rollback",
+            json={"toVersion": "0.0.0", "reason": "x"},
+        )
+        .status_code
+        == 403
+    )
+    assert (
+        world.client(R).get("/v1/knowledge/packs/equity-research-basics").json()["latestVersion"]
+        == "0.1.0"
+    )
+
+
+def test_tenants_are_isolated_through_the_api(world) -> None:
+    seed(world)
+    other = world.client(A, tenant=world.other_tenant)  # the same person name in another tenant
+    assert other.get("/v1/knowledge/packs").json()["items"] == []
+    assert other.get("/v1/knowledge/personal/entries").json()["items"] == []
+    assert other.get("/v1/knowledge/proposals").json()["items"] == []
+    assert other.get("/v1/knowledge/events").json()["items"] == []
+    # The same pack name is independent per tenant.
+    assert other.put("/v1/knowledge/packs/equity-research-basics", json=PACK).status_code == 201
+
+
+def _exec(url: str, tenant: uuid.UUID | None, sql: str, *args) -> Exception | None:
+    with psycopg.connect(url) as conn:
+        try:
+            with conn.transaction():
+                if tenant:
+                    conn.execute(
+                        "SELECT set_config('muistamo.tenant_id', %s, true)", (str(tenant),)
+                    )
+                conn.execute(sql, args)
+        except psycopg.Error as exc:
+            return exc
+    return None
+
+
+def _count(url: str, tenant: uuid.UUID | None, sql: str, *args) -> int:
+    with psycopg.connect(url) as conn, conn.transaction():
+        if tenant:
+            conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(tenant),))
+        return conn.execute(sql, args).fetchone()[0]
+
+
+def test_app_role_sees_nothing_without_a_tenant(world) -> None:
+    seed(world)
+    for table in TABLES:
+        assert _count(world.db.app_url, None, f"SELECT count(*) FROM knowledge.{table}") == 0, table
+        assert _count(world.db.owner_url, None, f"SELECT count(*) FROM knowledge.{table}") > 0, (
+            f"{table}: seed proves nothing"
+        )
+
+
+def test_app_role_cannot_reach_another_tenant_by_sql(world) -> None:
+    seed(world)
+    a, b = world.tenant, world.other_tenant
+    for table in TABLES:
+        column = "id" if table == "tenants" else "tenant_id"
+        assert (
+            _count(
+                world.db.app_url,
+                b,
+                f"SELECT count(*) FROM knowledge.{table} WHERE {column} = %s",
+                a,
+            )
+            == 0
+        ), table
+    attacks = {
+        "plant a pack in A": (
+            "INSERT INTO knowledge.packs (tenant_id, name, layer, reviewers, document)"
+            " VALUES (%s, 'planted', 'role', ARRAY['x'], '{}')",
+            a,
+        ),
+        "plant an entry in A": (
+            "INSERT INTO knowledge.entries (tenant_id, id, key, type, title, body, data_class, contributor)"
+            " VALUES (%s, gen_random_uuid(), 'k', 'fact', 't', 'b', 'internal', 'x')",
+            a,
+        ),
+        "advance A's chain head": (
+            "INSERT INTO knowledge.evidence_heads (tenant_id, seq, hash) VALUES (%s, 0, repeat('ab', 32))"
+            " ON CONFLICT (tenant_id) DO UPDATE SET seq = 0",
+            a,
+        ),
+    }
+    for name, (sql, arg) in attacks.items():
+        err = _exec(world.db.app_url, b, sql, arg)
+        assert err is not None and "row-level security" in str(err), f"{name}: {err}"
+    # UPDATE of A's rows under B's policy matches nothing.
+    assert (
+        _exec(
+            world.db.app_url,
+            b,
+            "UPDATE knowledge.packs SET reviewers = ARRAY['dev:attacker'] WHERE tenant_id = %s",
+            a,
+        )
+        is None
+    )
+    assert (
+        _count(
+            world.db.owner_url,
+            None,
+            "SELECT count(*) FROM knowledge.packs WHERE reviewers = ARRAY['dev:attacker']",
+        )
+        == 0
+    )
+
+
+def test_evidence_and_keys_cannot_be_rewritten_by_the_app_role(world) -> None:
+    seed(world)
+    for sql in (
+        "UPDATE knowledge.evidence_events SET actor = 'x'",
+        "DELETE FROM knowledge.evidence_events",
+        "DELETE FROM knowledge.evidence_signing_keys",
+        "INSERT INTO knowledge.evidence_signing_keys (key_id, algorithm, public_key) VALUES (repeat('a', 32), 'ed25519', decode(repeat('ab', 32), 'hex'))",
+    ):
+        err = _exec(world.db.app_url, world.tenant, sql)
+        assert err is not None and "permission denied" in str(err), f"{sql}: {err}"
+
+
+def test_services_cannot_reach_each_others_data(world) -> None:
+    with psycopg.connect(world.db.owner_url) as conn:
+        outside = conn.execute(
+            "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('knowledge', 'pg_catalog', 'information_schema')"
+            " AND (has_table_privilege('muistamo_knowledge_app', format('%I.%I', schemaname, tablename), 'SELECT')"
+            "   OR has_table_privilege('muistamo_knowledge_app', format('%I.%I', schemaname, tablename), 'INSERT'))"
+        ).fetchone()[0]
+        assert outside == 0, "the knowledge role can read or write tables outside its schema"
+        assert (
+            conn.execute(
+                "SELECT has_schema_privilege('muistamo_app', 'knowledge', 'USAGE')"
+            ).fetchone()[0]
+            is False
+        )
+        inside = conn.execute(
+            "SELECT count(*) FROM pg_tables WHERE schemaname = 'knowledge'"
+            " AND has_table_privilege('muistamo_app', format('%I.%I', schemaname, tablename), 'SELECT')"
+        ).fetchone()[0]
+        assert inside == 0, "the control plane's role can read knowledge tables"

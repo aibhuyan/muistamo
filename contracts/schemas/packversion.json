@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/packversion.json",
+  "title": "PackVersion",
+  "description": "An immutable version of a pack's content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pack",
+    "version",
+    "reason",
+    "createdBy",
+    "createdAt",
+    "entries"
+  ],
+  "properties": {
+    "pack": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "parent": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "createdBy": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "packentry.json"
+      }
+    }
+  }
+}

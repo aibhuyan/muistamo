@@ -487,6 +487,28 @@ components:
           type: string
         document:
           $ref: '#/components/schemas/AgentTemplate'
+    CheckResult:
+      title: CheckResult
+      description: One automated check finding. Matched secret values are never echoed.
+      type: object
+      additionalProperties: false
+      required:
+      - ruleId
+      - severity
+      - entryKey
+      - message
+      properties:
+        ruleId:
+          type: string
+        severity:
+          type: string
+          enum:
+          - blocking
+          - warning
+        entryKey:
+          type: string
+        message:
+          type: string
     EvidenceEvent:
       title: EvidenceEvent
       description: One signed, hash-chained evidence event. The hashed body and signature
@@ -667,6 +689,105 @@ components:
       properties:
         to:
           $ref: '#/components/schemas/InstanceState'
+    KnowledgeEntry:
+      title: KnowledgeEntry
+      description: An immutable entry revision.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - key
+      - type
+      - title
+      - body
+      - dataClass
+      - contributor
+      - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          description: Stable key; the most specific layer wins for the same key.
+          type: string
+          pattern: ^[a-z0-9]+([.-][a-z0-9]+)*$
+          maxLength: 120
+        type:
+          type: string
+          enum:
+          - skill
+          - fact
+          - example
+        title:
+          type: string
+        body:
+          type: string
+        source:
+          type: string
+        dataClass:
+          type: string
+          enum:
+          - public
+          - internal
+          - confidential
+        contributor:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    KnowledgeEntryInput:
+      title: KnowledgeEntryInput
+      description: A new entry captured into the caller's personal layer.
+      type: object
+      additionalProperties: false
+      required:
+      - key
+      - type
+      - title
+      - body
+      properties:
+        key:
+          description: Stable key; the most specific layer wins for the same key.
+          type: string
+          pattern: ^[a-z0-9]+([.-][a-z0-9]+)*$
+          maxLength: 120
+        type:
+          type: string
+          enum:
+          - skill
+          - fact
+          - example
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        body:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        source:
+          description: Where this knowledge comes from (URL, document, person).
+          type: string
+          maxLength: 500
+        dataClass:
+          type: string
+          enum:
+          - public
+          - internal
+          - confidential
+          default: internal
+    KnowledgeEntryPage:
+      title: KnowledgeEntryPage
+      description: The caller's personal entries.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeEntry'
     KnowledgePack:
       title: KnowledgePack
       description: A versioned, reviewed body of company knowledge (PRD section 5).
@@ -691,20 +812,15 @@ components:
           type: object
           additionalProperties: false
           required:
-          - version
           - layer
           properties:
-            version:
-              description: Semantic version of the pack.
-              type: string
-              pattern: ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$
             layer:
               type: string
               enum:
               - company
               - role
               - team
-              - personal
+              description: Personal layers are per person and are not packs.
             mandatory:
               description: Users and agents cannot switch a mandatory pack off.
               type: boolean
@@ -712,6 +828,9 @@ components:
               type: array
               items:
                 type: string
+              description: People (actor names) who may approve or reject proposals
+                and roll back versions.
+              minItems: 1
             mergePolicy:
               title: MergePolicy
               type: object
@@ -727,6 +846,39 @@ components:
             storageLocation:
               description: Customer-bound object storage location for pack content.
               type: string
+    KnowledgePackPage:
+      title: KnowledgePackPage
+      description: The tenant's packs.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgePackRecord'
+    KnowledgePackRecord:
+      title: KnowledgePackRecord
+      description: A pack definition and its latest content version.
+      type: object
+      additionalProperties: false
+      required:
+      - document
+      - latestVersion
+      - createdAt
+      - updatedAt
+      properties:
+        document:
+          $ref: '#/components/schemas/KnowledgePack'
+        latestVersion:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     ObjectMeta:
       title: ObjectMeta
       description: Metadata shared by every Muistamo YAML kind.
@@ -746,6 +898,67 @@ components:
           type: object
           additionalProperties:
             type: string
+    PackEntry:
+      title: PackEntry
+      description: An entry in a pack version, with lineage.
+      type: object
+      additionalProperties: false
+      required:
+      - entry
+      - proposal
+      - reviewer
+      properties:
+        entry:
+          $ref: '#/components/schemas/KnowledgeEntry'
+        proposal:
+          description: The proposal that merged it.
+          type: string
+          format: uuid
+        reviewer:
+          type: string
+    PackVersion:
+      title: PackVersion
+      description: An immutable version of a pack's content.
+      type: object
+      additionalProperties: false
+      required:
+      - pack
+      - version
+      - reason
+      - createdBy
+      - createdAt
+      - entries
+      properties:
+        pack:
+          type: string
+        version:
+          type: string
+          pattern: ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$
+        parent:
+          type: string
+        reason:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackEntry'
+    PackVersionPage:
+      title: PackVersionPage
+      description: A pack's versions, newest first.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackVersion'
     Problem:
       title: Problem
       description: Error body (RFC 9457 problem details).
@@ -762,3 +975,196 @@ components:
           type: integer
         detail:
           type: string
+    Proposal:
+      title: Proposal
+      description: A proposal of entries to a pack, with check results and the decision.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - pack
+      - contributor
+      - summary
+      - status
+      - entries
+      - checks
+      - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        pack:
+          type: string
+        contributor:
+          type: string
+        summary:
+          type: string
+        status:
+          type: string
+          enum:
+          - checks-failed
+          - in-review
+          - approved
+          - rejected
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeEntry'
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckResult'
+        decision:
+          $ref: '#/components/schemas/ProposalDecisionRecord'
+        mergedVersion:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    ProposalDecision:
+      title: ProposalDecision
+      description: A reviewer's decision on a proposal.
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      - reason
+      properties:
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        edits:
+          description: 'Approve with edits: replacement bodies by entry key.'
+          type: array
+          items:
+            title: EntryEdit
+            type: object
+            additionalProperties: false
+            required:
+            - key
+            - body
+            properties:
+              key:
+                description: Stable key; the most specific layer wins for the same
+                  key.
+                type: string
+                pattern: ^[a-z0-9]+([.-][a-z0-9]+)*$
+                maxLength: 120
+              body:
+                type: string
+                minLength: 1
+                maxLength: 20000
+    ProposalDecisionRecord:
+      title: ProposalDecisionRecord
+      description: The reviewer's decision.
+      type: object
+      additionalProperties: false
+      required:
+      - reviewer
+      - decision
+      - reason
+      - decidedAt
+      properties:
+        reviewer:
+          type: string
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+        reason:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+    ProposalInput:
+      title: ProposalInput
+      description: Propose personal entries to a pack.
+      type: object
+      additionalProperties: false
+      required:
+      - pack
+      - entryIds
+      - summary
+      properties:
+        pack:
+          type: string
+        entryIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        summary:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    ProposalPage:
+      title: ProposalPage
+      description: Proposals visible to the caller.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Proposal'
+    ResolvedEntry:
+      title: ResolvedEntry
+      description: An effective entry for the caller, and where it came from.
+      type: object
+      additionalProperties: false
+      required:
+      - entry
+      - layer
+      properties:
+        entry:
+          $ref: '#/components/schemas/KnowledgeEntry'
+        layer:
+          type: string
+          enum:
+          - personal
+          - team
+          - role
+          - company
+        pack:
+          type: string
+        version:
+          type: string
+    ResolvedEntryPage:
+      title: ResolvedEntryPage
+      description: The caller's effective knowledge.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResolvedEntry'
+    RollbackInput:
+      title: RollbackInput
+      description: Publish a new version with an earlier version's content.
+      type: object
+      additionalProperties: false
+      required:
+      - toVersion
+      - reason
+      properties:
+        toVersion:
+          type: string
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000

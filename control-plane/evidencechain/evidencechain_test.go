@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -24,23 +26,43 @@ func goldenEvent() Event {
 	}
 }
 
-// The expected values were computed independently (Python: sorted keys, compact separators,
-// SHA-256), which equals RFC 8785 output for this ASCII, integer-only body. If this test fails,
-// the stored chain format changed: every existing event would stop verifying.
+// contracts/testdata/evidence-golden.json is shared with the Python implementation
+// (knowledge/tests/test_evidence.py); both must reproduce it exactly. It was computed with an
+// independent RFC 8785 implementation (Python rfc8785). If this test fails, the stored chain
+// format changed: every existing event would stop verifying.
 func TestGoldenVector(t *testing.T) {
-	const (
-		wantCanonical = `{"action":"template.version.created","actor":"dev:person-a@example.invalid","after":{"digest":"ab","version":1},"before":null,"occurredAt":"2026-10-25T10:00:00.000000Z","prevHash":"0000000000000000000000000000000000000000000000000000000000000000","requestId":"req-1","seq":1,"subject":{"kind":"AgentTemplate","name":"analyst-intern"},"tenant":"00000000-0000-0000-0000-000000000001"}`
-		wantHash      = "ebe569a43f8ee8c172bbd93f0e74190d65b535ab966213c9f90a40a25a9d64c5"
-	)
+	raw, err := os.ReadFile("../../contracts/testdata/evidence-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var golden struct {
+		Canonical, Hash, TestSeedHex, PublicKeyHex, KeyID, Signature string
+	}
+	if err := json.Unmarshal(raw, &golden); err != nil {
+		t.Fatal(err)
+	}
+
 	canonical, err := Canonical(goldenEvent())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(canonical) != wantCanonical {
-		t.Fatalf("canonical body:\n%s\nwant:\n%s", canonical, wantCanonical)
+	if string(canonical) != golden.Canonical {
+		t.Fatalf("canonical body:\n%s\nwant:\n%s", canonical, golden.Canonical)
 	}
-	if hash, _ := Hash(goldenEvent()); hash != wantHash {
-		t.Fatalf("hash = %s, want %s", hash, wantHash)
+	hash, _ := Hash(goldenEvent())
+	if hash != golden.Hash {
+		t.Fatalf("hash = %s, want %s", hash, golden.Hash)
+	}
+
+	seed, _ := hex.DecodeString(golden.TestSeedHex)
+	priv := ed25519.NewKeyFromSeed(seed)
+	pub := priv.Public().(ed25519.PublicKey)
+	if hex.EncodeToString(pub) != golden.PublicKeyHex || KeyID(pub) != golden.KeyID {
+		t.Fatalf("public key %x / key id %s, want %s / %s", pub, KeyID(pub), golden.PublicKeyHex, golden.KeyID)
+	}
+	digest, _ := hex.DecodeString(hash)
+	if sig := EncodeSignature(ed25519.Sign(priv, digest)); sig != golden.Signature {
+		t.Fatalf("signature = %s, want %s", sig, golden.Signature)
 	}
 }
 
@@ -122,3 +144,82 @@ func buildChain(t *testing.T, priv ed25519.PrivateKey, n int) []Event {
 }
 
 func buildChainCopy(chain []Event) []Event { return append([]Event(nil), chain...) }
+
+func goldenKeys(t *testing.T) (ed25519.PrivateKey, map[string]ed25519.PublicKey) {
+	t.Helper()
+	raw, err := os.ReadFile("../../contracts/testdata/evidence-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var golden struct{ TestSeedHex string }
+	if err := json.Unmarshal(raw, &golden); err != nil {
+		t.Fatal(err)
+	}
+	seed, _ := hex.DecodeString(golden.TestSeedHex)
+	priv := ed25519.NewKeyFromSeed(seed)
+	pub := priv.Public().(ed25519.PublicKey)
+	return priv, map[string]ed25519.PublicKey{KeyID(pub): pub}
+}
+
+// The fixture Python verifies (knowledge/tests/test_evidence.py test_verifies_go_chain).
+// Regenerate with MUISTAMO_UPDATE_FIXTURES=1.
+func TestGoChainFixtureIsCurrent(t *testing.T) {
+	priv, _ := goldenKeys(t)
+	pub := priv.Public().(ed25519.PublicKey)
+	var lines []string
+	prev := GenesisHash
+	for seq := int64(1); seq <= 3; seq++ {
+		e := Event{
+			Tenant: "00000000-0000-0000-0000-000000000002", Seq: seq,
+			OccurredAt: time.Date(2026, 10, 25, 11, 0, int(seq), 654321000, time.UTC),
+			Actor:      "workflow:joiner-x", Action: "instance.transitioned",
+			Subject:   Subject{Kind: "AgentInstance", Name: "analyst-intern-e-1001"},
+			Before:    json.RawMessage(`{"state":"requested"}`),
+			After:     json.RawMessage(`{"state":"active","revision":2,"note":"äö <ok> & \"quoted\""}`),
+			RequestID: "hr-event:ev", PrevHash: prev, KeyID: KeyID(pub),
+		}
+		e.Hash, _ = Hash(e)
+		digest, _ := hex.DecodeString(e.Hash)
+		e.Signature = EncodeSignature(ed25519.Sign(priv, digest))
+		line, err := json.Marshal(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, string(line))
+		prev = e.Hash
+	}
+	path := "../../contracts/testdata/evidence-chain-go.jsonl"
+	want := strings.Join(lines, "\n") + "\n"
+	if os.Getenv("MUISTAMO_UPDATE_FIXTURES") == "1" {
+		if err := os.WriteFile(path, []byte(want), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != want {
+		t.Fatalf("%s is stale (err %v); regenerate with MUISTAMO_UPDATE_FIXTURES=1", path, err)
+	}
+}
+
+// A chain produced by the Python knowledge service verifies in Go.
+func TestVerifiesPythonChain(t *testing.T) {
+	_, keys := goldenKeys(t)
+	raw, err := os.ReadFile("../../contracts/testdata/evidence-chain-python.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []Event
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		var e Event
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, e)
+	}
+	if len(events) != 3 {
+		t.Fatalf("events = %d", len(events))
+	}
+	if err := Verify(events, keys); err != nil {
+		t.Fatalf("Python chain does not verify in Go: %v", err)
+	}
+}

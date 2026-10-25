@@ -5,28 +5,53 @@
   "description": "A versioned, reviewed body of company knowledge (PRD section 5).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
   "properties": {
-    "apiVersion": { "type": "string", "const": "muistamo.dev/v1" },
-    "kind": { "type": "string", "const": "KnowledgePack" },
-    "metadata": { "$ref": "common/objectmeta.json" },
+    "apiVersion": {
+      "type": "string",
+      "const": "muistamo.dev/v1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "KnowledgePack"
+    },
+    "metadata": {
+      "$ref": "common/objectmeta.json"
+    },
     "spec": {
       "title": "KnowledgePackSpec",
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "layer"],
+      "required": [
+        "layer"
+      ],
       "properties": {
-        "version": {
-          "description": "Semantic version of the pack.",
+        "layer": {
           "type": "string",
-          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+          "enum": [
+            "company",
+            "role",
+            "team"
+          ],
+          "description": "Personal layers are per person and are not packs."
         },
-        "layer": { "type": "string", "enum": ["company", "role", "team", "personal"] },
         "mandatory": {
           "description": "Users and agents cannot switch a mandatory pack off.",
           "type": "boolean"
         },
-        "reviewers": { "type": "array", "items": { "type": "string" } },
+        "reviewers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "People (actor names) who may approve or reject proposals and roll back versions.",
+          "minItems": 1
+        },
         "mergePolicy": {
           "title": "MergePolicy",
           "type": "object",
@@ -34,7 +59,13 @@
           "properties": {
             "requires": {
               "type": "array",
-              "items": { "type": "string", "enum": ["review", "evaluation"] }
+              "items": {
+                "type": "string",
+                "enum": [
+                  "review",
+                  "evaluation"
+                ]
+              }
             }
           }
         },

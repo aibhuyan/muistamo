@@ -20,7 +20,7 @@ import (
 )
 
 type options struct {
-	server, tenant, actor string
+	server, knowledgeServer, tenant, actor string
 }
 
 func main() {
@@ -30,6 +30,7 @@ func main() {
 	root.SetOut(os.Stdout)
 	flags := root.PersistentFlags()
 	flags.StringVar(&opts.server, "server", envOr("MST_SERVER", "http://127.0.0.1:8080"), "control-plane URL (MST_SERVER)")
+	flags.StringVar(&opts.knowledgeServer, "knowledge-server", envOr("MST_KNOWLEDGE_SERVER", "http://127.0.0.1:8001"), "knowledge service URL (MST_KNOWLEDGE_SERVER)")
 	flags.StringVar(&opts.tenant, "tenant", os.Getenv("MST_TENANT"), "tenant id, development only (MST_TENANT)")
 	flags.StringVar(&opts.actor, "actor", envOr("MST_ACTOR", os.Getenv("USER")), "acting person, development only (MST_ACTOR)")
 
@@ -62,6 +63,12 @@ func applyCmd(opts *options) *cobra.Command {
 				return err
 			}
 			for _, doc := range docs {
+				if doc.Kind == "KnowledgePack" {
+					if err := applyPack(cmd, opts, doc); err != nil {
+						return err
+					}
+					continue
+				}
 				if err := apply(cmd, client, doc); err != nil {
 					return err
 				}
@@ -89,7 +96,12 @@ func diffCmd(opts *options) *cobra.Command {
 				return err
 			}
 			for _, doc := range docs {
-				current, _, err := fetch(cmd.Context(), client, doc)
+				var current []byte
+				if doc.Kind == "KnowledgePack" {
+					current, err = fetchPack(cmd.Context(), opts, doc)
+				} else {
+					current, _, err = fetch(cmd.Context(), client, doc)
+				}
 				if err != nil {
 					return err
 				}

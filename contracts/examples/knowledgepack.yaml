@@ -4,10 +4,9 @@ metadata:
   name: equity-research-basics
   owner: team-equity-research
 spec:
-  version: 3.1.0
   layer: role
   mandatory: false
-  reviewers: [group:research-leads]
+  reviewers: [dev:reviewer-b@example.invalid]
   mergePolicy:
-    requires: [review, evaluation]
+    requires: [review]
   storageLocation: s3://example-bucket/packs/equity-research-basics

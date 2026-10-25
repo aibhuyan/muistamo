@@ -25,9 +25,12 @@ extend-exclude = ["contracts/gen"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "BLE", "S"]
+# ruff format owns line width; it cannot split string literals, and SQL reads better unsplit.
+ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S101"]
+# Tests assert, and compose SQL from constant table names to attack every table.
+"**/tests/**" = ["S101", "S608"]
 
 [tool.pytest.ini_options]
 testpaths = ["knowledge/tests", "runtime/tests", "contracts/tests"]

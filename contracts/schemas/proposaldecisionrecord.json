@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/proposaldecisionrecord.json",
+  "title": "ProposalDecisionRecord",
+  "description": "The reviewer's decision.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reviewer",
+    "decision",
+    "reason",
+    "decidedAt"
+  ],
+  "properties": {
+    "reviewer": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "reject"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "decidedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

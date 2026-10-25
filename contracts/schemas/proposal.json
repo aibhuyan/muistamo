@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/proposal.json",
+  "title": "Proposal",
+  "description": "A proposal of entries to a pack, with check results and the decision.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "pack",
+    "contributor",
+    "summary",
+    "status",
+    "entries",
+    "checks",
+    "createdAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "pack": {
+      "type": "string"
+    },
+    "contributor": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "checks-failed",
+        "in-review",
+        "approved",
+        "rejected"
+      ]
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "knowledgeentry.json"
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "$ref": "checkresult.json"
+      }
+    },
+    "decision": {
+      "$ref": "proposaldecisionrecord.json"
+    },
+    "mergedVersion": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

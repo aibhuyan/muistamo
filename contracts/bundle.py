@@ -4,7 +4,7 @@ Each schema file becomes components.schemas.<title>, and every $ref to a file, w
 OpenAPI document or inside another schema, is rewritten to point there. Go generation reads the
 bundle so nested references become named types instead of anonymous copies.
 
-Usage: python contracts/bundle.py OUTPUT
+Usage: python contracts/bundle.py OPENAPI OUTPUT
 """
 
 import json
@@ -15,10 +15,9 @@ import yaml
 
 CONTRACTS = Path(__file__).parent
 SCHEMAS = CONTRACTS / "schemas"
-OPENAPI = CONTRACTS / "openapi" / "muistamo.v1.yaml"
 
 
-def main(output: Path) -> None:
+def main(openapi: Path, output: Path) -> None:
     files = sorted(SCHEMAS.rglob("*.json"))
     loaded = {path.resolve(): json.loads(path.read_text(encoding="utf-8")) for path in files}
     names = {path: schema["title"] for path, schema in loaded.items()}
@@ -30,8 +29,8 @@ def main(output: Path) -> None:
         body = {k: v for k, v in schema.items() if k not in ("$schema", "$id")}
         components[names[path]] = rewrite(body, path.parent, names)
 
-    document = yaml.safe_load(OPENAPI.read_text(encoding="utf-8"))
-    document = rewrite(document, OPENAPI.parent, names)
+    document = yaml.safe_load(openapi.read_text(encoding="utf-8"))
+    document = rewrite(document, openapi.resolve().parent, names)
     document.setdefault("components", {})["schemas"] = dict(sorted(components.items()))
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -56,4 +55,4 @@ def rewrite(node, base: Path, names: dict[Path, str]):
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    main(Path(sys.argv[1]), Path(sys.argv[2]))

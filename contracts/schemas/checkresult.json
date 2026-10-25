@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/checkresult.json",
+  "title": "CheckResult",
+  "description": "One automated check finding. Matched secret values are never echoed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ruleId",
+    "severity",
+    "entryKey",
+    "message"
+  ],
+  "properties": {
+    "ruleId": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "blocking",
+        "warning"
+      ]
+    },
+    "entryKey": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    }
+  }
+}

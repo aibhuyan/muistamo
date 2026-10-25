@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/packentry.json",
+  "title": "PackEntry",
+  "description": "An entry in a pack version, with lineage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "entry",
+    "proposal",
+    "reviewer"
+  ],
+  "properties": {
+    "entry": {
+      "$ref": "knowledgeentry.json"
+    },
+    "proposal": {
+      "description": "The proposal that merged it.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "reviewer": {
+      "type": "string"
+    }
+  }
+}

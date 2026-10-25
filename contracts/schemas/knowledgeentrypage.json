@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/knowledgeentrypage.json",
+  "title": "KnowledgeEntryPage",
+  "description": "The caller's personal entries.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "items"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "knowledgeentry.json"
+      }
+    }
+  }
+}

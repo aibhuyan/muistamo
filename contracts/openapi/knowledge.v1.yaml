@@ -1,0 +1,316 @@
+openapi: 3.1.0
+info:
+  title: Muistamo knowledge API
+  version: 0.1.0
+  description: >-
+    The knowledge service: packs, the personal layer, proposals, review, versions and layer
+    resolution. Schemas live in ../schemas and are referenced, never copied. Every call is scoped
+    to one tenant and one acting person; until real authentication exists both come from
+    development-only headers that are disabled by default.
+servers:
+  - url: http://localhost:8001
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      responses:
+        "200":
+          description: The service is up.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/common/healthstatus.json"
+
+  /v1/knowledge/packs:
+    get:
+      operationId: listPacks
+      responses:
+        "200":
+          description: The tenant's packs.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/knowledgepackpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/packs/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getPack
+      responses:
+        "200":
+          $ref: "#/components/responses/PackRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: applyPack
+      summary: Create or update a pack definition (content changes only through proposals)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/knowledgepack.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/PackRecord"
+        "201":
+          $ref: "#/components/responses/PackRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/packs/{name}/versions:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: listPackVersions
+      responses:
+        "200":
+          description: The pack's versions, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/packversionpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/packs/{name}/versions/{version}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getPackVersion
+      responses:
+        "200":
+          $ref: "#/components/responses/PackVersion"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/packs/{name}/rollback:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    post:
+      operationId: rollbackPack
+      summary: Publish a new version with an earlier version's content (reviewers only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/rollbackinput.json"
+      responses:
+        "201":
+          $ref: "#/components/responses/PackVersion"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/personal/entries:
+    get:
+      operationId: listPersonalEntries
+      summary: The caller's own personal layer
+      responses:
+        "200":
+          description: The caller's entries.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/knowledgeentrypage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: captureEntry
+      summary: Capture an entry into the caller's personal layer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/knowledgeentryinput.json"
+      responses:
+        "201":
+          description: Captured.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/knowledgeentry.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/personal/entries/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deleteEntry
+      summary: Delete one of the caller's personal entries
+      responses:
+        "204":
+          description: Deleted.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/proposals:
+    get:
+      operationId: listProposals
+      summary: Proposals the caller made, or may review
+      parameters:
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [contributor, reviewer]
+            default: contributor
+      responses:
+        "200":
+          description: Proposals.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/proposalpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createProposal
+      summary: Propose the caller's personal entries to a pack; checks run immediately
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/proposalinput.json"
+      responses:
+        "201":
+          $ref: "#/components/responses/Proposal"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/proposals/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ProposalId"
+    get:
+      operationId: getProposal
+      responses:
+        "200":
+          $ref: "#/components/responses/Proposal"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/proposals/{id}/decision:
+    parameters:
+      - $ref: "#/components/parameters/ProposalId"
+    post:
+      operationId: decideProposal
+      summary: Approve (merging a new pack version) or reject; reviewers only, never one's own
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/proposaldecision.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/Proposal"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/resolve:
+    get:
+      operationId: resolve
+      summary: The caller's effective entries across layers; the most specific layer wins
+      parameters:
+        - name: packs
+          in: query
+          required: false
+          description: Comma-separated pack names. Mandatory packs are always included.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Effective entries.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/resolvedentrypage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/events:
+    get:
+      operationId: listEvents
+      summary: Export the tenant's knowledge evidence chain in seq order
+      parameters:
+        - name: afterSeq
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: A page of evidence events.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/evidenceeventpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+components:
+  parameters:
+    Name:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    ProposalId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    PackRecord:
+      description: A pack.
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/knowledgepackrecord.json"
+    PackVersion:
+      description: A pack version.
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/packversion.json"
+    Proposal:
+      description: A proposal.
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/proposal.json"
+    Problem:
+      description: An error (RFC 9457).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../schemas/common/problem.json"

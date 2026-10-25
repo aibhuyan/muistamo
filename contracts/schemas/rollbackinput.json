@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/rollbackinput.json",
+  "title": "RollbackInput",
+  "description": "Publish a new version with an earlier version's content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "toVersion",
+    "reason"
+  ],
+  "properties": {
+    "toVersion": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    }
+  }
+}
