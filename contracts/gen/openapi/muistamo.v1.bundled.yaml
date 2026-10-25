@@ -169,6 +169,35 @@ paths:
                 $ref: '#/components/schemas/EvidenceEventPage'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/hr/events:
+    post:
+      operationId: receiveHrEvent
+      summary: Receive a joiner or leaver event from the HR system
+      description: 'Authenticated by HMAC, not by the user resolver: X-Muistamo-Tenant
+        names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex
+        HMAC-SHA256 of "t.body"> under the tenant''s HR secret. Signatures older than
+        five minutes are refused.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HREvent'
+      responses:
+        '200':
+          description: This event id was already received; nothing new was started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HREventAccepted'
+        '202':
+          description: Accepted; a workflow is handling it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HREventAccepted'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   parameters:
     Name:
@@ -538,6 +567,70 @@ components:
         nextAfterSeq:
           description: Pass as afterSeq for the next page. Absent on the last page.
           type: integer
+    HREvent:
+      title: HREvent
+      description: A joiner or leaver event from the tenant's HR system, in Muistamo's
+        own shape. HRIS connectors map their payloads onto this. Sent to POST /v1/hr/events
+        with an HMAC signature.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - type
+      - occurredAt
+      - person
+      properties:
+        id:
+          description: 'The HR system''s event id. Re-sending the same id is safe:
+            it is processed once.'
+          type: string
+          minLength: 1
+          maxLength: 200
+        type:
+          type: string
+          enum:
+          - joiner
+          - leaver
+        occurredAt:
+          type: string
+          format: date-time
+        person:
+          title: HRPerson
+          type: object
+          additionalProperties: false
+          required:
+          - id
+          - email
+          - jobCode
+          properties:
+            id:
+              description: Stable employee id in the HR system.
+              type: string
+              minLength: 1
+              maxLength: 200
+            email:
+              type: string
+              minLength: 3
+            jobCode:
+              type: string
+              minLength: 1
+    HREventAccepted:
+      title: HREventAccepted
+      description: Which workflow handles an HR event.
+      type: object
+      additionalProperties: false
+      required:
+      - eventId
+      - workflowId
+      - duplicate
+      properties:
+        eventId:
+          type: string
+        workflowId:
+          type: string
+        duplicate:
+          description: True when this event id was already received.
+          type: boolean
     HealthStatus:
       title: HealthStatus
       description: Response body of every service health endpoint.

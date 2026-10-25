@@ -123,6 +123,24 @@ func (e AgentTemplateSpecRiskTier) Valid() bool {
 	}
 }
 
+// Defines values for HREventType.
+const (
+	HREventTypeJoiner HREventType = "joiner"
+	HREventTypeLeaver HREventType = "leaver"
+)
+
+// Valid indicates whether the value is a known member of the HREventType enum.
+func (e HREventType) Valid() bool {
+	switch e {
+	case HREventTypeJoiner:
+		return true
+	case HREventTypeLeaver:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatusStatus.
 const (
 	HealthStatusStatusOk HealthStatusStatus = "ok"
@@ -391,6 +409,32 @@ type EvidenceEventPage struct {
 	NextAfterSeq *int `json:"nextAfterSeq,omitempty"`
 }
 
+// HREvent A joiner or leaver event from the tenant's HR system, in Muistamo's own shape. HRIS connectors map their payloads onto this. Sent to POST /v1/hr/events with an HMAC signature.
+type HREvent struct {
+	// Id The HR system's event id. Re-sending the same id is safe: it is processed once.
+	Id         string    `json:"id"`
+	OccurredAt time.Time `json:"occurredAt"`
+	Person     struct {
+		Email string `json:"email"`
+
+		// Id Stable employee id in the HR system.
+		Id      string `json:"id"`
+		JobCode string `json:"jobCode"`
+	} `json:"person"`
+	Type HREventType `json:"type"`
+}
+
+// HREventType defines model for HREvent.Type.
+type HREventType string
+
+// HREventAccepted Which workflow handles an HR event.
+type HREventAccepted struct {
+	// Duplicate True when this event id was already received.
+	Duplicate  bool   `json:"duplicate"`
+	EventId    string `json:"eventId"`
+	WorkflowId string `json:"workflowId"`
+}
+
 // HealthStatus Response body of every service health endpoint.
 type HealthStatus struct {
 	Service string             `json:"service"`
@@ -511,6 +555,9 @@ type ListTemplatesParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ReceiveHrEventJSONRequestBody defines body for ReceiveHrEvent for application/json ContentType.
+type ReceiveHrEventJSONRequestBody = HREvent
+
 // ApplyInstanceJSONRequestBody defines body for ApplyInstance for application/json ContentType.
 type ApplyInstanceJSONRequestBody = AgentInstance
 
@@ -603,6 +650,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/events (the `ListEvents` operationId).
 	ListEvents(ctx context.Context, params *ListEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReceiveHrEventWithBody Receive a joiner or leaver event from the HR system
+	//
+	// Authenticated by HMAC, not by the user resolver: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under the tenant's HR secret. Signatures older than five minutes are refused.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/hr/events (the `ReceiveHrEvent` operationId).
+	ReceiveHrEventWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReceiveHrEvent Receive a joiner or leaver event from the HR system
+	//
+	// Authenticated by HMAC, not by the user resolver: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under the tenant's HR secret. Signatures older than five minutes are refused.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/hr/events (the `ReceiveHrEvent` operationId).
+	ReceiveHrEvent(ctx context.Context, body ReceiveHrEventJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListInstances List instances
 	//
@@ -700,6 +765,44 @@ func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (
 // Corresponds with GET /v1/events (the `ListEvents` operationId).
 func (c *Client) ListEvents(ctx context.Context, params *ListEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListEventsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReceiveHrEventWithBody Receive a joiner or leaver event from the HR system
+//
+// Authenticated by HMAC, not by the user resolver: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under the tenant's HR secret. Signatures older than five minutes are refused.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/hr/events (the `ReceiveHrEvent` operationId).
+func (c *Client) ReceiveHrEventWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReceiveHrEventRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReceiveHrEvent Receive a joiner or leaver event from the HR system
+//
+// Authenticated by HMAC, not by the user resolver: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under the tenant's HR secret. Signatures older than five minutes are refused.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/hr/events (the `ReceiveHrEvent` operationId).
+func (c *Client) ReceiveHrEvent(ctx context.Context, body ReceiveHrEventJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReceiveHrEventRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -984,6 +1087,46 @@ func NewListEventsRequest(server string, params *ListEventsParams) (*http.Reques
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewReceiveHrEventRequest calls the generic ReceiveHrEvent builder with application/json body
+func NewReceiveHrEventRequest(server string, body ReceiveHrEventJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReceiveHrEventRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewReceiveHrEventRequestWithBody constructs an http.Request for the ReceiveHrEvent method, with any body, and a specified content type
+func NewReceiveHrEventRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hr/events")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -1458,6 +1601,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/events (the `ListEvents` operationId).
 	ListEventsWithResponse(ctx context.Context, params *ListEventsParams, reqEditors ...RequestEditorFn) (*ListEventsResponse, error)
 
+	// ReceiveHrEventWithBodyWithResponse Receive a joiner or leaver event from the HR system
+	//
+	// Authenticated by HMAC, not by the user resolver: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under the tenant's HR secret. Signatures older than five minutes are refused.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/hr/events (the `ReceiveHrEvent` operationId).
+	ReceiveHrEventWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReceiveHrEventResponse, error)
+
+	// ReceiveHrEventWithResponse Receive a joiner or leaver event from the HR system
+	//
+	// Authenticated by HMAC, not by the user resolver: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under the tenant's HR secret. Signatures older than five minutes are refused.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/hr/events (the `ReceiveHrEvent` operationId).
+	ReceiveHrEventWithResponse(ctx context.Context, body ReceiveHrEventJSONRequestBody, reqEditors ...RequestEditorFn) (*ReceiveHrEventResponse, error)
+
 	// ListInstancesWithResponse List instances
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -1627,6 +1788,61 @@ func (r ListEventsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListEventsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReceiveHrEventResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HREventAccepted
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *HREventAccepted
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReceiveHrEventResponse) GetJSON200() *HREventAccepted {
+	return r.JSON200
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r ReceiveHrEventResponse) GetJSON202() *HREventAccepted {
+	return r.JSON202
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ReceiveHrEventResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ReceiveHrEventResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReceiveHrEventResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReceiveHrEventResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReceiveHrEventResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2113,6 +2329,36 @@ func (c *ClientWithResponses) ListEventsWithResponse(ctx context.Context, params
 	return ParseListEventsResponse(rsp)
 }
 
+// ReceiveHrEventWithBodyWithResponse Receive a joiner or leaver event from the HR system
+//
+// Authenticated by HMAC, not by the user resolver: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under the tenant's HR secret. Signatures older than five minutes are refused.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/hr/events (the `ReceiveHrEvent` operationId).
+func (c *ClientWithResponses) ReceiveHrEventWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReceiveHrEventResponse, error) {
+	rsp, err := c.ReceiveHrEventWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReceiveHrEventResponse(rsp)
+}
+
+// ReceiveHrEventWithResponse Receive a joiner or leaver event from the HR system
+//
+// Authenticated by HMAC, not by the user resolver: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under the tenant's HR secret. Signatures older than five minutes are refused.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/hr/events (the `ReceiveHrEvent` operationId).
+func (c *ClientWithResponses) ReceiveHrEventWithResponse(ctx context.Context, body ReceiveHrEventJSONRequestBody, reqEditors ...RequestEditorFn) (*ReceiveHrEventResponse, error) {
+	rsp, err := c.ReceiveHrEvent(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReceiveHrEventResponse(rsp)
+}
+
 // ListInstancesWithResponse List instances
 //
 // Returns a wrapper object for the known response body format(s).
@@ -2310,6 +2556,46 @@ func ParseListEventsResponse(rsp *http.Response) (*ListEventsResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReceiveHrEventResponse parses an HTTP response from a ReceiveHrEventWithResponse call
+func ParseReceiveHrEventResponse(rsp *http.Response) (*ReceiveHrEventResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReceiveHrEventResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HREventAccepted
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest HREventAccepted
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
@@ -2707,6 +2993,9 @@ type ServerInterface interface {
 	// ListEvents Export the tenant's evidence chain in seq order
 	// (GET /v1/events)
 	ListEvents(w http.ResponseWriter, r *http.Request, params ListEventsParams)
+	// ReceiveHrEvent Receive a joiner or leaver event from the HR system
+	// (POST /v1/hr/events)
+	ReceiveHrEvent(w http.ResponseWriter, r *http.Request)
 	// ListInstances List instances
 	// (GET /v1/instances)
 	ListInstances(w http.ResponseWriter, r *http.Request, params ListInstancesParams)
@@ -2793,6 +3082,20 @@ func (siw *ServerInterfaceWrapper) ListEvents(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReceiveHrEvent operation middleware
+func (siw *ServerInterfaceWrapper) ReceiveHrEvent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReceiveHrEvent(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3237,6 +3540,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/instances/{name}", wrapper.ApplyInstance)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/instances/{name}/transitions", wrapper.TransitionInstance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events", wrapper.ListEvents)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/hr/events", wrapper.ReceiveHrEvent)
 
 	return m
 }
@@ -3310,6 +3614,59 @@ type ListEventsdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ListEventsdefaultApplicationProblemPlusJSONResponse) VisitListEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceiveHrEventRequestObject struct {
+	Body *ReceiveHrEventJSONRequestBody
+}
+
+type ReceiveHrEventResponseObject interface {
+	VisitReceiveHrEventResponse(w http.ResponseWriter) error
+}
+
+type ReceiveHrEvent200JSONResponse HREventAccepted
+
+func (response ReceiveHrEvent200JSONResponse) VisitReceiveHrEventResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceiveHrEvent202JSONResponse HREventAccepted
+
+func (response ReceiveHrEvent202JSONResponse) VisitReceiveHrEventResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceiveHrEventdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ReceiveHrEventdefaultApplicationProblemPlusJSONResponse) VisitReceiveHrEventResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -3713,6 +4070,9 @@ type StrictServerInterface interface {
 	// ListEvents Export the tenant's evidence chain in seq order
 	// (GET /v1/events)
 	ListEvents(ctx context.Context, request ListEventsRequestObject) (ListEventsResponseObject, error)
+	// ReceiveHrEvent Receive a joiner or leaver event from the HR system
+	// (POST /v1/hr/events)
+	ReceiveHrEvent(ctx context.Context, request ReceiveHrEventRequestObject) (ReceiveHrEventResponseObject, error)
 	// ListInstances List instances
 	// (GET /v1/instances)
 	ListInstances(ctx context.Context, request ListInstancesRequestObject) (ListInstancesResponseObject, error)
@@ -3821,6 +4181,37 @@ func (sh *strictHandler) ListEvents(w http.ResponseWriter, r *http.Request, para
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListEventsResponseObject); ok {
 		if err := validResponse.VisitListEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReceiveHrEvent operation middleware
+func (sh *strictHandler) ReceiveHrEvent(w http.ResponseWriter, r *http.Request) {
+	var request ReceiveHrEventRequestObject
+
+	var body ReceiveHrEventJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReceiveHrEvent(ctx, request.(ReceiveHrEventRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReceiveHrEvent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReceiveHrEventResponseObject); ok {
+		if err := validResponse.VisitReceiveHrEventResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

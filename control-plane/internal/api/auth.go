@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -51,8 +52,9 @@ func actorFrom(ctx context.Context) (registry.Actor, bool) {
 	return actor, ok
 }
 
-// authenticate resolves the actor for every request except the health check.
-func authenticate(resolver TenantResolver, log *slog.Logger, next http.Handler) http.Handler {
+// authenticate resolves the actor for every request except the health check. HR events carry
+// their own HMAC credential and never use the user resolver.
+func authenticate(resolver TenantResolver, hr HRIntake, log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/healthz" {
 			next.ServeHTTP(w, r)
@@ -61,7 +63,15 @@ func authenticate(resolver TenantResolver, log *slog.Logger, next http.Handler) 
 		requestID := uuid.NewString()
 		w.Header().Set("X-Request-Id", requestID)
 
-		tenant, name, err := resolver.Resolve(r)
+		var tenant uuid.UUID
+		var name string
+		var err error
+		if r.URL.Path == hrEventsPath {
+			tenant, err = verifyHR(r, hr, time.Now())
+			name = "hris:" + tenant.String()
+		} else {
+			tenant, name, err = resolver.Resolve(r)
+		}
 		if err != nil {
 			log.Warn("request refused", "request_id", requestID, "method", r.Method, "path", r.URL.Path, "err", err)
 			writeProblem(w, http.StatusUnauthorized, "Unauthorized", "")

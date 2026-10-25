@@ -99,6 +99,20 @@ func RegisterSigningKey(ctx context.Context, url, keyID string, public []byte) e
 	return nil
 }
 
+// SetHRSecret stores a tenant's HR webhook secret. url must connect as the table owner; the
+// server role can only read secrets. An existing secret is not replaced (rotation is not built).
+func SetHRSecret(ctx context.Context, url string, tenant uuid.UUID, secret []byte) error {
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	if _, err := conn.Exec(ctx, `INSERT INTO hr_webhook_secrets (tenant_id, secret) VALUES ($1, $2)`, tenant, secret); err != nil {
+		return fmt.Errorf("store HR secret for tenant %s: %w", tenant, err)
+	}
+	return nil
+}
+
 // SigningKeyRegistered reports whether keyID is a registered evidence signing key.
 func (db *DB) SigningKeyRegistered(ctx context.Context, keyID string) (bool, error) {
 	var ok bool

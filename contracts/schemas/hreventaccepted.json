@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/hreventaccepted.json",
+  "title": "HREventAccepted",
+  "description": "Which workflow handles an HR event.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "workflowId", "duplicate"],
+  "properties": {
+    "eventId": { "type": "string" },
+    "workflowId": { "type": "string" },
+    "duplicate": { "description": "True when this event id was already received.", "type": "boolean" }
+  }
+}

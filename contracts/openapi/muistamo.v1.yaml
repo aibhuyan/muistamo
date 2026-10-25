@@ -177,6 +177,36 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/hr/events:
+    post:
+      operationId: receiveHrEvent
+      summary: Receive a joiner or leaver event from the HR system
+      description: >-
+        Authenticated by HMAC, not by the user resolver: X-Muistamo-Tenant names the tenant and
+        X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under the
+        tenant's HR secret. Signatures older than five minutes are refused.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/hrevent.json"
+      responses:
+        "200":
+          description: This event id was already received; nothing new was started.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/hreventaccepted.json"
+        "202":
+          description: Accepted; a workflow is handling it.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/hreventaccepted.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   parameters:
     Name:

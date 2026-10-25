@@ -11,6 +11,7 @@ COMPOSE := docker compose -f deploy/dev/compose.yaml
 POSTGRES_PORT ?= 5432
 export POSTGRES_PORT
 export MUISTAMO_TEST_DATABASE_URL ?= postgres://muistamo:dev-only-not-a-secret@127.0.0.1:$(POSTGRES_PORT)/muistamo
+export MUISTAMO_TEST_TEMPORAL_ADDRESS ?= 127.0.0.1:7233
 
 .PHONY: setup generate check-generated lint test test-db test-authz dev dev-down
 
@@ -40,12 +41,12 @@ lint: check-generated
 	uv run --no-sync ruff format --check .
 	npm run --prefix console lint
 
-# Integration tests need PostgreSQL; they fail, never skip, without it. TEST_DB_EXTERNAL=1 uses
-# MUISTAMO_TEST_DATABASE_URL as given instead of starting the compose PostgreSQL.
+# Integration tests need PostgreSQL and Temporal; they fail, never skip, without them.
+# TEST_DB_EXTERNAL=1 uses MUISTAMO_TEST_DATABASE_URL and MUISTAMO_TEST_TEMPORAL_ADDRESS as given.
 test-db:
 	@if [ -n "$${TEST_DB_EXTERNAL:-}" ]; then echo "using external PostgreSQL at MUISTAMO_TEST_DATABASE_URL"; exit 0; fi; \
 	command -v docker >/dev/null || { echo "missing required tool: docker" >&2; exit 1; }; \
-	$(COMPOSE) up -d --wait postgres
+	$(COMPOSE) up -d --wait postgres temporal
 
 test: test-db
 	go test ./...
