@@ -1162,7 +1162,7 @@ type AccessRequest struct {
 	Subject PrivacySubject `json:"subject"`
 }
 
-// ActionPolicy The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template.
+// ActionPolicy The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template. A clone keeps its template's policy; a policy for a clone may only add deny and monitor rules, never allow, default or mode, so it can restrict a clone but never widen it.
 type ActionPolicy struct {
 	ApiVersion ActionPolicyApiVersion `json:"apiVersion"`
 	Kind       ActionPolicyKind       `json:"kind"`
@@ -1170,8 +1170,10 @@ type ActionPolicy struct {
 	// Metadata Metadata shared by every Muistamo YAML kind.
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     struct {
+		// AppliesTo A template (covering its clones) or one clone. A clone also keeps its template's policy; its own may only narrow it.
 		AppliesTo struct {
-			Template string `json:"template"`
+			Clone    *string `json:"clone,omitempty"`
+			Template *string `json:"template,omitempty"`
 		} `json:"appliesTo"`
 
 		// Default What happens to actions no rule allows: deny (the default) or allow. allow still yields to every deny rule.
@@ -1219,7 +1221,7 @@ type ActionPolicyPage struct {
 type ActionPolicyRecord struct {
 	CreatedAt time.Time `json:"createdAt"`
 
-	// Document The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template.
+	// Document The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template. A clone keeps its template's policy; a policy for a clone may only add deny and monitor rules, never allow, default or mode, so it can restrict a clone but never widen it.
 	Document  ActionPolicy `json:"document"`
 	Revision  int          `json:"revision"`
 	UpdatedAt time.Time    `json:"updatedAt"`
@@ -1395,9 +1397,10 @@ type AgentLinkKind string
 // AgentLinkSpecActFor same-user (the default): the called agent acts with the calling human's own access. service: it acts as itself.
 type AgentLinkSpecActFor string
 
-// AgentLinkEndpoint One end of an AgentLink. Release 1 selects agents by template; clones, instances and labels come later.
+// AgentLinkEndpoint One end of an AgentLink: a template (covering its clones too) or one clone. Instances, labels and external agents come later.
 type AgentLinkEndpoint struct {
-	Template string `json:"template"`
+	Clone    *string `json:"clone,omitempty"`
+	Template *string `json:"template,omitempty"`
 }
 
 // AgentLinkPage Every AgentLink in the tenant, by name.
@@ -2063,6 +2066,9 @@ type PolicyDecisionRequest struct {
 	// Agent action: the template taking the action.
 	Agent *string `json:"agent,omitempty"`
 
+	// AgentClone action: the agent's clone, if it is one; it must be a clone of agent.
+	AgentClone *string `json:"agentClone,omitempty"`
+
 	// Attributes action: facts about the request that rules can test, for example recipients.allInternal.
 	Attributes *map[string]bool `json:"attributes,omitempty"`
 
@@ -2073,14 +2079,20 @@ type PolicyDecisionRequest struct {
 	Depth *int `json:"depth,omitempty"`
 
 	// From call: the calling template.
-	From *string                   `json:"from,omitempty"`
-	Kind PolicyDecisionRequestKind `json:"kind"`
+	From *string `json:"from,omitempty"`
+
+	// FromClone call: the caller's clone, if it is one; it must be a clone of from.
+	FromClone *string                   `json:"fromClone,omitempty"`
+	Kind      PolicyDecisionRequestKind `json:"kind"`
 
 	// Skill call: the skill of the called agent being used.
 	Skill *string `json:"skill,omitempty"`
 
 	// To call: the called template.
 	To *string `json:"to,omitempty"`
+
+	// ToClone call: the callee's clone, if it is one; it must be a clone of to.
+	ToClone *string `json:"toClone,omitempty"`
 }
 
 // PolicyDecisionRequestActFor call: whose access the called agent uses (default same-user).
@@ -2102,6 +2114,9 @@ type PolicyRuleRef struct {
 
 	// Rule ActionPolicy: the 1-based index of the rule; absent for the policy's default.
 	Rule *int `json:"rule,omitempty"`
+
+	// Target Whom the rule names: template:<name> (covering its clones) or clone:<name>.
+	Target *string `json:"target,omitempty"`
 }
 
 // PolicyRuleRefEffect defines model for PolicyRuleRef.Effect.

@@ -10,4 +10,5 @@ class AgentLinkEndpoint(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    template: Annotated[str, Field(pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")]
+    template: Annotated[str | None, Field(pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")] = None
+    clone: Annotated[str | None, Field(pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")] = None

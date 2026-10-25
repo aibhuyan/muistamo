@@ -543,3 +543,34 @@ func TestAuthzClonesAreTenantScoped(t *testing.T) {
 		t.Errorf("B sees %d of A's clones by SQL", n)
 	}
 }
+
+func TestAuthzCloneSelectorsAreTenantScoped(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a, b := seedTenantA(t, h)
+	// A links its clone to a tax agent. B has the same template name but no such clone.
+	link := `{"apiVersion":"muistamo.dev/v1","kind":"AgentLink","metadata":{"name":"fi-to-tax"},
+	 "spec":{"from":{"clone":"analyst-intern-fi"},"to":{"template":"finland-tax"},"allowedSkills":["get-rates"],"dataClasses":[]}}`
+	if got := h.call(t, a, http.MethodPut, "/v1/links/fi-to-tax", link); got.status != http.StatusCreated {
+		t.Fatalf("A's clone link = %d: %s", got.status, got.raw)
+	}
+	req := `{"kind":"call","from":"analyst-intern","fromClone":"analyst-intern-fi","to":"finland-tax","skill":"get-rates"}`
+	if got := decisionOf(t, h.call(t, a, http.MethodPost, "/v1/policy/decisions", req)); got != "allow" {
+		t.Fatalf("A's own clone call: %s, want allow (the attack must be real)", got)
+	}
+	// B naming A's clone is refused: A's clones are not entities in B's decisions.
+	if got := h.call(t, b, http.MethodPost, "/v1/policy/decisions", req); got.status != http.StatusUnprocessableEntity {
+		t.Errorf("B naming A's clone = %d, want 422: %s", got.status, got.raw)
+	}
+	// Even if B makes its own clone of that name, A's clone link never applies in B.
+	if got := h.call(t, b, http.MethodPut, "/v1/templates/analyst-intern", templateJSON); got.status != http.StatusCreated {
+		t.Fatalf("B template = %d", got.status)
+	}
+	clone := `{"apiVersion":"muistamo.dev/v1","kind":"AgentClone","metadata":{"name":"analyst-intern-fi"},
+	  "spec":{"template":"analyst-intern","sync":"follow"}}`
+	if got := h.call(t, b, http.MethodPut, "/v1/clones/analyst-intern-fi", clone); got.status != http.StatusCreated {
+		t.Fatalf("B clone = %d: %s", got.status, got.raw)
+	}
+	if got := decisionOf(t, h.call(t, b, http.MethodPost, "/v1/policy/decisions", req)); got != "deny" {
+		t.Errorf("B's same-named clone using A's link: %s, want deny", got)
+	}
+}

@@ -221,7 +221,7 @@ func TestPolicyCompiledCedar(t *testing.T) {
 	text, _ := got.body["cedar"].(string)
 	for _, want := range []string{
 		`@id("link/intern-to-market")`,
-		`resource == Muistamo::Template::"market-data-agent"`,
+		`resource in Muistamo::Template::"market-data-agent"`,
 		`forbid (`,
 		`action == Muistamo::Action::"crm.update"`,
 	} {

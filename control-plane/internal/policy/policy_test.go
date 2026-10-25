@@ -51,7 +51,8 @@ func docs(t *testing.T, src string) ([]muistamov1.AgentLink, []muistamov1.Action
 
 func compile(t *testing.T, src string) *policy.Set {
 	t.Helper()
-	set, err := policy.Compile(docs(t, src))
+	links, policies := docs(t, src)
+	set, err := policy.Compile(links, policies, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +224,7 @@ spec:
 }
 
 func TestEmptySetDeniesEverything(t *testing.T) {
-	set, err := policy.Compile(nil, nil)
+	set, err := policy.Compile(nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +240,8 @@ func TestEmptySetDeniesEverything(t *testing.T) {
 
 func TestOnePolicyPerTemplate(t *testing.T) {
 	p := "apiVersion: muistamo.dev/v1\nkind: ActionPolicy\nmetadata: {name: NAME}\nspec:\n  appliesTo: {template: a}\n  rules: []"
-	_, err := policy.Compile(docs(t, strings.Replace(p, "NAME", "one", 1)+"\n---\n"+strings.Replace(p, "NAME", "two", 1)))
+	links, policies := docs(t, strings.Replace(p, "NAME", "one", 1)+"\n---\n"+strings.Replace(p, "NAME", "two", 1))
+	_, err := policy.Compile(links, policies, nil)
 	if !errors.Is(err, policy.ErrInvalid) {
 		t.Errorf("two policies for one template: err = %v, want ErrInvalid", err)
 	}
@@ -253,7 +255,7 @@ func TestRequireApprovalIsRefused(t *testing.T) {
 	}
 	var p muistamov1.ActionPolicy
 	_ = json.Unmarshal([]byte(doc), &p)
-	if _, err := policy.Compile(nil, []muistamov1.ActionPolicy{p}); !errors.Is(err, policy.ErrInvalid) {
+	if _, err := policy.Compile(nil, []muistamov1.ActionPolicy{p}, nil); !errors.Is(err, policy.ErrInvalid) {
 		t.Errorf("the compiler accepted requireApproval: %v", err)
 	}
 }
@@ -263,7 +265,7 @@ func TestNamesCannotInjectCedar(t *testing.T) {
 	var p muistamov1.ActionPolicy
 	_ = json.Unmarshal([]byte(`{"metadata":{"name":"p"},"spec":{"appliesTo":{"template":"a"},
 	  "rules":[{"action":"x\") || true; permit(principal, action, resource);//","effect":"deny"}]}}`), &p)
-	set, err := policy.Compile(nil, []muistamov1.ActionPolicy{p})
+	set, err := policy.Compile(nil, []muistamov1.ActionPolicy{p}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +278,7 @@ func TestNamesCannotInjectCedar(t *testing.T) {
 }
 
 func TestDecideRejectsIncompleteRequests(t *testing.T) {
-	set, _ := policy.Compile(nil, nil)
+	set, _ := policy.Compile(nil, nil, nil)
 	for _, req := range []muistamov1.PolicyDecisionRequest{
 		{Kind: muistamov1.PolicyDecisionRequestKindCall, From: ptr("a")},
 		{Kind: muistamov1.PolicyDecisionRequestKindAction, Agent: ptr("a")},
@@ -306,5 +308,133 @@ func TestCedarSnapshot(t *testing.T) {
 	}
 	if got != strings.ReplaceAll(string(want), "\r\n", "\n") {
 		t.Errorf("compiled Cedar changed; if intended, rerun with -update.\ngot:\n%s", got)
+	}
+}
+
+// Clones (selectors): a template's links and rules cover its clones; a clone's own only it; a
+// clone's policy only narrows.
+const cloneRules = `apiVersion: muistamo.dev/v1
+kind: AgentLink
+metadata: {name: intern-to-market}
+spec: {from: {template: analyst-intern}, to: {template: market-data-agent}, allowedSkills: [get-quotes], dataClasses: [public]}
+---
+apiVersion: muistamo.dev/v1
+kind: AgentLink
+metadata: {name: fi-to-tax}
+spec: {from: {clone: analyst-intern-fi}, to: {template: finland-tax-agent}, allowedSkills: [get-rates], dataClasses: [public]}
+---
+apiVersion: muistamo.dev/v1
+kind: AgentLink
+metadata: {name: to-fi-desk}
+spec: {from: {template: market-data-agent}, to: {clone: analyst-intern-fi}, allowedSkills: [notify], dataClasses: [public]}
+---
+apiVersion: muistamo.dev/v1
+kind: ActionPolicy
+metadata: {name: intern-actions}
+spec:
+  appliesTo: {template: analyst-intern}
+  rules:
+  - {action: email.send, effect: allow}
+  - {action: sharepoint.read, effect: allow}
+---
+apiVersion: muistamo.dev/v1
+kind: ActionPolicy
+metadata: {name: se-narrowing}
+spec:
+  appliesTo: {clone: analyst-intern-se}
+  rules:
+  - {action: email.send, effect: deny}
+  - {action: sharepoint.read, effect: monitor}
+  - {action: crm.update, effect: monitor}`
+
+var cloneMap = map[string]string{"analyst-intern-fi": "analyst-intern", "analyst-intern-se": "analyst-intern"}
+
+func withClone(r muistamov1.PolicyDecisionRequest, field string, clone string) muistamov1.PolicyDecisionRequest {
+	switch field {
+	case "from":
+		r.FromClone = &clone
+	case "to":
+		r.ToClone = &clone
+	case "agent":
+		r.AgentClone = &clone
+	}
+	return r
+}
+
+func TestCloneSelectors(t *testing.T) {
+	links, policies := docs(t, cloneRules)
+	set, err := policy.Compile(links, policies, cloneMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const intern, market = "analyst-intern", "market-data-agent"
+	cases := []struct {
+		name      string
+		req       muistamov1.PolicyDecisionRequest
+		allow     bool
+		monitored bool
+	}{
+		{"template link covers its clone as caller", withClone(call(intern, market, "get-quotes", "public"), "from", "analyst-intern-fi"), true, false},
+		{"template link still covers the template", call(intern, market, "get-quotes", "public"), true, false},
+		{"clone link allows that clone", withClone(call(intern, "finland-tax-agent", "get-rates"), "from", "analyst-intern-fi"), true, false},
+		{"clone link does not cover a sibling clone", withClone(call(intern, "finland-tax-agent", "get-rates"), "from", "analyst-intern-se"), false, false},
+		{"clone link does not cover its template", call(intern, "finland-tax-agent", "get-rates"), false, false},
+		{"link to a clone reaches that clone", withClone(call(market, intern, "notify"), "to", "analyst-intern-fi"), true, false},
+		{"link to a clone does not reach its template", call(market, intern, "notify"), false, false},
+		{"template policy covers its clone", withClone(action(intern, "email.send", nil), "agent", "analyst-intern-fi"), true, false},
+		{"clone deny narrows that clone", withClone(action(intern, "email.send", nil), "agent", "analyst-intern-se"), false, false},
+		{"clone deny leaves the template alone", action(intern, "email.send", nil), true, false},
+		{"clone monitor flags an allowed action", withClone(action(intern, "sharepoint.read", nil), "agent", "analyst-intern-se"), true, true},
+		{"clone monitor never allows a denied action", withClone(action(intern, "crm.update", nil), "agent", "analyst-intern-se"), false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := decide(t, set, c.req)
+			if got := d.Decision == muistamov1.PolicyDecisionDecisionAllow; got != c.allow {
+				t.Errorf("decision = %s, want allow=%v (%s)", d.Decision, c.allow, d.Reason)
+			}
+			if d.Monitored != c.monitored {
+				t.Errorf("monitored = %v, want %v (%s)", d.Monitored, c.monitored, d.Reason)
+			}
+		})
+	}
+}
+
+func TestCloneRequestsMustNameTheirTemplate(t *testing.T) {
+	links, policies := docs(t, cloneRules)
+	set, err := policy.Compile(links, policies, cloneMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, req := range map[string]muistamov1.PolicyDecisionRequest{
+		"caller clone of another template": withClone(call("market-data-agent", "finland-tax-agent", "get-rates"), "from", "analyst-intern-fi"),
+		"unknown caller clone":             withClone(call("analyst-intern", "finland-tax-agent", "get-rates"), "from", "no-such-clone"),
+		"callee clone of another template": withClone(call("market-data-agent", "finland-tax-agent", "notify"), "to", "analyst-intern-fi"),
+		"agent clone of another template":  withClone(action("market-data-agent", "email.send", nil), "agent", "analyst-intern-se"),
+	} {
+		if _, err := set.Decide(req); !errors.Is(err, policy.ErrInvalid) {
+			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
+		}
+	}
+}
+
+func TestClonePoliciesCannotWiden(t *testing.T) {
+	for name, spec := range map[string]string{
+		"allow rule":    "rules: [{action: crm.update, effect: allow}]",
+		"default allow": "default: allow\n  rules: []",
+		"own mode":      "mode: monitor\n  rules: []",
+	} {
+		doc := "apiVersion: muistamo.dev/v1\nkind: ActionPolicy\nmetadata: {name: p}\nspec:\n  appliesTo: {clone: analyst-intern-se}\n  " + spec
+		var v any
+		_ = yaml.Unmarshal([]byte(doc), &v)
+		body, _ := json.Marshal(v)
+		if err := contracts.Validate(body); err == nil {
+			t.Errorf("%s: the contract accepted a widening clone policy", name)
+		}
+		var p muistamov1.ActionPolicy
+		_ = json.Unmarshal(body, &p)
+		if _, err := policy.Compile(nil, []muistamov1.ActionPolicy{p}, cloneMap); !errors.Is(err, policy.ErrInvalid) {
+			t.Errorf("%s: the compiler accepted a widening clone policy: %v", name, err)
+		}
 	}
 }
