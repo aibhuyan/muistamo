@@ -10,8 +10,11 @@ Every write records a signed evidence event in the same transaction (invariant 4
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -19,9 +22,11 @@ from uuid import UUID
 from psycopg import Cursor
 from psycopg.types.json import Jsonb
 
-from muistamo_knowledge import checks, evidence
+from muistamo_knowledge import checks, evidence, skills
 from muistamo_knowledge.connectors import ConnectorFactory
 from muistamo_knowledge.db import Database
+
+log = logging.getLogger("muistamo.knowledge")
 
 LAYER_PRECEDENCE = {"personal": 0, "team": 1, "role": 2, "company": 3}
 
@@ -64,6 +69,9 @@ class Knowledge:
         self.db = db
         self.signer = signer
         self.connectors = connectors or {}
+        # Called after a new pack version commits, with (actor, pack, version). Delivery targets
+        # (Agent Skills destinations, FR-312) subscribe here; a failing hook never undoes a merge.
+        self.on_publish: list[Callable[[Actor, str, str], None]] = []
 
     def _evidence(
         self,
@@ -427,7 +435,10 @@ class Knowledge:
                     "edited": [e["key"] for e in edits or []],
                 },
             )
-            return self._proposal(cur, proposal_id)
+            result = self._proposal(cur, proposal_id)
+        if merged_version is not None:
+            self._published(actor, pack, merged_version)
+        return result
 
     def _merge(
         self,
@@ -496,7 +507,43 @@ class Knowledge:
                 f"rollback to {to_version}: {reason}",
                 lineage,
             )
-            return self._version(cur, pack, version)
+            result = self._version(cur, pack, version)
+        self._published(actor, pack, version)
+        return result
+
+    def _published(self, actor: Actor, pack: str, version: str) -> None:
+        for hook in self.on_publish:
+            try:
+                hook(actor, pack, version)
+            except Exception:  # noqa: BLE001 - delivery must never undo a committed merge
+                log.exception("publish hook failed", extra={"pack": pack, "version": version})
+
+    def export_skills(self, actor: Actor, pack: str, version: str) -> tuple[str, bytes]:
+        """A published version as a deterministic Agent Skills zip, recorded as evidence."""
+        with self.db.in_tenant(actor.tenant) as cur:
+            info = self._pack(cur, pack)
+            resolved = info["latest"] if version == "latest" else version
+            if resolved == "0.0.0":
+                raise Conflict(f"pack {pack!r} has nothing published to export")
+            entries = self._version(cur, pack, resolved)["entries"]
+            if not entries:
+                raise Conflict(f"pack {pack!r} version {resolved} has no entries to export")
+            data = skills.archive(skills.render(pack, resolved, info["layer"], entries))
+            # Knowledge leaving Muistamo is recorded; the evidence names the archive, not its content.
+            self._evidence(
+                cur,
+                actor,
+                "knowledge.pack.exported",
+                "KnowledgePack",
+                pack,
+                after={
+                    "version": resolved,
+                    "format": "agent-skills-zip",
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "entries": len(entries),
+                },
+            )
+            return resolved, data
 
     def _publish(
         self,

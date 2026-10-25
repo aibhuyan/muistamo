@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -107,4 +109,36 @@ func fetchKnowledge(ctx context.Context, opts *options, doc manifest.Document) (
 		return nil, fmt.Errorf("decode pack: %w", err)
 	}
 	return rec.Document, nil
+}
+
+func knowledgeCmd(opts *options) *cobra.Command {
+	cmd := &cobra.Command{Use: "knowledge", Short: "Work with the knowledge service"}
+	var pack, version, out string
+	export := &cobra.Command{
+		Use:   "export-skills --pack P [--version V] -o FILE.zip",
+		Short: "Download a published pack version as Agent Skills (SKILL.md folders)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			path := "/v1/knowledge/packs/" + url.PathEscape(pack) + "/versions/" + url.PathEscape(version) + "/skills.zip"
+			status, body, err := opts.knowledgeCall(cmd.Context(), http.MethodGet, path, nil)
+			if err != nil {
+				return err
+			}
+			if status != http.StatusOK {
+				return problem(status, body)
+			}
+			if err := os.WriteFile(out, body, 0o600); err != nil {
+				return fmt.Errorf("write %s: %w", out, err)
+			}
+			sum := sha256.Sum256(body)
+			cmd.Printf("wrote %s (%d bytes, sha256 %x)\n", out, len(body), sum)
+			return nil
+		},
+	}
+	export.Flags().StringVar(&pack, "pack", "", "pack name")
+	export.Flags().StringVar(&version, "version", "latest", "published version, or latest")
+	export.Flags().StringVarP(&out, "output", "o", "", "zip file to write")
+	_ = export.MarkFlagRequired("pack")
+	_ = export.MarkFlagRequired("output")
+	cmd.AddCommand(export)
+	return cmd
 }

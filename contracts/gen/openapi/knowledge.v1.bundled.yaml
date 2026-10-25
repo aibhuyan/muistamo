@@ -88,6 +88,32 @@ paths:
           $ref: '#/components/responses/PackVersion'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/knowledge/packs/{name}/versions/{version}/skills.zip:
+    parameters:
+    - $ref: '#/components/parameters/Name'
+    - name: version
+      in: path
+      required: true
+      description: A published version, or "latest".
+      schema:
+        type: string
+    get:
+      operationId: exportSkills
+      summary: The version as a deterministic Agent Skills zip (agentskills.io)
+      description: One SKILL.md for the pack (facts, an index of procedures, examples
+        in references/) and one per skill entry. Only published, reviewed content;
+        never personal layers or open proposals. Each export is recorded as evidence
+        with the archive's SHA-256.
+      responses:
+        '200':
+          description: The archive. X-Muistamo-Pack-Version names the exported version.
+          content:
+            application/zip:
+              schema:
+                type: string
+                contentMediaType: application/zip
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/knowledge/packs/{name}/rollback:
     parameters:
     - $ref: '#/components/parameters/Name'
