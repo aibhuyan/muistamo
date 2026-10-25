@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/hrevent.json",
+  "title": "HREvent",
+  "description": "A joiner or leaver event from the tenant's HR system, in Muistamo's own shape. HRIS connectors map their payloads onto this. Sent to POST /v1/hr/events with an HMAC signature.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "occurredAt", "person"],
+  "properties": {
+    "id": {
+      "description": "The HR system's event id. Re-sending the same id is safe: it is processed once.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "type": { "type": "string", "enum": ["joiner", "leaver"] },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "person": {
+      "title": "HRPerson",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "email", "jobCode"],
+      "properties": {
+        "id": { "description": "Stable employee id in the HR system.", "type": "string", "minLength": 1, "maxLength": 200 },
+        "email": { "type": "string", "minLength": 3 },
+        "jobCode": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

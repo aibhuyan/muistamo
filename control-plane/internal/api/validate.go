@@ -20,6 +20,8 @@ func validateDocuments(next http.Handler) http.Handler {
 		switch {
 		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/v1/"):
 			validate = contracts.Validate
+		case r.Method == http.MethodPost && r.URL.Path == hrEventsPath:
+			validate = func(b []byte) error { return contracts.ValidateAgainst("hrevent.json", b) }
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/transitions"):
 			validate = func(b []byte) error { return contracts.ValidateAgainst("instancetransition.json", b) }
 		case r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch:

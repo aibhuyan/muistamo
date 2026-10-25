@@ -3,6 +3,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,10 +14,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 
 	"muistamo.dev/muistamo/control-plane/internal/api"
 	"muistamo.dev/muistamo/control-plane/internal/evidence"
+	"muistamo.dev/muistamo/control-plane/internal/lifecycle"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
 	"muistamo.dev/muistamo/control-plane/internal/store"
 )
@@ -25,7 +31,7 @@ func main() {
 	root := &cobra.Command{Use: "control-plane", SilenceUsage: true, SilenceErrors: true}
 	// cobra's Print helpers default to stderr; command output belongs on stdout.
 	root.SetOut(os.Stdout)
-	root.AddCommand(serveCmd(log), migrateCmd(), tenantCmd(), evidenceCmd())
+	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd())
 	if err := root.Execute(); err != nil {
 		log.Error("control-plane failed", "err", err)
 		os.Exit(1)
@@ -57,10 +63,23 @@ func serveCmd(log *slog.Logger) *cobra.Command {
 				resolver = api.InsecureDevHeaders{}
 			}
 
+			// HR events need the workflow engine. Without it they are refused, never queued silently.
+			var hr api.HRIntake
+			if address := os.Getenv("TEMPORAL_ADDRESS"); address != "" {
+				temporal, err := client.Dial(client.Options{HostPort: address, Namespace: envOr("TEMPORAL_NAMESPACE", "default")})
+				if err != nil {
+					return fmt.Errorf("connect to Temporal at %s: %w", address, err)
+				}
+				defer temporal.Close()
+				hr = &lifecycle.Intake{DB: db, Signer: key, Dispatcher: lifecycle.TemporalDispatcher{Client: temporal}}
+			} else {
+				log.Warn("TEMPORAL_ADDRESS not set: HR events will be refused")
+			}
+
 			addr := envOr("CONTROL_PLANE_ADDR", "127.0.0.1:8080")
 			srv := &http.Server{
 				Addr:              addr,
-				Handler:           api.Handler(registry.New(db, key), resolver, log),
+				Handler:           api.Handler(registry.New(db, key), resolver, hr, log),
 				ReadHeaderTimeout: 5 * time.Second,
 			}
 			go func() {
@@ -74,6 +93,40 @@ func serveCmd(log *slog.Logger) *cobra.Command {
 				return fmt.Errorf("serve: %w", err)
 			}
 			return nil
+		},
+	}
+}
+
+func workerCmd(log *slog.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "worker",
+		Short: "Run lifecycle workflows (MUISTAMO_DATABASE_URL, MUISTAMO_EVIDENCE_KEY_FILE, TEMPORAL_ADDRESS)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			db, err := store.Open(ctx, requireEnv("MUISTAMO_DATABASE_URL"))
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			key, err := loadSigner(ctx, db, requireEnv("MUISTAMO_EVIDENCE_KEY_FILE"))
+			if err != nil {
+				return err
+			}
+			temporal, err := client.Dial(client.Options{HostPort: requireEnv("TEMPORAL_ADDRESS"), Namespace: envOr("TEMPORAL_NAMESPACE", "default")})
+			if err != nil {
+				return fmt.Errorf("connect to Temporal: %w", err)
+			}
+			defer temporal.Close()
+
+			// Invariant 8: say plainly what is not real yet.
+			log.Warn("SIMULATED: instance identities (Entra, FR-201) and credential revocation (gateway, D28) are not implemented; the worker records them in evidence as simulated")
+			simulated := &lifecycle.Simulated{}
+			w := worker.New(temporal, lifecycle.TaskQueue, worker.Options{})
+			w.RegisterWorkflow(lifecycle.Joiner)
+			w.RegisterWorkflow(lifecycle.Leaver)
+			w.RegisterActivity(&lifecycle.Activities{Registry: registry.New(db, key), Provisioner: simulated, Revoker: simulated})
+			log.Info("lifecycle worker running", "task_queue", lifecycle.TaskQueue, "evidence_key", key.KeyID())
+			return w.Run(worker.InterruptCh())
 		},
 	}
 }
@@ -100,6 +153,28 @@ func tenantCmd() *cobra.Command {
 				return err
 			}
 			cmd.Println(id)
+			return nil
+		},
+	})
+	tenant.AddCommand(&cobra.Command{
+		Use:   "hr-secret TENANT_ID",
+		Short: "Create the tenant's HR webhook secret and print it once (MUISTAMO_MIGRATE_DATABASE_URL)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("tenant id: %w", err)
+			}
+			raw := make([]byte, 32)
+			if _, err := rand.Read(raw); err != nil {
+				return fmt.Errorf("generate secret: %w", err)
+			}
+			// The printed string itself is the HMAC key, as with most webhook providers.
+			secret := "mhr_" + hex.EncodeToString(raw)
+			if err := store.SetHRSecret(cmd.Context(), requireEnv("MUISTAMO_MIGRATE_DATABASE_URL"), id, []byte(secret)); err != nil {
+				return err
+			}
+			cmd.Println(secret)
 			return nil
 		},
 	})

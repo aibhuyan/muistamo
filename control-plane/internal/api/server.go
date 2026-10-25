@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
+	"muistamo.dev/muistamo/control-plane/internal/lifecycle"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
 	"muistamo.dev/muistamo/control-plane/internal/store"
 )
@@ -22,8 +23,9 @@ const (
 )
 
 // Handler returns the full HTTP handler: authentication, contract validation, then the API.
-func Handler(svc *registry.Service, resolver TenantResolver, log *slog.Logger) http.Handler {
-	s := &server{svc: svc, log: log}
+// hr may be nil, in which case every HR event is refused.
+func Handler(svc *registry.Service, resolver TenantResolver, hr HRIntake, log *slog.Logger) http.Handler {
+	s := &server{svc: svc, hr: hr, log: log}
 	strict := muistamov1.NewStrictHandlerWithOptions(s, nil, muistamov1.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			writeProblem(w, http.StatusBadRequest, "Bad request", err.Error())
@@ -35,11 +37,12 @@ func Handler(svc *registry.Service, resolver TenantResolver, log *slog.Logger) h
 	})
 	mux := http.NewServeMux()
 	routes := muistamov1.HandlerWithOptions(strict, muistamov1.StdHTTPServerOptions{BaseRouter: mux})
-	return authenticate(resolver, log, validateDocuments(routes))
+	return authenticate(resolver, hr, log, validateDocuments(routes))
 }
 
 type server struct {
 	svc *registry.Service
+	hr  HRIntake
 	log *slog.Logger
 }
 
@@ -199,6 +202,25 @@ func (s *server) ListEvents(ctx context.Context, req muistamov1.ListEventsReques
 	return muistamov1.ListEvents200JSONResponse(page), nil
 }
 
+func (s *server) ReceiveHrEvent(ctx context.Context, req muistamov1.ReceiveHrEventRequestObject) (muistamov1.ReceiveHrEventResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err == nil && s.hr == nil {
+		err = errUnauthenticated
+	}
+	if err != nil {
+		return muistamov1.ReceiveHrEventdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	workflowID, duplicate, err := s.hr.Accept(ctx, actor.Tenant, actor.Name, actor.RequestID, *req.Body)
+	if err != nil {
+		return muistamov1.ReceiveHrEventdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	accepted := muistamov1.HREventAccepted{EventId: req.Body.Id, WorkflowId: workflowID, Duplicate: duplicate}
+	if duplicate {
+		return muistamov1.ReceiveHrEvent200JSONResponse(accepted), nil
+	}
+	return muistamov1.ReceiveHrEvent202JSONResponse(accepted), nil
+}
+
 func (s *server) actor(ctx context.Context) (registry.Actor, error) {
 	actor, ok := actorFrom(ctx)
 	if !ok {
@@ -230,6 +252,8 @@ func (s *server) problem(ctx context.Context, err error) problemResponse {
 		status, title = http.StatusPreconditionFailed, "Precondition failed"
 	case errors.Is(err, registry.ErrPreconditionRequired):
 		status, title = http.StatusPreconditionRequired, "Precondition required"
+	case errors.Is(err, lifecycle.ErrDispatch):
+		status, title = http.StatusServiceUnavailable, "Workflow engine unavailable; retry later"
 	case errors.Is(err, registry.ErrEvidence):
 		status, title = http.StatusServiceUnavailable, "Evidence could not be recorded; nothing was changed"
 	}

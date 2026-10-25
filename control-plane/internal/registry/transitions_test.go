@@ -16,7 +16,7 @@ func TestTransitionMatrix(t *testing.T) {
 		qua = muistamov1.InstanceStateQuarantined
 	)
 	allowed := map[[2]muistamov1.InstanceState]bool{
-		{req, act}: true, {req, qua}: true,
+		{req, act}: true, {req, sus}: true, {req, qua}: true,
 		{act, rev}: true, {act, sus}: true, {act, qua}: true,
 		{rev, act}: true, {rev, sus}: true, {rev, qua}: true,
 		{sus, act}: true, {sus, ret}: true, {sus, qua}: true,

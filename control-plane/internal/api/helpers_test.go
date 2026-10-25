@@ -8,12 +8,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
+	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 	"muistamo.dev/muistamo/control-plane/internal/api"
 	"muistamo.dev/muistamo/control-plane/internal/evidence"
+	"muistamo.dev/muistamo/control-plane/internal/lifecycle"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
 	"muistamo.dev/muistamo/control-plane/internal/store"
 	"muistamo.dev/muistamo/control-plane/internal/testdb"
@@ -26,6 +30,11 @@ type harness struct {
 }
 
 func newHarness(t *testing.T, resolver api.TenantResolver) harness {
+	return newHarnessWithHR(t, resolver, nil)
+}
+
+// newHarnessWithHR serves HR events through the real intake with dispatcher (nil: HR disabled).
+func newHarnessWithHR(t *testing.T, resolver api.TenantResolver, dispatcher lifecycle.Dispatcher) harness {
 	t.Helper()
 	db := testdb.New(t)
 	conn, err := store.Open(context.Background(), db.AppURL)
@@ -34,9 +43,57 @@ func newHarness(t *testing.T, resolver api.TenantResolver) harness {
 	}
 	t.Cleanup(conn.Close)
 	key := testdb.SigningKey(t, db)
-	srv := httptest.NewServer(api.Handler(registry.New(conn, key), resolver, slog.New(slog.DiscardHandler)))
+	var hr api.HRIntake
+	if dispatcher != nil {
+		hr = &lifecycle.Intake{DB: conn, Signer: key, Dispatcher: dispatcher}
+	}
+	srv := httptest.NewServer(api.Handler(registry.New(conn, key), resolver, hr, slog.New(slog.DiscardHandler)))
 	t.Cleanup(srv.Close)
 	return harness{db: db, key: key, url: srv.URL}
+}
+
+// hrSecret gives tenant an HR secret and returns it.
+func (h harness) hrSecret(t *testing.T, tenant uuid.UUID) []byte {
+	t.Helper()
+	secret := []byte("mhr_test-only-not-a-secret-" + tenant.String())
+	if err := store.SetHRSecret(context.Background(), h.db.OwnerURL, tenant, secret); err != nil {
+		t.Fatal(err)
+	}
+	return secret
+}
+
+// postHR sends an HR event for tenant, signed with secret at time at.
+func (h harness) postHR(t *testing.T, tenant uuid.UUID, secret []byte, at time.Time, body string) response {
+	t.Helper()
+	return h.call(t, tenant, http.MethodPost, "/v1/hr/events", body, "X-Muistamo-Signature", api.Sign(secret, []byte(body), at))
+}
+
+func hrEvent(id, kind, personID string) string {
+	return `{"id":"` + id + `","type":"` + kind + `","occurredAt":"2026-10-25T09:00:00Z",` +
+		`"person":{"id":"` + personID + `","email":"person-a@example.invalid","jobCode":"ANALYST_INTERN"}}`
+}
+
+// fakeDispatcher records dispatches instead of starting workflows.
+type fakeDispatcher struct {
+	mu    sync.Mutex
+	calls []string
+	fail  error
+}
+
+func (d *fakeDispatcher) Dispatch(_ context.Context, scope lifecycle.Scope, event muistamov1.HREvent) (string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.fail != nil {
+		return "", d.fail
+	}
+	d.calls = append(d.calls, scope.Tenant.String()+"/"+event.Id)
+	return string(event.Type) + "-" + scope.Tenant.String() + "-" + event.Id, nil
+}
+
+func (d *fakeDispatcher) count() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.calls)
 }
 
 func (h harness) tenant(t *testing.T, name string) uuid.UUID {

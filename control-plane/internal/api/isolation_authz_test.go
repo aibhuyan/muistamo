@@ -6,22 +6,30 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"muistamo.dev/muistamo/control-plane/internal/api"
+	"muistamo.dev/muistamo/control-plane/internal/lifecycle"
+	"muistamo.dev/muistamo/control-plane/internal/registry"
+	"muistamo.dev/muistamo/control-plane/internal/store"
 	"muistamo.dev/muistamo/control-plane/internal/testdb"
 )
 
-var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_events", "evidence_heads"}
+var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_events", "evidence_heads", "hr_events", "hr_webhook_secrets"}
 
-// seedTenantA gives tenant A a template and an instance.
+// seedTenantA gives tenant A a template, an instance, an HR secret and one HR event.
 func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
 	t.Helper()
 	a, b = h.tenant(t, "tenant-a"), h.tenant(t, "tenant-b")
+	if got := h.postHR(t, a, h.hrSecret(t, a), time.Now(), hrEvent("a-ev-1", "joiner", "A-PERSON")); got.status != http.StatusAccepted {
+		t.Fatalf("seed HR event = %d: %s", got.status, got.raw)
+	}
 	if got := h.call(t, a, http.MethodPut, "/v1/templates/analyst-intern", templateJSON); got.status != http.StatusCreated {
 		t.Fatalf("seed template = %d: %s", got.status, got.raw)
 	}
@@ -32,7 +40,7 @@ func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
 }
 
 func TestAuthzTenantCannotReadAnotherTenantsRecords(t *testing.T) {
-	h := newHarness(t, api.InsecureDevHeaders{})
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
 	_, b := seedTenantA(t, h)
 
 	for _, path := range []string{
@@ -56,7 +64,7 @@ func TestAuthzTenantCannotReadAnotherTenantsRecords(t *testing.T) {
 }
 
 func TestAuthzTenantCannotChangeAnotherTenantsRecords(t *testing.T) {
-	h := newHarness(t, api.InsecureDevHeaders{})
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
 	a, b := seedTenantA(t, h)
 
 	got := h.call(t, b, http.MethodPost, "/v1/instances/analyst-intern-person-a/transitions", `{"to":"active"}`, "If-Match", `"1"`)
@@ -85,7 +93,7 @@ func TestAuthzTenantCannotChangeAnotherTenantsRecords(t *testing.T) {
 }
 
 func TestAuthzAppRoleSeesNothingWithoutTenant(t *testing.T) {
-	h := newHarness(t, api.InsecureDevHeaders{})
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
 	seedTenantA(t, h)
 
 	for _, table := range tenantTables {
@@ -99,7 +107,7 @@ func TestAuthzAppRoleSeesNothingWithoutTenant(t *testing.T) {
 }
 
 func TestAuthzAppRoleCannotReachAnotherTenantBySQL(t *testing.T) {
-	h := newHarness(t, api.InsecureDevHeaders{})
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
 	a, b := seedTenantA(t, h)
 	// B needs rows of its own, or "retarget a row to A" would pass by matching nothing.
 	if got := h.call(t, b, http.MethodPut, "/v1/templates/analyst-intern", templateJSON); got.status != http.StatusCreated {
@@ -154,7 +162,63 @@ func TestAuthzAppRoleCannotReachAnotherTenantBySQL(t *testing.T) {
 	if err := testdb.ExecErr(h.db.AppURL, b, `UPDATE evidence_heads SET seq = 0 WHERE tenant_id = $1`, a); err != nil {
 		t.Fatalf("UPDATE head as B: %v", err)
 	}
-	if n := testdb.Count(t, h.db.OwnerURL, `SELECT seq FROM evidence_heads WHERE tenant_id = $1`, a); n != 2 {
-		t.Errorf("A's chain head after B's UPDATE = %d, want 2 (template and instance events)", n)
+	if n := testdb.Count(t, h.db.OwnerURL, `SELECT seq FROM evidence_heads WHERE tenant_id = $1`, a); n != 3 {
+		t.Errorf("A's chain head after B's UPDATE = %d, want 3 (HR event, template, instance)", n)
+	}
+}
+
+func TestAuthzHRCredentialsAndLifecycleAreTenantScoped(t *testing.T) {
+	d := &fakeDispatcher{}
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, d)
+	a, b := seedTenantA(t, h)
+	bSecret := h.hrSecret(t, b)
+
+	// B's secret cannot speak for A, even for A's real person and a fresh event id.
+	if got := h.postHR(t, a, bSecret, time.Now(), hrEvent("forged", "leaver", "A-PERSON")); got.status != http.StatusUnauthorized {
+		t.Errorf("B's secret on A's tenant = %d, want 401", got.status)
+	}
+	// B naming A's person in its own tenant is accepted for B only and touches nothing of A's.
+	before := d.count()
+	if got := h.postHR(t, b, bSecret, time.Now(), hrEvent("b-ev-1", "leaver", "A-PERSON")); got.status != http.StatusAccepted {
+		t.Fatalf("B's own leaver = %d", got.status)
+	}
+	if d.count() != before+1 || !strings.HasPrefix(d.calls[len(d.calls)-1], b.String()+"/") {
+		t.Errorf("dispatch scope = %v, want B's tenant", d.calls)
+	}
+	if n := testdb.CountIn(t, h.db.AppURL, b, `SELECT count(*) FROM hr_events WHERE event_id = 'a-ev-1'`); n != 0 {
+		t.Errorf("B sees A's HR event")
+	}
+	if n := testdb.CountIn(t, h.db.AppURL, b, `SELECT count(*) FROM hr_webhook_secrets WHERE tenant_id = $1`, a); n != 0 {
+		t.Errorf("B can read A's HR secret")
+	}
+
+	// The workflow activities run in B's scope cannot find or bind to A's records.
+	conn, err := store.Open(context.Background(), h.db.AppURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	acts := &lifecycle.Activities{Registry: registry.New(conn, h.key), Provisioner: &lifecycle.Simulated{}, Revoker: &lifecycle.Simulated{}}
+	bScope := lifecycle.Scope{Tenant: b, WorkflowID: "attack", EventID: "b-ev-1"}
+	if names, err := acts.PersonInstances(context.Background(), bScope, "A-PERSON"); err != nil || len(names) != 0 {
+		t.Errorf("B's leaver finds %v (%v), want none of A's instances", names, err)
+	}
+	if templates, err := acts.MatchTemplates(context.Background(), bScope, "ANALYST_INTERN"); err != nil || len(templates) != 0 {
+		t.Errorf("B's joiner matches %v (%v), want none of A's templates", templates, err)
+	}
+	if _, err := acts.EnsureInstance(context.Background(), bScope, registry.TemplateVersionRef{Name: "analyst-intern", Version: 1},
+		lifecycle.Person{ID: "B-PERSON", Email: "b@example.invalid", JobCode: "ANALYST_INTERN"}); err == nil {
+		t.Errorf("B created an instance bound to A's template")
+	}
+
+	attacks := map[string]string{
+		"plant an HR event in A": `INSERT INTO hr_events (tenant_id, event_id, type, person_id, workflow_id, payload) VALUES ($1, 'planted', 'leaver', 'A-PERSON', 'x', '{}')`,
+		"replace A's HR secret":  `INSERT INTO hr_webhook_secrets (tenant_id, secret) VALUES ($1, decode(repeat('ab', 32), 'hex'))`,
+	}
+	for name, stmt := range attacks {
+		err := testdb.ExecErr(h.db.AppURL, b, stmt, a)
+		if err == nil || (!strings.Contains(err.Error(), "row-level security") && !strings.Contains(err.Error(), "permission denied")) {
+			t.Errorf("%s as B: err = %v, want refusal", name, err)
+		}
 	}
 }
