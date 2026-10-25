@@ -31,7 +31,7 @@ func main() {
 	root := &cobra.Command{Use: "control-plane", SilenceUsage: true, SilenceErrors: true}
 	// cobra's Print helpers default to stderr; command output belongs on stdout.
 	root.SetOut(os.Stdout)
-	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd())
+	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd(), catalogueCmd())
 	if err := root.Execute(); err != nil {
 		log.Error("control-plane failed", "err", err)
 		os.Exit(1)
@@ -238,6 +238,33 @@ func evidenceCmd() *cobra.Command {
 	keygen.Flags().StringVar(&out, "out", "", "private key file to create")
 	_ = keygen.MarkFlagRequired("out")
 	cmd.AddCommand(keygen)
+	return cmd
+}
+
+func catalogueCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "catalogue", Short: "Manage the template catalogue"}
+	approvers := &cobra.Command{Use: "approvers", Short: "Manage catalogue approvers"}
+	var tenant string
+	set := &cobra.Command{
+		Use:   "set --tenant ID APPROVER...",
+		Short: "Replace the tenant's catalogue approvers (MUISTAMO_MIGRATE_DATABASE_URL)",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := uuid.Parse(tenant)
+			if err != nil {
+				return fmt.Errorf("tenant id: %w", err)
+			}
+			if err := store.SetCatalogueApprovers(cmd.Context(), requireEnv("MUISTAMO_MIGRATE_DATABASE_URL"), id, args); err != nil {
+				return err
+			}
+			cmd.Printf("tenant %s now has %d catalogue approvers\n", id, len(args))
+			return nil
+		},
+	}
+	set.Flags().StringVar(&tenant, "tenant", "", "tenant id")
+	_ = set.MarkFlagRequired("tenant")
+	approvers.AddCommand(set)
+	cmd.AddCommand(approvers)
 	return cmd
 }
 

@@ -84,6 +84,93 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/templates/{name}/versions/{version}/publication:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    post:
+      operationId: requestPublication
+      summary: Ask for this template version to be published to the catalogue
+      responses:
+        "201":
+          $ref: "#/components/responses/CatalogueRequest"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/catalogue:
+    get:
+      operationId: listCatalogue
+      summary: Template versions published to the catalogue (assignable to joiners)
+      responses:
+        "200":
+          description: The catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/catalogueentrypage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/catalogue/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    delete:
+      operationId: withdrawFromCatalogue
+      summary: Withdraw a template; new joiners stop receiving it, existing instances are untouched
+      responses:
+        "204":
+          description: Withdrawn.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/catalogue/requests:
+    get:
+      operationId: listCatalogueRequests
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, published, rejected, withdrawn, superseded]
+      responses:
+        "200":
+          description: Requests, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/cataloguerequestpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/catalogue/requests/{id}/decision:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: decideCatalogueRequest
+      summary: Approve or reject (catalogue approvers only; never the requester, never twice)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/cataloguedecision.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/CatalogueRequest"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/instances:
     get:
       operationId: listInstances
@@ -261,6 +348,12 @@ components:
         application/json:
           schema:
             $ref: "../schemas/agentinstancerecord.json"
+    CatalogueRequest:
+      description: A catalogue request.
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/cataloguerequest.json"
     Problem:
       description: An error (RFC 9457).
       content:

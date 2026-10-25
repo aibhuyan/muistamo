@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/catalogueentrypage.json",
+  "title": "CatalogueEntryPage",
+  "description": "The published catalogue.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "items"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "catalogueentry.json"
+      }
+    }
+  }
+}

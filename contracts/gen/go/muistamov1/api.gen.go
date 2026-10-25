@@ -123,6 +123,90 @@ func (e AgentTemplateSpecRiskTier) Valid() bool {
 	}
 }
 
+// Defines values for CatalogueApprovalDecision.
+const (
+	CatalogueApprovalDecisionApprove CatalogueApprovalDecision = "approve"
+	CatalogueApprovalDecisionReject  CatalogueApprovalDecision = "reject"
+)
+
+// Valid indicates whether the value is a known member of the CatalogueApprovalDecision enum.
+func (e CatalogueApprovalDecision) Valid() bool {
+	switch e {
+	case CatalogueApprovalDecisionApprove:
+		return true
+	case CatalogueApprovalDecisionReject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CatalogueDecisionDecision.
+const (
+	CatalogueDecisionDecisionApprove CatalogueDecisionDecision = "approve"
+	CatalogueDecisionDecisionReject  CatalogueDecisionDecision = "reject"
+)
+
+// Valid indicates whether the value is a known member of the CatalogueDecisionDecision enum.
+func (e CatalogueDecisionDecision) Valid() bool {
+	switch e {
+	case CatalogueDecisionDecisionApprove:
+		return true
+	case CatalogueDecisionDecisionReject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CatalogueRequestRiskTier.
+const (
+	CatalogueRequestRiskTierHigh   CatalogueRequestRiskTier = "high"
+	CatalogueRequestRiskTierLow    CatalogueRequestRiskTier = "low"
+	CatalogueRequestRiskTierMedium CatalogueRequestRiskTier = "medium"
+)
+
+// Valid indicates whether the value is a known member of the CatalogueRequestRiskTier enum.
+func (e CatalogueRequestRiskTier) Valid() bool {
+	switch e {
+	case CatalogueRequestRiskTierHigh:
+		return true
+	case CatalogueRequestRiskTierLow:
+		return true
+	case CatalogueRequestRiskTierMedium:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CatalogueRequestState.
+const (
+	CatalogueRequestStatePending    CatalogueRequestState = "pending"
+	CatalogueRequestStatePublished  CatalogueRequestState = "published"
+	CatalogueRequestStateRejected   CatalogueRequestState = "rejected"
+	CatalogueRequestStateSuperseded CatalogueRequestState = "superseded"
+	CatalogueRequestStateWithdrawn  CatalogueRequestState = "withdrawn"
+)
+
+// Valid indicates whether the value is a known member of the CatalogueRequestState enum.
+func (e CatalogueRequestState) Valid() bool {
+	switch e {
+	case CatalogueRequestStatePending:
+		return true
+	case CatalogueRequestStatePublished:
+		return true
+	case CatalogueRequestStateRejected:
+		return true
+	case CatalogueRequestStateSuperseded:
+		return true
+	case CatalogueRequestStateWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckResultSeverity.
 const (
 	CheckResultSeverityBlocking CheckResultSeverity = "blocking"
@@ -567,6 +651,33 @@ func (e ResolvedEntryLayer) Valid() bool {
 	}
 }
 
+// Defines values for ListCatalogueRequestsParamsState.
+const (
+	ListCatalogueRequestsParamsStatePending    ListCatalogueRequestsParamsState = "pending"
+	ListCatalogueRequestsParamsStatePublished  ListCatalogueRequestsParamsState = "published"
+	ListCatalogueRequestsParamsStateRejected   ListCatalogueRequestsParamsState = "rejected"
+	ListCatalogueRequestsParamsStateSuperseded ListCatalogueRequestsParamsState = "superseded"
+	ListCatalogueRequestsParamsStateWithdrawn  ListCatalogueRequestsParamsState = "withdrawn"
+)
+
+// Valid indicates whether the value is a known member of the ListCatalogueRequestsParamsState enum.
+func (e ListCatalogueRequestsParamsState) Valid() bool {
+	switch e {
+	case ListCatalogueRequestsParamsStatePending:
+		return true
+	case ListCatalogueRequestsParamsStatePublished:
+		return true
+	case ListCatalogueRequestsParamsStateRejected:
+		return true
+	case ListCatalogueRequestsParamsStateSuperseded:
+		return true
+	case ListCatalogueRequestsParamsStateWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
 // AgentInstance An agent bound to a user, team or service, with its own identity (PRD section 5). Usually generated.
 type AgentInstance struct {
 	ApiVersion AgentInstanceApiVersion `json:"apiVersion"`
@@ -682,6 +793,66 @@ type AgentTemplateRecord struct {
 	// Document A reusable agent definition owned by the company (PRD section 5).
 	Document AgentTemplate `json:"document"`
 	Version  int           `json:"version"`
+}
+
+// CatalogueApproval One approver's decision on a catalogue request.
+type CatalogueApproval struct {
+	Approver  string                    `json:"approver"`
+	DecidedAt time.Time                 `json:"decidedAt"`
+	Decision  CatalogueApprovalDecision `json:"decision"`
+	Reason    string                    `json:"reason"`
+}
+
+// CatalogueApprovalDecision defines model for CatalogueApproval.Decision.
+type CatalogueApprovalDecision string
+
+// CatalogueDecision An approver's decision on a catalogue request.
+type CatalogueDecision struct {
+	Decision CatalogueDecisionDecision `json:"decision"`
+	Reason   string                    `json:"reason"`
+}
+
+// CatalogueDecisionDecision defines model for CatalogueDecision.Decision.
+type CatalogueDecisionDecision string
+
+// CatalogueEntry A template version published to the catalogue and so assignable to joiners.
+type CatalogueEntry struct {
+	PublishedAt time.Time          `json:"publishedAt"`
+	RequestId   openapi_types.UUID `json:"requestId"`
+	Template    string             `json:"template"`
+	Version     int                `json:"version"`
+}
+
+// CatalogueEntryPage The published catalogue.
+type CatalogueEntryPage struct {
+	Items []CatalogueEntry `json:"items"`
+}
+
+// CatalogueRequest A request to publish a template version to the catalogue. Low risk publishes at once; medium needs one approver; high needs two distinct approvers; never the requester.
+type CatalogueRequest struct {
+	Approvals       []CatalogueApproval `json:"approvals"`
+	ClosedAt        *time.Time          `json:"closedAt,omitempty"`
+	CreatedAt       time.Time           `json:"createdAt"`
+	Id              openapi_types.UUID  `json:"id"`
+	NeededApprovals int                 `json:"neededApprovals"`
+	RequestedBy     string              `json:"requestedBy"`
+
+	// RiskTier From the template version; a version without one is treated as high.
+	RiskTier CatalogueRequestRiskTier `json:"riskTier"`
+	State    CatalogueRequestState    `json:"state"`
+	Template string                   `json:"template"`
+	Version  int                      `json:"version"`
+}
+
+// CatalogueRequestRiskTier From the template version; a version without one is treated as high.
+type CatalogueRequestRiskTier string
+
+// CatalogueRequestState defines model for CatalogueRequest.State.
+type CatalogueRequestState string
+
+// CatalogueRequestPage Catalogue requests, newest first.
+type CatalogueRequestPage struct {
+	Items []CatalogueRequest `json:"items"`
 }
 
 // CheckResult One automated check finding. Matched secret values are never echoed.
@@ -1149,6 +1320,14 @@ type InstanceRecord = AgentInstanceRecord
 // TemplateRecord One immutable, server-numbered version of an AgentTemplate.
 type TemplateRecord = AgentTemplateRecord
 
+// ListCatalogueRequestsParams defines parameters for ListCatalogueRequests.
+type ListCatalogueRequestsParams struct {
+	State *ListCatalogueRequestsParamsState `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// ListCatalogueRequestsParamsState defines parameters for ListCatalogueRequests.
+type ListCatalogueRequestsParamsState string
+
 // ListEventsParams defines parameters for ListEvents.
 type ListEventsParams struct {
 	AfterSeq *int   `form:"afterSeq,omitempty" json:"afterSeq,omitempty"`
@@ -1176,6 +1355,9 @@ type ListTemplatesParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// DecideCatalogueRequestJSONRequestBody defines body for DecideCatalogueRequest for application/json ContentType.
+type DecideCatalogueRequestJSONRequestBody = CatalogueDecision
 
 // ReceiveHrEventJSONRequestBody defines body for ReceiveHrEvent for application/json ContentType.
 type ReceiveHrEventJSONRequestBody = HREvent
@@ -1267,6 +1449,33 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /healthz (the `GetHealth` operationId).
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCatalogue Template versions published to the catalogue (assignable to joiners)
+	//
+	// Corresponds with GET /v1/catalogue (the `ListCatalogue` operationId).
+	ListCatalogue(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCatalogueRequests performs a GET /v1/catalogue/requests (the `ListCatalogueRequests` operationId) request.
+	ListCatalogueRequests(ctx context.Context, params *ListCatalogueRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DecideCatalogueRequestWithBody Approve or reject (catalogue approvers only; never the requester, never twice)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/catalogue/requests/{id}/decision (the `DecideCatalogueRequest` operationId).
+	DecideCatalogueRequestWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DecideCatalogueRequest Approve or reject (catalogue approvers only; never the requester, never twice)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/catalogue/requests/{id}/decision (the `DecideCatalogueRequest` operationId).
+	DecideCatalogueRequest(ctx context.Context, id openapi_types.UUID, body DecideCatalogueRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// WithdrawFromCatalogue Withdraw a template; new joiners stop receiving it, existing instances are untouched
+	//
+	// Corresponds with DELETE /v1/catalogue/{name} (the `WithdrawFromCatalogue` operationId).
+	WithdrawFromCatalogue(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListEvents Export the tenant's evidence chain in seq order
 	//
@@ -1365,6 +1574,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/templates/{name}/versions/{version} (the `GetTemplateVersion` operationId).
 	GetTemplateVersion(ctx context.Context, name Name, version int, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RequestPublication Ask for this template version to be published to the catalogue
+	//
+	// Corresponds with POST /v1/templates/{name}/versions/{version}/publication (the `RequestPublication` operationId).
+	RequestPublication(ctx context.Context, name Name, version int, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetHealth Service health
@@ -1372,6 +1586,83 @@ type ClientInterface interface {
 // Corresponds with GET /healthz (the `GetHealth` operationId).
 func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCatalogue Template versions published to the catalogue (assignable to joiners)
+//
+// Corresponds with GET /v1/catalogue (the `ListCatalogue` operationId).
+func (c *Client) ListCatalogue(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCatalogueRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCatalogueRequests performs a GET /v1/catalogue/requests (the `ListCatalogueRequests` operationId) request.
+func (c *Client) ListCatalogueRequests(ctx context.Context, params *ListCatalogueRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCatalogueRequestsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DecideCatalogueRequestWithBody Approve or reject (catalogue approvers only; never the requester, never twice)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/catalogue/requests/{id}/decision (the `DecideCatalogueRequest` operationId).
+func (c *Client) DecideCatalogueRequestWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDecideCatalogueRequestRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DecideCatalogueRequest Approve or reject (catalogue approvers only; never the requester, never twice)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/catalogue/requests/{id}/decision (the `DecideCatalogueRequest` operationId).
+func (c *Client) DecideCatalogueRequest(ctx context.Context, id openapi_types.UUID, body DecideCatalogueRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDecideCatalogueRequestRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// WithdrawFromCatalogue Withdraw a template; new joiners stop receiving it, existing instances are untouched
+//
+// Corresponds with DELETE /v1/catalogue/{name} (the `WithdrawFromCatalogue` operationId).
+func (c *Client) WithdrawFromCatalogue(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewWithdrawFromCatalogueRequest(c.Server, name)
 	if err != nil {
 		return nil, err
 	}
@@ -1620,6 +1911,21 @@ func (c *Client) GetTemplateVersion(ctx context.Context, name Name, version int,
 	return c.Client.Do(req)
 }
 
+// RequestPublication Ask for this template version to be published to the catalogue
+//
+// Corresponds with POST /v1/templates/{name}/versions/{version}/publication (the `RequestPublication` operationId).
+func (c *Client) RequestPublication(ctx context.Context, name Name, version int, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestPublicationRequest(c.Server, name, version)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // NewGetHealthRequest constructs an http.Request for the GetHealth method
 func NewGetHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -1640,6 +1946,168 @@ func NewGetHealthRequest(server string) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCatalogueRequest constructs an http.Request for the ListCatalogue method
+func NewListCatalogueRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/catalogue")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCatalogueRequestsRequest constructs an http.Request for the ListCatalogueRequests method
+func NewListCatalogueRequestsRequest(server string, params *ListCatalogueRequestsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/catalogue/requests")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDecideCatalogueRequestRequest calls the generic DecideCatalogueRequest builder with application/json body
+func NewDecideCatalogueRequestRequest(server string, id openapi_types.UUID, body DecideCatalogueRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDecideCatalogueRequestRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewDecideCatalogueRequestRequestWithBody constructs an http.Request for the DecideCatalogueRequest method, with any body, and a specified content type
+func NewDecideCatalogueRequestRequestWithBody(server string, id openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/catalogue/requests/%s/decision", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewWithdrawFromCatalogueRequest constructs an http.Request for the WithdrawFromCatalogue method
+func NewWithdrawFromCatalogueRequest(server string, name Name) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/catalogue/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2165,6 +2633,47 @@ func NewGetTemplateVersionRequest(server string, name Name, version int) (*http.
 	return req, nil
 }
 
+// NewRequestPublicationRequest constructs an http.Request for the RequestPublication method
+func NewRequestPublicationRequest(server string, name Name, version int) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/templates/%s/versions/%s/publication", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -2215,6 +2724,39 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /healthz (the `GetHealth` operationId).
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
+
+	// ListCatalogueWithResponse Template versions published to the catalogue (assignable to joiners)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/catalogue (the `ListCatalogue` operationId).
+	ListCatalogueWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCatalogueResponse, error)
+
+	// ListCatalogueRequestsWithResponse performs a GET /v1/catalogue/requests (the `ListCatalogueRequests` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListCatalogueRequestsWithResponse(ctx context.Context, params *ListCatalogueRequestsParams, reqEditors ...RequestEditorFn) (*ListCatalogueRequestsResponse, error)
+
+	// DecideCatalogueRequestWithBodyWithResponse Approve or reject (catalogue approvers only; never the requester, never twice)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/catalogue/requests/{id}/decision (the `DecideCatalogueRequest` operationId).
+	DecideCatalogueRequestWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecideCatalogueRequestResponse, error)
+
+	// DecideCatalogueRequestWithResponse Approve or reject (catalogue approvers only; never the requester, never twice)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/catalogue/requests/{id}/decision (the `DecideCatalogueRequest` operationId).
+	DecideCatalogueRequestWithResponse(ctx context.Context, id openapi_types.UUID, body DecideCatalogueRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*DecideCatalogueRequestResponse, error)
+
+	// WithdrawFromCatalogueWithResponse Withdraw a template; new joiners stop receiving it, existing instances are untouched
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/catalogue/{name} (the `WithdrawFromCatalogue` operationId).
+	WithdrawFromCatalogueWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*WithdrawFromCatalogueResponse, error)
 
 	// ListEventsWithResponse Export the tenant's evidence chain in seq order
 	//
@@ -2325,6 +2867,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/templates/{name}/versions/{version} (the `GetTemplateVersion` operationId).
 	GetTemplateVersionWithResponse(ctx context.Context, name Name, version int, reqEditors ...RequestEditorFn) (*GetTemplateVersionResponse, error)
+
+	// RequestPublicationWithResponse Ask for this template version to be published to the catalogue
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/templates/{name}/versions/{version}/publication (the `RequestPublication` operationId).
+	RequestPublicationWithResponse(ctx context.Context, name Name, version int, reqEditors ...RequestEditorFn) (*RequestPublicationResponse, error)
 }
 
 type GetHealthResponse struct {
@@ -2362,6 +2911,191 @@ func (r GetHealthResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetHealthResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCatalogueResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CatalogueEntryPage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCatalogueResponse) GetJSON200() *CatalogueEntryPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListCatalogueResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCatalogueResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCatalogueResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCatalogueResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCatalogueResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCatalogueRequestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CatalogueRequestPage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCatalogueRequestsResponse) GetJSON200() *CatalogueRequestPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListCatalogueRequestsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCatalogueRequestsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCatalogueRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCatalogueRequestsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCatalogueRequestsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DecideCatalogueRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CatalogueRequest
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DecideCatalogueRequestResponse) GetJSON200() *CatalogueRequest {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DecideCatalogueRequestResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DecideCatalogueRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DecideCatalogueRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DecideCatalogueRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DecideCatalogueRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type WithdrawFromCatalogueResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r WithdrawFromCatalogueResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r WithdrawFromCatalogueResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r WithdrawFromCatalogueResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r WithdrawFromCatalogueResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r WithdrawFromCatalogueResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2925,6 +3659,54 @@ func (r GetTemplateVersionResponse) ContentType() string {
 	return ""
 }
 
+type RequestPublicationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *CatalogueRequest
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r RequestPublicationResponse) GetJSON201() *CatalogueRequest {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RequestPublicationResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RequestPublicationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RequestPublicationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RequestPublicationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RequestPublicationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetHealthWithResponse Service health
 //
 // Returns a wrapper object for the known response body format(s).
@@ -2936,6 +3718,69 @@ func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseGetHealthResponse(rsp)
+}
+
+// ListCatalogueWithResponse Template versions published to the catalogue (assignable to joiners)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/catalogue (the `ListCatalogue` operationId).
+func (c *ClientWithResponses) ListCatalogueWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCatalogueResponse, error) {
+	rsp, err := c.ListCatalogue(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCatalogueResponse(rsp)
+}
+
+// ListCatalogueRequestsWithResponse performs a GET /v1/catalogue/requests (the `ListCatalogueRequests` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListCatalogueRequestsWithResponse(ctx context.Context, params *ListCatalogueRequestsParams, reqEditors ...RequestEditorFn) (*ListCatalogueRequestsResponse, error) {
+	rsp, err := c.ListCatalogueRequests(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCatalogueRequestsResponse(rsp)
+}
+
+// DecideCatalogueRequestWithBodyWithResponse Approve or reject (catalogue approvers only; never the requester, never twice)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/catalogue/requests/{id}/decision (the `DecideCatalogueRequest` operationId).
+func (c *ClientWithResponses) DecideCatalogueRequestWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecideCatalogueRequestResponse, error) {
+	rsp, err := c.DecideCatalogueRequestWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDecideCatalogueRequestResponse(rsp)
+}
+
+// DecideCatalogueRequestWithResponse Approve or reject (catalogue approvers only; never the requester, never twice)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/catalogue/requests/{id}/decision (the `DecideCatalogueRequest` operationId).
+func (c *ClientWithResponses) DecideCatalogueRequestWithResponse(ctx context.Context, id openapi_types.UUID, body DecideCatalogueRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*DecideCatalogueRequestResponse, error) {
+	rsp, err := c.DecideCatalogueRequest(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDecideCatalogueRequestResponse(rsp)
+}
+
+// WithdrawFromCatalogueWithResponse Withdraw a template; new joiners stop receiving it, existing instances are untouched
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/catalogue/{name} (the `WithdrawFromCatalogue` operationId).
+func (c *ClientWithResponses) WithdrawFromCatalogueWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*WithdrawFromCatalogueResponse, error) {
+	rsp, err := c.WithdrawFromCatalogue(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseWithdrawFromCatalogueResponse(rsp)
 }
 
 // ListEventsWithResponse Export the tenant's evidence chain in seq order
@@ -3132,6 +3977,19 @@ func (c *ClientWithResponses) GetTemplateVersionWithResponse(ctx context.Context
 	return ParseGetTemplateVersionResponse(rsp)
 }
 
+// RequestPublicationWithResponse Ask for this template version to be published to the catalogue
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/templates/{name}/versions/{version}/publication (the `RequestPublication` operationId).
+func (c *ClientWithResponses) RequestPublicationWithResponse(ctx context.Context, name Name, version int, reqEditors ...RequestEditorFn) (*RequestPublicationResponse, error) {
+	rsp, err := c.RequestPublication(ctx, name, version, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestPublicationResponse(rsp)
+}
+
 // ParseGetHealthResponse parses an HTTP response from a GetHealthWithResponse call
 func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3152,6 +4010,134 @@ func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCatalogueResponse parses an HTTP response from a ListCatalogueWithResponse call
+func ParseListCatalogueResponse(rsp *http.Response) (*ListCatalogueResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCatalogueResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CatalogueEntryPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCatalogueRequestsResponse parses an HTTP response from a ListCatalogueRequestsWithResponse call
+func ParseListCatalogueRequestsResponse(rsp *http.Response) (*ListCatalogueRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCatalogueRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CatalogueRequestPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDecideCatalogueRequestResponse parses an HTTP response from a DecideCatalogueRequestWithResponse call
+func ParseDecideCatalogueRequestResponse(rsp *http.Response) (*DecideCatalogueRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DecideCatalogueRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CatalogueRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseWithdrawFromCatalogueResponse parses an HTTP response from a WithdrawFromCatalogueWithResponse call
+func ParseWithdrawFromCatalogueResponse(rsp *http.Response) (*WithdrawFromCatalogueResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &WithdrawFromCatalogueResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -3607,11 +4593,56 @@ func ParseGetTemplateVersionResponse(rsp *http.Response) (*GetTemplateVersionRes
 	return response, nil
 }
 
+// ParseRequestPublicationResponse parses an HTTP response from a RequestPublicationWithResponse call
+func ParseRequestPublicationResponse(rsp *http.Response) (*RequestPublicationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RequestPublicationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest CatalogueRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetHealth Service health
 	// (GET /healthz)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// ListCatalogue Template versions published to the catalogue (assignable to joiners)
+	// (GET /v1/catalogue)
+	ListCatalogue(w http.ResponseWriter, r *http.Request)
+
+	// (GET /v1/catalogue/requests)
+	ListCatalogueRequests(w http.ResponseWriter, r *http.Request, params ListCatalogueRequestsParams)
+	// DecideCatalogueRequest Approve or reject (catalogue approvers only; never the requester, never twice)
+	// (POST /v1/catalogue/requests/{id}/decision)
+	DecideCatalogueRequest(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// WithdrawFromCatalogue Withdraw a template; new joiners stop receiving it, existing instances are untouched
+	// (DELETE /v1/catalogue/{name})
+	WithdrawFromCatalogue(w http.ResponseWriter, r *http.Request, name Name)
 	// ListEvents Export the tenant's evidence chain in seq order
 	// (GET /v1/events)
 	ListEvents(w http.ResponseWriter, r *http.Request, params ListEventsParams)
@@ -3642,6 +4673,9 @@ type ServerInterface interface {
 	// GetTemplateVersion Get one version of a template
 	// (GET /v1/templates/{name}/versions/{version})
 	GetTemplateVersion(w http.ResponseWriter, r *http.Request, name Name, version int)
+	// RequestPublication Ask for this template version to be published to the catalogue
+	// (POST /v1/templates/{name}/versions/{version}/publication)
+	RequestPublication(w http.ResponseWriter, r *http.Request, name Name, version int)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -3658,6 +4692,105 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCatalogue operation middleware
+func (siw *ServerInterfaceWrapper) ListCatalogue(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCatalogue(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCatalogueRequests operation middleware
+func (siw *ServerInterfaceWrapper) ListCatalogueRequests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCatalogueRequestsParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCatalogueRequests(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DecideCatalogueRequest operation middleware
+func (siw *ServerInterfaceWrapper) DecideCatalogueRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DecideCatalogueRequest(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// WithdrawFromCatalogue operation middleware
+func (siw *ServerInterfaceWrapper) WithdrawFromCatalogue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.WithdrawFromCatalogue(w, r, name)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4032,6 +5165,41 @@ func (siw *ServerInterfaceWrapper) GetTemplateVersion(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// RequestPublication operation middleware
+func (siw *ServerInterfaceWrapper) RequestPublication(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", r.PathValue("version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RequestPublication(w, r, name, version)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -4157,6 +5325,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/templates/{name}", wrapper.GetTemplate)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/templates/{name}", wrapper.ApplyTemplate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/templates/{name}/versions/{version}", wrapper.GetTemplateVersion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/templates/{name}/versions/{version}/publication", wrapper.RequestPublication)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/catalogue", wrapper.ListCatalogue)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/catalogue/{name}", wrapper.WithdrawFromCatalogue)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/catalogue/requests", wrapper.ListCatalogueRequests)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/catalogue/requests/{id}/decision", wrapper.DecideCatalogueRequest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/instances", wrapper.ListInstances)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/instances/{name}", wrapper.GetInstance)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/instances/{name}", wrapper.ApplyInstance)
@@ -4166,6 +5339,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	return m
 }
+
+type CatalogueRequestJSONResponse CatalogueRequest
 
 type InstanceRecordResponseHeaders struct {
 	ETag *string
@@ -4204,6 +5379,156 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCatalogueRequestObject struct {
+}
+
+type ListCatalogueResponseObject interface {
+	VisitListCatalogueResponse(w http.ResponseWriter) error
+}
+
+type ListCatalogue200JSONResponse CatalogueEntryPage
+
+func (response ListCatalogue200JSONResponse) VisitListCatalogueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCataloguedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListCataloguedefaultApplicationProblemPlusJSONResponse) VisitListCatalogueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCatalogueRequestsRequestObject struct {
+	Params ListCatalogueRequestsParams
+}
+
+type ListCatalogueRequestsResponseObject interface {
+	VisitListCatalogueRequestsResponse(w http.ResponseWriter) error
+}
+
+type ListCatalogueRequests200JSONResponse CatalogueRequestPage
+
+func (response ListCatalogueRequests200JSONResponse) VisitListCatalogueRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCatalogueRequestsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListCatalogueRequestsdefaultApplicationProblemPlusJSONResponse) VisitListCatalogueRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideCatalogueRequestRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *DecideCatalogueRequestJSONRequestBody
+}
+
+type DecideCatalogueRequestResponseObject interface {
+	VisitDecideCatalogueRequestResponse(w http.ResponseWriter) error
+}
+
+type DecideCatalogueRequest200JSONResponse struct{ CatalogueRequestJSONResponse }
+
+func (response DecideCatalogueRequest200JSONResponse) VisitDecideCatalogueRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideCatalogueRequestdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response DecideCatalogueRequestdefaultApplicationProblemPlusJSONResponse) VisitDecideCatalogueRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawFromCatalogueRequestObject struct {
+	Name Name `json:"name"`
+}
+
+type WithdrawFromCatalogueResponseObject interface {
+	VisitWithdrawFromCatalogueResponse(w http.ResponseWriter) error
+}
+
+type WithdrawFromCatalogue204Response struct {
+}
+
+func (response WithdrawFromCatalogue204Response) VisitWithdrawFromCatalogueResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type WithdrawFromCataloguedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response WithdrawFromCataloguedefaultApplicationProblemPlusJSONResponse) VisitWithdrawFromCatalogueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4684,11 +6009,63 @@ func (response GetTemplateVersiondefaultApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type RequestPublicationRequestObject struct {
+	Name    Name `json:"name"`
+	Version int  `json:"version"`
+}
+
+type RequestPublicationResponseObject interface {
+	VisitRequestPublicationResponse(w http.ResponseWriter) error
+}
+
+type RequestPublication201JSONResponse struct{ CatalogueRequestJSONResponse }
+
+func (response RequestPublication201JSONResponse) VisitRequestPublicationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RequestPublicationdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RequestPublicationdefaultApplicationProblemPlusJSONResponse) VisitRequestPublicationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetHealth Service health
 	// (GET /healthz)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// ListCatalogue Template versions published to the catalogue (assignable to joiners)
+	// (GET /v1/catalogue)
+	ListCatalogue(ctx context.Context, request ListCatalogueRequestObject) (ListCatalogueResponseObject, error)
+
+	// (GET /v1/catalogue/requests)
+	ListCatalogueRequests(ctx context.Context, request ListCatalogueRequestsRequestObject) (ListCatalogueRequestsResponseObject, error)
+	// DecideCatalogueRequest Approve or reject (catalogue approvers only; never the requester, never twice)
+	// (POST /v1/catalogue/requests/{id}/decision)
+	DecideCatalogueRequest(ctx context.Context, request DecideCatalogueRequestRequestObject) (DecideCatalogueRequestResponseObject, error)
+	// WithdrawFromCatalogue Withdraw a template; new joiners stop receiving it, existing instances are untouched
+	// (DELETE /v1/catalogue/{name})
+	WithdrawFromCatalogue(ctx context.Context, request WithdrawFromCatalogueRequestObject) (WithdrawFromCatalogueResponseObject, error)
 	// ListEvents Export the tenant's evidence chain in seq order
 	// (GET /v1/events)
 	ListEvents(ctx context.Context, request ListEventsRequestObject) (ListEventsResponseObject, error)
@@ -4719,6 +6096,9 @@ type StrictServerInterface interface {
 	// GetTemplateVersion Get one version of a template
 	// (GET /v1/templates/{name}/versions/{version})
 	GetTemplateVersion(ctx context.Context, request GetTemplateVersionRequestObject) (GetTemplateVersionResponseObject, error)
+	// RequestPublication Ask for this template version to be published to the catalogue
+	// (POST /v1/templates/{name}/versions/{version}/publication)
+	RequestPublication(ctx context.Context, request RequestPublicationRequestObject) (RequestPublicationResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -4777,6 +6157,115 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCatalogue operation middleware
+func (sh *strictHandler) ListCatalogue(w http.ResponseWriter, r *http.Request) {
+	var request ListCatalogueRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCatalogue(ctx, request.(ListCatalogueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCatalogue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCatalogueResponseObject); ok {
+		if err := validResponse.VisitListCatalogueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCatalogueRequests operation middleware
+func (sh *strictHandler) ListCatalogueRequests(w http.ResponseWriter, r *http.Request, params ListCatalogueRequestsParams) {
+	var request ListCatalogueRequestsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCatalogueRequests(ctx, request.(ListCatalogueRequestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCatalogueRequests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCatalogueRequestsResponseObject); ok {
+		if err := validResponse.VisitListCatalogueRequestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DecideCatalogueRequest operation middleware
+func (sh *strictHandler) DecideCatalogueRequest(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DecideCatalogueRequestRequestObject
+
+	request.Id = id
+
+	var body DecideCatalogueRequestJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DecideCatalogueRequest(ctx, request.(DecideCatalogueRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DecideCatalogueRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DecideCatalogueRequestResponseObject); ok {
+		if err := validResponse.VisitDecideCatalogueRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// WithdrawFromCatalogue operation middleware
+func (sh *strictHandler) WithdrawFromCatalogue(w http.ResponseWriter, r *http.Request, name Name) {
+	var request WithdrawFromCatalogueRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.WithdrawFromCatalogue(ctx, request.(WithdrawFromCatalogueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "WithdrawFromCatalogue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(WithdrawFromCatalogueResponseObject); ok {
+		if err := validResponse.VisitWithdrawFromCatalogueResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -5066,6 +6555,33 @@ func (sh *strictHandler) GetTemplateVersion(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetTemplateVersionResponseObject); ok {
 		if err := validResponse.VisitGetTemplateVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RequestPublication operation middleware
+func (sh *strictHandler) RequestPublication(w http.ResponseWriter, r *http.Request, name Name, version int) {
+	var request RequestPublicationRequestObject
+
+	request.Name = name
+	request.Version = version
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RequestPublication(ctx, request.(RequestPublicationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RequestPublication")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RequestPublicationResponseObject); ok {
+		if err := validResponse.VisitRequestPublicationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

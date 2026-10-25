@@ -113,6 +113,27 @@ func SetHRSecret(ctx context.Context, url string, tenant uuid.UUID, secret []byt
 	return nil
 }
 
+// SetCatalogueApprovers replaces a tenant's catalogue approver list. url must connect as the
+// table owner: the server role can read approvers but never change them.
+func SetCatalogueApprovers(ctx context.Context, url string, tenant uuid.UUID, approvers []string) error {
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `DELETE FROM catalogue_approvers WHERE tenant_id = $1`, tenant); err != nil {
+			return fmt.Errorf("clear approvers: %w", err)
+		}
+		for _, a := range approvers {
+			if _, err := tx.Exec(ctx, `INSERT INTO catalogue_approvers (tenant_id, approver) VALUES ($1, $2)`, tenant, a); err != nil {
+				return fmt.Errorf("add approver %q: %w", a, err)
+			}
+		}
+		return nil
+	})
+}
+
 // SigningKeyRegistered reports whether keyID is a registered evidence signing key.
 func (db *DB) SigningKeyRegistered(ctx context.Context, keyID string) (bool, error) {
 	var ok bool
