@@ -12,9 +12,13 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
+import anyio
+import httpx2
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from mcp.client.session import ClientSession
+from mcp.client.streamable_http import streamable_http_client
 from muistamo_knowledge import auth, evidence
 from muistamo_knowledge.app import create_app
 from muistamo_knowledge.db import Database
@@ -93,6 +97,38 @@ class World:
 
     def actor(self, person: str, tenant: uuid.UUID | None = None) -> Actor:
         return Actor(tenant=tenant or self.tenant, name="dev:" + person, request_id="req-" + person)
+
+    def mcp(
+        self,
+        person: str | None,
+        tool: str | None = None,
+        args: dict | None = None,
+        tenant: uuid.UUID | None = None,
+    ):
+        """Call an MCP tool through a real SDK client session over streamable HTTP, in-process.
+
+        With tool=None, returns the tool names. person=None sends no identity headers.
+        """
+        return anyio.run(self._mcp, person, tool, args or {}, tenant)
+
+    async def _mcp(self, person, tool, args, tenant):
+        app = create_app(self.knowledge, auth.insecure_dev_headers)
+        headers = {}
+        if person is not None:
+            headers = {"X-Muistamo-Tenant": str(tenant or self.tenant), "X-Muistamo-Actor": person}
+        async with app.router.lifespan_context(app):
+            transport = httpx2.ASGITransport(app=app)
+            async with httpx2.AsyncClient(
+                transport=transport, base_url="http://127.0.0.1:8001", headers=headers
+            ) as http:
+                async with streamable_http_client(
+                    "http://127.0.0.1:8001/mcp/knowledge/", http_client=http
+                ) as streams:
+                    async with ClientSession(streams[0], streams[1]) as session:
+                        await session.initialize()
+                        if tool is None:
+                            return sorted(t.name for t in (await session.list_tools()).tools)
+                        return await session.call_tool(tool, args)
 
     def client(self, person: str, tenant: uuid.UUID | None = None) -> TestClient:
         client = TestClient(

@@ -21,6 +21,7 @@ need the model gateway (D28) and come later.
 from __future__ import annotations
 
 import logging
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Any
@@ -180,7 +181,12 @@ class Sources:
     # Retrieval ------------------------------------------------------------------------------
 
     def retrieve(
-        self, actor: Actor, query: str, packs: list[str], limit: int = 10
+        self,
+        actor: Actor,
+        query: str,
+        packs: list[str],
+        limit: int = 10,
+        tool: str = "rest.retrieve",
     ) -> dict[str, Any]:
         items: list[dict[str, Any]] = []
         with self.k.db.in_tenant(actor.tenant) as cur:
@@ -219,7 +225,7 @@ class Sources:
                     items.append(_document_item(h, connector.name))
 
         items.sort(key=lambda i: i["score"], reverse=True)
-        return {
+        result = {
             "query": query,
             "items": items[:limit],
             "coverage": {
@@ -228,6 +234,39 @@ class Sources:
                 "testConnectors": sorted(test_sources),
             },
         }
+        self.record_read(actor, tool, result["items"])
+        return result
+
+    def record_read(self, actor: Actor, tool: str, items: list[dict[str, Any]]) -> None:
+        """Record what the person was shown: citations only, never the query (invariant 5)."""
+        keep = ("type", "entryKey", "layer", "pack", "version", "source", "externalId")
+        citations = [{k: v for k, v in i["citation"].items() if k in keep} for i in items]
+        with self.k.db.in_tenant(actor.tenant) as cur:
+            cur.execute(
+                "INSERT INTO knowledge.reads (tenant_id, id, person, tool, result_count, citations)"
+                " VALUES (%s, %s, %s, %s, %s, %s)",
+                (actor.tenant, uuid.uuid4(), actor.name, tool, len(items), Jsonb(citations)),
+            )
+
+    def reads(self, actor: Actor, limit: int = 100) -> list[dict[str, Any]]:
+        """The caller's own reads, newest first."""
+        with self.k.db.in_tenant(actor.tenant) as cur:
+            cur.execute(
+                "SELECT id, person, at, tool, result_count, citations FROM knowledge.reads"
+                " WHERE person = %s ORDER BY at DESC LIMIT %s",
+                (actor.name, limit),
+            )
+            return [
+                {
+                    "id": r[0],
+                    "person": r[1],
+                    "at": r[2],
+                    "tool": r[3],
+                    "resultCount": r[4],
+                    "citations": r[5],
+                }
+                for r in cur.fetchall()
+            ]
 
     @staticmethod
     def _authorise(connector: Connector, person: str, ids: list[str]) -> set[str] | None:

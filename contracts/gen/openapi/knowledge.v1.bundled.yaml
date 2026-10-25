@@ -327,6 +327,27 @@ paths:
                 $ref: '#/components/schemas/RetrievalResult'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/knowledge/reads:
+    get:
+      operationId: listReads
+      summary: The caller's own knowledge reads (citations only, never query text)
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+      responses:
+        '200':
+          description: The caller's reads.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeReadPage'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/knowledge/events:
     get:
       operationId: listEvents
@@ -353,6 +374,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/EvidenceEventPage'
         default:
+          $ref: '#/components/responses/Problem'
+  /mcp/knowledge:
+    post:
+      operationId: mcpKnowledge
+      summary: Muistamo MCP server (streamable HTTP, stateless)
+      description: Tools search_knowledge, remember and propose_knowledge. The caller
+        is resolved from each request exactly as for the REST API; unresolvable callers
+        get 401 before the MCP layer. Tool inputs follow knowledgeentryinput and proposalinput.
+      responses:
+        '200':
+          description: An MCP JSON-RPC response.
+        '401':
           $ref: '#/components/responses/Problem'
 components:
   parameters:
@@ -1060,6 +1093,74 @@ components:
         updatedAt:
           type: string
           format: date-time
+    KnowledgeRead:
+      title: KnowledgeRead
+      description: 'One retrieval a person made: what they were shown, never the query
+        text (invariant 5).'
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - person
+      - at
+      - tool
+      - resultCount
+      - citations
+      properties:
+        id:
+          type: string
+          format: uuid
+        person:
+          type: string
+        at:
+          type: string
+          format: date-time
+        tool:
+          type: string
+          enum:
+          - rest.retrieve
+          - mcp.search_knowledge
+        resultCount:
+          type: integer
+          minimum: 0
+        citations:
+          type: array
+          items:
+            title: ReadCitation
+            type: object
+            additionalProperties: false
+            required:
+            - type
+            properties:
+              type:
+                type: string
+                enum:
+                - entry
+                - document
+              entryKey:
+                type: string
+              layer:
+                type: string
+              pack:
+                type: string
+              version:
+                type: string
+              source:
+                type: string
+              externalId:
+                type: string
+    KnowledgeReadPage:
+      title: KnowledgeReadPage
+      description: The caller's own reads, newest first.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeRead'
     KnowledgeSource:
       title: KnowledgeSource
       description: A document source attached to a pack (PRD section 10). Its documents

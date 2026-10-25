@@ -6,6 +6,8 @@ defined inside create_app at definition time.
 
 import logging
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Query, Request, Response
@@ -22,6 +24,8 @@ from muistamo_contracts.v1.rollbackinput import RollbackInput
 from muistamo_knowledge import evidence
 from muistamo_knowledge.auth import Resolver, Unauthenticated, deny_all
 from muistamo_knowledge.db import UnknownTenant
+from muistamo_knowledge.mcp_server import build as build_mcp
+from muistamo_knowledge.mcp_server import require_identity
 from muistamo_knowledge.retrieval import Sources
 from muistamo_knowledge.service import (
     Actor,
@@ -55,8 +59,23 @@ def problem(status: int, title: str, detail: str | None = None) -> JSONResponse:
 
 
 def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> FastAPI:
-    """Without a Knowledge service (no database or key), every /v1 call is refused."""
-    app = FastAPI(title="muistamo-knowledge")
+    """Without a Knowledge service (no database or key), every /v1 and MCP call is refused."""
+    mcp = build_mcp(knowledge, resolver) if knowledge is not None else None
+    mcp_app = (
+        mcp.streamable_http_app(streamable_http_path="/", stateless_http=True, json_response=True)
+        if mcp is not None
+        else None
+    )
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if mcp is None:
+            yield
+            return
+        async with mcp.session_manager.run():
+            yield
+
+    app = FastAPI(title="muistamo-knowledge", lifespan=lifespan)
 
     @app.exception_handler(RequestValidationError)
     def _invalid(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -76,7 +95,7 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     def actor(request: Request) -> Actor:
         if knowledge is None:
             raise Unauthenticated("knowledge service not configured")
-        tenant, name = resolver(request)
+        tenant, name = resolver(request.headers)
         return Actor(tenant=tenant, name=name, request_id=str(uuid.uuid4()))
 
     Who = Annotated[Actor, Depends(actor)]
@@ -199,6 +218,18 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
         if len(items) > limit:
             page["nextAfterSeq"] = items[limit - 1].seq
         return ok(page)
+
+    @app.get("/v1/knowledge/reads")
+    def reads(who: Who, limit: int = Query(100, ge=1, le=500)) -> JSONResponse:
+        return ok({"items": sources().reads(who, limit)})
+
+    if mcp_app is not None:
+        app.mount("/mcp/knowledge", require_identity(mcp_app, resolver, knowledge))
+    else:
+
+        @app.api_route("/mcp/knowledge/{rest:path}", methods=["GET", "POST", "DELETE"])
+        def mcp_refused(rest: str) -> JSONResponse:
+            return problem(401, "Unauthorized")
 
     return app
 

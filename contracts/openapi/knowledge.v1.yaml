@@ -338,6 +338,28 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/knowledge/reads:
+    get:
+      operationId: listReads
+      summary: The caller's own knowledge reads (citations only, never query text)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: The caller's reads.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/knowledgereadpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/knowledge/events:
     get:
       operationId: listEvents
@@ -364,6 +386,20 @@ paths:
               schema:
                 $ref: "../schemas/evidenceeventpage.json"
         default:
+          $ref: "#/components/responses/Problem"
+
+  /mcp/knowledge:
+    post:
+      operationId: mcpKnowledge
+      summary: Muistamo MCP server (streamable HTTP, stateless)
+      description: >-
+        Tools search_knowledge, remember and propose_knowledge. The caller is resolved from each
+        request exactly as for the REST API; unresolvable callers get 401 before the MCP layer.
+        Tool inputs follow knowledgeentryinput and proposalinput.
+      responses:
+        "200":
+          description: An MCP JSON-RPC response.
+        "401":
           $ref: "#/components/responses/Problem"
 
 components:

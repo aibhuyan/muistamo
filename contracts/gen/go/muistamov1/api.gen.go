@@ -399,6 +399,42 @@ func (e KnowledgePackSpecMergePolicyRequires) Valid() bool {
 	}
 }
 
+// Defines values for KnowledgeReadCitationsType.
+const (
+	KnowledgeReadCitationsTypeDocument KnowledgeReadCitationsType = "document"
+	KnowledgeReadCitationsTypeEntry    KnowledgeReadCitationsType = "entry"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeReadCitationsType enum.
+func (e KnowledgeReadCitationsType) Valid() bool {
+	switch e {
+	case KnowledgeReadCitationsTypeDocument:
+		return true
+	case KnowledgeReadCitationsTypeEntry:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for KnowledgeReadTool.
+const (
+	KnowledgeReadToolMcpSearchKnowledge KnowledgeReadTool = "mcp.search_knowledge"
+	KnowledgeReadToolRestRetrieve       KnowledgeReadTool = "rest.retrieve"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeReadTool enum.
+func (e KnowledgeReadTool) Valid() bool {
+	switch e {
+	case KnowledgeReadToolMcpSearchKnowledge:
+		return true
+	case KnowledgeReadToolRestRetrieve:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for KnowledgeSourceApiVersion.
 const (
 	KnowledgeSourceApiVersionMuistamoDevv1 KnowledgeSourceApiVersion = "muistamo.dev/v1"
@@ -853,6 +889,35 @@ type KnowledgePackRecord struct {
 	Document      KnowledgePack `json:"document"`
 	LatestVersion string        `json:"latestVersion"`
 	UpdatedAt     time.Time     `json:"updatedAt"`
+}
+
+// KnowledgeRead One retrieval a person made: what they were shown, never the query text (invariant 5).
+type KnowledgeRead struct {
+	At        time.Time `json:"at"`
+	Citations []struct {
+		EntryKey   *string                    `json:"entryKey,omitempty"`
+		ExternalId *string                    `json:"externalId,omitempty"`
+		Layer      *string                    `json:"layer,omitempty"`
+		Pack       *string                    `json:"pack,omitempty"`
+		Source     *string                    `json:"source,omitempty"`
+		Type       KnowledgeReadCitationsType `json:"type"`
+		Version    *string                    `json:"version,omitempty"`
+	} `json:"citations"`
+	Id          openapi_types.UUID `json:"id"`
+	Person      string             `json:"person"`
+	ResultCount int                `json:"resultCount"`
+	Tool        KnowledgeReadTool  `json:"tool"`
+}
+
+// KnowledgeReadCitationsType defines model for KnowledgeRead.Citations.Type.
+type KnowledgeReadCitationsType string
+
+// KnowledgeReadTool defines model for KnowledgeRead.Tool.
+type KnowledgeReadTool string
+
+// KnowledgeReadPage The caller's own reads, newest first.
+type KnowledgeReadPage struct {
+	Items []KnowledgeRead `json:"items"`
 }
 
 // KnowledgeSource A document source attached to a pack (PRD section 10). Its documents are indexed, and every retrieval authorises each document live against the acting person's own rights at the source.
