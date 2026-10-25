@@ -1,8 +1,8 @@
 // Package registry stores agent templates and instances.
 //
 // Template versions are immutable: a changed document becomes a new version, an identical one is
-// a no-op. Every write records an evidence outbox row in the same transaction, so no change
-// commits without its evidence (CLAUDE.md invariant 4).
+// a no-op. Every write appends a signed, hash-chained evidence event in the same transaction, so
+// no change commits without its evidence (CLAUDE.md invariant 4).
 package registry
 
 import (
@@ -20,6 +20,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
+	"muistamo.dev/muistamo/control-plane/evidencechain"
+	"muistamo.dev/muistamo/control-plane/internal/evidence"
 	"muistamo.dev/muistamo/control-plane/internal/store"
 )
 
@@ -30,7 +32,7 @@ var (
 	ErrConflict             = errors.New("conflict")
 	ErrPrecondition         = errors.New("precondition failed")
 	ErrPreconditionRequired = errors.New("precondition required")
-	ErrEvidence             = errors.New("evidence could not be recorded")
+	ErrEvidence             = evidence.ErrNotRecorded
 )
 
 // Actor is who is acting, for which tenant, in which request.
@@ -42,11 +44,12 @@ type Actor struct {
 
 // Service implements the registry on top of store.DB.
 type Service struct {
-	db *store.DB
+	db     *store.DB
+	signer evidence.Signer
 }
 
-// New returns a Service.
-func New(db *store.DB) *Service { return &Service{db: db} }
+// New returns a Service that signs evidence with signer.
+func New(db *store.DB, signer evidence.Signer) *Service { return &Service{db: db, signer: signer} }
 
 // ApplyTemplate stores doc as a new version if it differs from the latest one. It reports
 // whether a version was created.
@@ -96,7 +99,7 @@ func (s *Service) ApplyTemplate(ctx context.Context, actor Actor, doc muistamov1
 		}
 		rec = muistamov1.AgentTemplateRecord{Version: version, CreatedAt: createdAt, CreatedBy: actor.Name, Document: doc}
 		created = true
-		return recordEvidence(ctx, tx, actor, "template.version.created", "AgentTemplate", name, nil, rec)
+		return recordEvidence(ctx, tx, s.signer, actor, "template.version.created", "AgentTemplate", name, nil, rec)
 	})
 	return rec, created, err
 }
@@ -182,7 +185,7 @@ func (s *Service) ApplyInstance(ctx context.Context, actor Actor, doc muistamov1
 			if ifMatch != "" {
 				return fmt.Errorf("instance %q does not exist: %w", name, ErrPrecondition)
 			}
-			rec, err = createInstance(ctx, tx, actor, doc)
+			rec, err = createInstance(ctx, tx, s.signer, actor, doc)
 			created = err == nil
 			return err
 		}
@@ -203,7 +206,7 @@ func (s *Service) ApplyInstance(ctx context.Context, actor Actor, doc muistamov1
 		if err != nil {
 			return err
 		}
-		return recordEvidence(ctx, tx, actor, "instance.updated", "AgentInstance", name, current, rec)
+		return recordEvidence(ctx, tx, s.signer, actor, "instance.updated", "AgentInstance", name, current, rec)
 	})
 	return rec, created, err
 }
@@ -275,7 +278,7 @@ func (s *Service) Transition(ctx context.Context, actor Actor, name string, to m
 		if err != nil {
 			return err
 		}
-		return recordEvidence(ctx, tx, actor, "instance.transitioned", "AgentInstance", name,
+		return recordEvidence(ctx, tx, s.signer, actor, "instance.transitioned", "AgentInstance", name,
 			map[string]any{"state": from}, map[string]any{"state": to, "revision": rec.Revision})
 	})
 	return rec, err
@@ -328,7 +331,7 @@ func lockInstance(ctx context.Context, tx pgx.Tx, name string) (muistamov1.Agent
 	return scanInstance(tx.QueryRow(ctx, instanceColumns+` WHERE name = $1 FOR UPDATE`, name), name)
 }
 
-func createInstance(ctx context.Context, tx pgx.Tx, actor Actor, doc muistamov1.AgentInstance) (muistamov1.AgentInstanceRecord, error) {
+func createInstance(ctx context.Context, tx pgx.Tx, signer evidence.Signer, actor Actor, doc muistamov1.AgentInstance) (muistamov1.AgentInstanceRecord, error) {
 	name := doc.Metadata.Name
 	if doc.Spec.State != muistamov1.InstanceStateRequested {
 		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("instance %q must be created in state requested, not %s: %w", name, doc.Spec.State, ErrInvalid)
@@ -356,7 +359,7 @@ func createInstance(ctx context.Context, tx pgx.Tx, actor Actor, doc muistamov1.
 	if err != nil {
 		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("insert instance %q: %w", name, err)
 	}
-	return rec, recordEvidence(ctx, tx, actor, "instance.created", "AgentInstance", name, nil, rec)
+	return rec, recordEvidence(ctx, tx, signer, actor, "instance.created", "AgentInstance", name, nil, rec)
 }
 
 func updateInstance(ctx context.Context, tx pgx.Tx, current muistamov1.AgentInstanceRecord, next muistamov1.AgentInstance) (muistamov1.AgentInstanceRecord, error) {
@@ -403,27 +406,25 @@ func checkRevision(ifMatch string, revision int) error {
 	return nil
 }
 
-// recordEvidence appends to the outbox inside the caller's transaction. A failure aborts the
+// recordEvidence appends a signed event inside the caller's transaction. A failure aborts the
 // whole write (CLAUDE.md invariants 3 and 4).
-func recordEvidence(ctx context.Context, tx pgx.Tx, actor Actor, action, kind, name string, before, after any) error {
-	var beforeJSON, afterJSON []byte
-	var err error
-	if before != nil {
-		if beforeJSON, err = json.Marshal(before); err != nil {
-			return fmt.Errorf("encode evidence: %w: %w", ErrEvidence, err)
-		}
-	}
-	if afterJSON, err = json.Marshal(after); err != nil {
-		return fmt.Errorf("encode evidence: %w: %w", ErrEvidence, err)
-	}
-	_, err = tx.Exec(ctx, `
-		INSERT INTO evidence_outbox (tenant_id, actor, action, subject_kind, subject_name, before, after, request_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		actor.Tenant, actor.Name, action, kind, name, beforeJSON, afterJSON, actor.RequestID)
-	if err != nil {
-		return fmt.Errorf("record %s for %s %q: %w: %w", action, kind, name, ErrEvidence, err)
-	}
-	return nil
+func recordEvidence(ctx context.Context, tx pgx.Tx, signer evidence.Signer, actor Actor, action, kind, name string, before, after any) error {
+	_, err := evidence.Append(ctx, tx, signer, evidence.Entry{
+		Tenant: actor.Tenant, Actor: actor.Name, Action: action,
+		SubjectKind: kind, SubjectName: name, Before: before, After: after, RequestID: actor.RequestID,
+	})
+	return err
+}
+
+// ListEvents returns the tenant's evidence events after afterSeq, in chain order.
+func (s *Service) ListEvents(ctx context.Context, actor Actor, afterSeq int64, limit int) ([]evidencechain.Event, error) {
+	var events []evidencechain.Event
+	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		var err error
+		events, err = evidence.List(ctx, tx, afterSeq, limit)
+		return err
+	})
+	return events, err
 }
 
 func encodeCursor(name string) string { return base64.RawURLEncoding.EncodeToString([]byte(name)) }

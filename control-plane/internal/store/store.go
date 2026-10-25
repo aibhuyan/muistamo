@@ -84,6 +84,30 @@ func Migrate(ctx context.Context, url string) error {
 	return nil
 }
 
+// RegisterSigningKey records an evidence signing key's public half. url must connect as the
+// table owner; the server role can only read keys.
+func RegisterSigningKey(ctx context.Context, url, keyID string, public []byte) error {
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	if _, err := conn.Exec(ctx, `INSERT INTO evidence_signing_keys (key_id, algorithm, public_key) VALUES ($1, 'ed25519', $2)`,
+		keyID, public); err != nil {
+		return fmt.Errorf("register signing key %s: %w", keyID, err)
+	}
+	return nil
+}
+
+// SigningKeyRegistered reports whether keyID is a registered evidence signing key.
+func (db *DB) SigningKeyRegistered(ctx context.Context, keyID string) (bool, error) {
+	var ok bool
+	if err := db.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM evidence_signing_keys WHERE key_id = $1)`, keyID).Scan(&ok); err != nil {
+		return false, fmt.Errorf("check signing key: %w", err)
+	}
+	return ok, nil
+}
+
 func migrationsFS() fs.FS {
 	sub, err := fs.Sub(migrations, "migrations")
 	if err != nil {

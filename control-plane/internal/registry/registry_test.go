@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
+	"muistamo.dev/muistamo/control-plane/internal/evidence"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
 	"muistamo.dev/muistamo/control-plane/internal/store"
 	"muistamo.dev/muistamo/control-plane/internal/testdb"
@@ -16,6 +17,8 @@ import (
 
 type fixture struct {
 	db    testdb.DB
+	conn  *store.DB
+	key   evidence.LocalKey
 	svc   *registry.Service
 	actor registry.Actor
 }
@@ -33,7 +36,9 @@ func setup(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(conn.Close)
-	return fixture{db: db, svc: registry.New(conn), actor: registry.Actor{Tenant: tenant, Name: "dev:person-a@example.invalid", RequestID: "req-1"}}
+	key := testdb.SigningKey(t, db)
+	return fixture{db: db, conn: conn, key: key, svc: registry.New(conn, key),
+		actor: registry.Actor{Tenant: tenant, Name: "dev:person-a@example.invalid", RequestID: "req-1"}}
 }
 
 func template(purpose string) muistamov1.AgentTemplate {
@@ -59,8 +64,8 @@ func instance(state muistamov1.InstanceState) muistamov1.AgentInstance {
 	return doc
 }
 
-func (f fixture) outbox(t *testing.T) int {
-	return testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM evidence_outbox`)
+func (f fixture) events(t *testing.T) int {
+	return testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM evidence_events`)
 }
 
 func TestTemplateVersionsAreImmutable(t *testing.T) {
@@ -88,8 +93,8 @@ func TestTemplateVersionsAreImmutable(t *testing.T) {
 	if err != nil || latest.Version != 2 {
 		t.Fatalf("latest = v%d, %v; want v2", latest.Version, err)
 	}
-	if n := f.outbox(t); n != 2 {
-		t.Fatalf("outbox rows = %d, want 2 (the no-op writes none)", n)
+	if n := f.events(t); n != 2 {
+		t.Fatalf("evidence events = %d, want 2 (the no-op writes none)", n)
 	}
 }
 
@@ -101,8 +106,8 @@ func TestAppRoleCannotAlterTemplateVersions(t *testing.T) {
 	for _, stmt := range []string{
 		`UPDATE agent_template_versions SET document = '{}'`,
 		`DELETE FROM agent_template_versions`,
-		`DELETE FROM evidence_outbox`,
-		`UPDATE evidence_outbox SET actor = 'someone-else'`,
+		`DELETE FROM evidence_events`,
+		`UPDATE evidence_events SET actor = 'someone-else'`,
 	} {
 		err := execAsApp(f, stmt)
 		if err == nil || !strings.Contains(err.Error(), "permission denied") {
@@ -169,8 +174,8 @@ func TestInstanceLifecycle(t *testing.T) {
 	}
 
 	// template v1, instance created, three transitions, one sponsor update.
-	if n := f.outbox(t); n != 6 {
-		t.Fatalf("outbox rows = %d, want 6", n)
+	if n := f.events(t); n != 6 {
+		t.Fatalf("evidence events = %d, want 6", n)
 	}
 }
 
@@ -180,7 +185,7 @@ func TestWriteIsRefusedWhenEvidenceCannotBeRecorded(t *testing.T) {
 		CREATE FUNCTION refuse_evidence() RETURNS trigger LANGUAGE plpgsql AS
 		$$ BEGIN RAISE EXCEPTION 'evidence store unavailable (test)'; END $$`)
 	testdb.Exec(t, f.db.OwnerURL, `
-		CREATE TRIGGER refuse_evidence BEFORE INSERT ON evidence_outbox
+		CREATE TRIGGER refuse_evidence BEFORE INSERT ON evidence_events
 		FOR EACH ROW EXECUTE FUNCTION refuse_evidence()`)
 
 	_, _, err := f.svc.ApplyTemplate(context.Background(), f.actor, template("first"))
@@ -189,6 +194,31 @@ func TestWriteIsRefusedWhenEvidenceCannotBeRecorded(t *testing.T) {
 	}
 	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM agent_template_versions`); n != 0 {
 		t.Fatalf("template versions = %d, want 0: the write must roll back", n)
+	}
+}
+
+type failingSigner struct{ evidence.LocalKey }
+
+func (failingSigner) Sign([]byte) ([]byte, error) {
+	return nil, errors.New("signer unavailable (test)")
+}
+
+func TestWriteIsRefusedWhenSigningFails(t *testing.T) {
+	f := setup(t)
+	if _, _, err := f.svc.ApplyTemplate(context.Background(), f.actor, template("first")); err != nil {
+		t.Fatal(err)
+	}
+	broken := registry.New(f.conn, failingSigner{f.key})
+
+	_, _, err := broken.ApplyTemplate(context.Background(), f.actor, template("second"))
+	if !errors.Is(err, registry.ErrEvidence) {
+		t.Fatalf("err = %v, want ErrEvidence", err)
+	}
+	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM agent_template_versions`); n != 1 {
+		t.Fatalf("template versions = %d, want 1: the second write must roll back", n)
+	}
+	if n := testdb.Count(t, f.db.OwnerURL, `SELECT seq FROM evidence_heads`); n != 1 {
+		t.Fatalf("chain head seq = %d, want 1: a failed append must not move it", n)
 	}
 }
 

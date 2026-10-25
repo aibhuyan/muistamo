@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/evidenceeventpage.json",
+  "title": "EvidenceEventPage",
+  "description": "A page of the tenant's evidence chain, in seq order.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": { "type": "array", "items": { "$ref": "evidenceevent.json" } },
+    "nextAfterSeq": { "description": "Pass as afterSeq for the next page. Absent on the last page.", "type": "integer" }
+  }
+}

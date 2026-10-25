@@ -16,7 +16,7 @@ import (
 	"muistamo.dev/muistamo/control-plane/internal/testdb"
 )
 
-var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_outbox"}
+var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_events", "evidence_heads"}
 
 // seedTenantA gives tenant A a template and an instance.
 func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
@@ -47,7 +47,7 @@ func TestAuthzTenantCannotReadAnotherTenantsRecords(t *testing.T) {
 			t.Errorf("GET %s as B = %d %v; absent name = %d %v; want identical 404s", path, got.status, got.body["title"], absent.status, absent.body["title"])
 		}
 	}
-	for _, path := range []string{"/v1/templates", "/v1/instances"} {
+	for _, path := range []string{"/v1/templates", "/v1/instances", "/v1/events"} {
 		got := h.call(t, b, http.MethodGet, path, "")
 		if items, _ := got.body["items"].([]any); got.status != http.StatusOK || len(items) != 0 {
 			t.Errorf("GET %s as B = %d with %d items, want 200 and none: %s", path, got.status, len(items), got.raw)
@@ -89,18 +89,12 @@ func TestAuthzAppRoleSeesNothingWithoutTenant(t *testing.T) {
 	seedTenantA(t, h)
 
 	for _, table := range tenantTables {
-		if table == "evidence_outbox" {
-			continue // the app role cannot read the outbox at all; checked below
-		}
 		if n := testdb.CountIn(t, h.db.AppURL, uuid.Nil, "SELECT count(*) FROM "+table); n != 0 {
 			t.Errorf("%s with no tenant set: %d rows visible, want 0", table, n)
 		}
 		if n := testdb.Count(t, h.db.OwnerURL, "SELECT count(*) FROM "+table); n == 0 {
 			t.Errorf("%s has no rows as owner; the test seeded nothing and proves nothing", table)
 		}
-	}
-	if err := testdb.ExecErr(h.db.AppURL, uuid.Nil, "SELECT count(*) FROM evidence_outbox"); err == nil || !strings.Contains(err.Error(), "permission denied") {
-		t.Errorf("app role reading evidence_outbox: err = %v, want permission denied", err)
 	}
 }
 
@@ -121,14 +115,32 @@ func TestAuthzAppRoleCannotReachAnotherTenantBySQL(t *testing.T) {
 		}
 	}
 
-	attacks := map[string]string{
-		"insert a template into A": `INSERT INTO agent_templates (tenant_id, name, latest_version) VALUES ($1, 'planted', 1)`,
-		"insert evidence for A":    `INSERT INTO evidence_outbox (tenant_id, actor, action, subject_kind, subject_name, request_id) VALUES ($1, 'x', 'x', 'x', 'x', 'x')`,
-		"retarget a row to A":      `UPDATE agent_instances SET tenant_id = $1`,
+	var keyID string
+	{
+		rows := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM evidence_signing_keys`)
+		if rows != 1 {
+			t.Fatalf("signing keys = %d, want 1", rows)
+		}
+		keyID = testdb.Scalar(t, h.db.OwnerURL, `SELECT key_id FROM evidence_signing_keys`)
 	}
-	for name, stmt := range attacks {
-		if err := testdb.ExecErr(h.db.AppURL, b, stmt, a); err == nil {
-			t.Errorf("%s as B: succeeded, want a row-level security violation", name)
+	hex64 := strings.Repeat("ab", 32)
+	// Every value is otherwise valid, so the only thing that can refuse these is row-level security.
+	attacks := map[string]struct {
+		stmt string
+		args []any
+	}{
+		"insert a template into A": {`INSERT INTO agent_templates (tenant_id, name, latest_version) VALUES ($1, 'planted', 1)`, []any{a}},
+		"insert an event into A's chain": {`INSERT INTO evidence_events (tenant_id, seq, occurred_at, actor, action, subject_kind,
+			subject_name, request_id, prev_hash, hash, key_id, signature)
+			VALUES ($1, 99, now(), 'x', 'x', 'x', 'x', 'x', $2, $2, $3, 'x')`, []any{a, hex64, keyID}},
+		"plant a chain head for A": {`INSERT INTO evidence_heads (tenant_id, seq, hash) VALUES ($1, 0, $2)
+			ON CONFLICT (tenant_id) DO UPDATE SET seq = 0`, []any{a, hex64}},
+		"retarget a row to A": {`UPDATE agent_instances SET tenant_id = $1`, []any{a}},
+	}
+	for name, attack := range attacks {
+		err := testdb.ExecErr(h.db.AppURL, b, attack.stmt, attack.args...)
+		if err == nil || !strings.Contains(err.Error(), "row-level security") {
+			t.Errorf("%s as B: err = %v, want a row-level security violation", name, err)
 		}
 	}
 
@@ -138,5 +150,11 @@ func TestAuthzAppRoleCannotReachAnotherTenantBySQL(t *testing.T) {
 	}
 	if n := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM agent_instances WHERE tenant_id = $1 AND state = 'requested'`, a); n != 1 {
 		t.Errorf("A's instance after B's UPDATE: %d in requested, want 1", n)
+	}
+	if err := testdb.ExecErr(h.db.AppURL, b, `UPDATE evidence_heads SET seq = 0 WHERE tenant_id = $1`, a); err != nil {
+		t.Fatalf("UPDATE head as B: %v", err)
+	}
+	if n := testdb.Count(t, h.db.OwnerURL, `SELECT seq FROM evidence_heads WHERE tenant_id = $1`, a); n != 2 {
+		t.Errorf("A's chain head after B's UPDATE = %d, want 2 (template and instance events)", n)
 	}
 }

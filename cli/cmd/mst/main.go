@@ -39,7 +39,7 @@ func main() {
 			Short: "Print the mst version",
 			Run:   func(cmd *cobra.Command, _ []string) { cmd.Println(version.String()) },
 		},
-		applyCmd(opts), diffCmd(opts), getCmd(opts),
+		applyCmd(opts), diffCmd(opts), getCmd(opts), evidenceCmd(opts),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "mst:", err)

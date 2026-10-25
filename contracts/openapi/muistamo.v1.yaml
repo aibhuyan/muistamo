@@ -155,6 +155,28 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/events:
+    get:
+      operationId: listEvents
+      summary: Export the tenant's evidence chain in seq order
+      parameters:
+        - name: afterSeq
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of evidence events.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/evidenceeventpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   parameters:
     Name:
