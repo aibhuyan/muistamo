@@ -916,6 +916,74 @@ components:
         updatedAt:
           type: string
           format: date-time
+    KnowledgeRead:
+      title: KnowledgeRead
+      description: 'One retrieval a person made: what they were shown, never the query
+        text (invariant 5).'
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - person
+      - at
+      - tool
+      - resultCount
+      - citations
+      properties:
+        id:
+          type: string
+          format: uuid
+        person:
+          type: string
+        at:
+          type: string
+          format: date-time
+        tool:
+          type: string
+          enum:
+          - rest.retrieve
+          - mcp.search_knowledge
+        resultCount:
+          type: integer
+          minimum: 0
+        citations:
+          type: array
+          items:
+            title: ReadCitation
+            type: object
+            additionalProperties: false
+            required:
+            - type
+            properties:
+              type:
+                type: string
+                enum:
+                - entry
+                - document
+              entryKey:
+                type: string
+              layer:
+                type: string
+              pack:
+                type: string
+              version:
+                type: string
+              source:
+                type: string
+              externalId:
+                type: string
+    KnowledgeReadPage:
+      title: KnowledgeReadPage
+      description: The caller's own reads, newest first.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeRead'
     KnowledgeSource:
       title: KnowledgeSource
       description: A document source attached to a pack (PRD section 10). Its documents

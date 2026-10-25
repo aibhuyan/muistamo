@@ -33,6 +33,7 @@ TABLES = [
     "pack_version_entries",
     "evidence_heads",
     "evidence_events",
+    "reads",
 ]
 
 
@@ -67,6 +68,8 @@ def seed(world) -> dict:
         json={"decision": "approve", "reason": "ok"},
     )
     assert approved.status_code == 200, approved.text
+    # One recorded read, so the reads table holds rows for the SQL attacks to target.
+    assert a.get("/v1/knowledge/retrieve", params={"q": "fiscal"}).status_code == 200
     return {"private": private["id"], "proposed": proposed["id"], "proposal": proposal["id"]}
 
 
