@@ -37,6 +37,7 @@ func New(t *testing.T) Server {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testdb.ApprovedModelAlias(t, db.OwnerURL, tenant, "reasoning-default")
 	srv := httptest.NewServer(api.Handler(registry.New(conn, testdb.SigningKey(t, db)), api.InsecureDevHeaders{}, nil,
 		slog.New(slog.DiscardHandler)))
 	t.Cleanup(srv.Close)

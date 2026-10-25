@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/rollout.json",
+  "title": "Rollout",
+  "description": "One model switch of an alias (PRD section 5): its audit record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "alias",
+    "from",
+    "to",
+    "strategy",
+    "evaluation",
+    "status",
+    "createdBy",
+    "createdAt",
+    "reason"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "alias": {
+      "type": "string"
+    },
+    "from": {
+      "type": "string"
+    },
+    "to": {
+      "type": "string"
+    },
+    "strategy": {
+      "description": "immediate in release 1; canary is release 2 (FR-604).",
+      "type": "string",
+      "enum": [
+        "immediate"
+      ]
+    },
+    "evaluation": {
+      "title": "RolloutEvaluation",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "not-run"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "rolled-back"
+      ]
+    },
+    "createdBy": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "rolledBackBy": {
+      "type": "string"
+    },
+    "rolledBackAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "rollbackReason": {
+      "type": "string"
+    }
+  }
+}

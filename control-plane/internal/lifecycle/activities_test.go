@@ -32,6 +32,7 @@ func setup(t *testing.T) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testdb.ApprovedModelAlias(t, db.OwnerURL, tenant, "reasoning-default")
 	conn, err := store.Open(ctx, db.AppURL)
 	if err != nil {
 		t.Fatal(err)

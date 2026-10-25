@@ -222,3 +222,40 @@ func Count(t *testing.T, url, query string, args ...any) int {
 	}
 	return n
 }
+
+// ApprovedModelAlias gives tenant an approved catalogue model and an alias on it, so templates
+// naming alias can be published (E5.4). It writes as the owner, standing in for an operator
+// and a privacy officer; tests of the approval rules themselves go through the API.
+func ApprovedModelAlias(t *testing.T, ownerURL string, tenant uuid.UUID, alias string) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, ownerURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	model := alias + "-model"
+	err = pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('muistamo.tenant_id', $1, true)`, tenant.String()); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO model_catalogue (tenant_id, name, revision, digest, document, approval_status,
+			decided_by, decision_reason, decided_at, updated_by)
+			VALUES ($1, $2, 1, 'seed', jsonb_build_object('apiVersion', 'muistamo.dev/v1', 'kind', 'ModelCatalogueItem',
+			  'metadata', jsonb_build_object('name', $2::text),
+			  'spec', jsonb_build_object('provider', 'test', 'model', 'test-model', 'region', 'eu-test', 'termsRef', 'test-terms',
+			    'priceSheet', jsonb_build_object('currency', 'EUR', 'inputPerMTok', 0, 'outputPerMTok', 0))),
+			  'approved', 'seed:privacy-officer', 'test fixture', now(), 'seed:operator')
+			ON CONFLICT DO NOTHING`, tenant, model); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO model_aliases (tenant_id, name, target, revision, digest, document, updated_by)
+			VALUES ($1, $2, $3, 1, 'seed', jsonb_build_object('apiVersion', 'muistamo.dev/v1', 'kind', 'ModelAlias',
+			  'metadata', jsonb_build_object('name', $2::text), 'spec', jsonb_build_object('target', $3::text)), 'seed:operator')
+			ON CONFLICT DO NOTHING`, tenant, alias, model)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("seed approved model alias %s: %v", alias, err)
+	}
+}

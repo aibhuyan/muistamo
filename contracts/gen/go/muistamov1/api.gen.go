@@ -894,6 +894,126 @@ func (e LeaverReviewOpenDecidersKind) Valid() bool {
 	}
 }
 
+// Defines values for ModelAliasApiVersion.
+const (
+	ModelAliasApiVersionMuistamoDevv1 ModelAliasApiVersion = "muistamo.dev/v1"
+)
+
+// Valid indicates whether the value is a known member of the ModelAliasApiVersion enum.
+func (e ModelAliasApiVersion) Valid() bool {
+	switch e {
+	case ModelAliasApiVersionMuistamoDevv1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelAliasKind.
+const (
+	ModelAliasKindModelAlias ModelAliasKind = "ModelAlias"
+)
+
+// Valid indicates whether the value is a known member of the ModelAliasKind enum.
+func (e ModelAliasKind) Valid() bool {
+	switch e {
+	case ModelAliasKindModelAlias:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelApprovalStatus.
+const (
+	ModelApprovalStatusApproved ModelApprovalStatus = "approved"
+	ModelApprovalStatusPending  ModelApprovalStatus = "pending"
+	ModelApprovalStatusRejected ModelApprovalStatus = "rejected"
+	ModelApprovalStatusRevoked  ModelApprovalStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the ModelApprovalStatus enum.
+func (e ModelApprovalStatus) Valid() bool {
+	switch e {
+	case ModelApprovalStatusApproved:
+		return true
+	case ModelApprovalStatusPending:
+		return true
+	case ModelApprovalStatusRejected:
+		return true
+	case ModelApprovalStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelApprovalDecisionDecision.
+const (
+	ModelApprovalDecisionDecisionApprove ModelApprovalDecisionDecision = "approve"
+	ModelApprovalDecisionDecisionReject  ModelApprovalDecisionDecision = "reject"
+	ModelApprovalDecisionDecisionRevoke  ModelApprovalDecisionDecision = "revoke"
+)
+
+// Valid indicates whether the value is a known member of the ModelApprovalDecisionDecision enum.
+func (e ModelApprovalDecisionDecision) Valid() bool {
+	switch e {
+	case ModelApprovalDecisionDecisionApprove:
+		return true
+	case ModelApprovalDecisionDecisionReject:
+		return true
+	case ModelApprovalDecisionDecisionRevoke:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelCatalogueItemApiVersion.
+const (
+	ModelCatalogueItemApiVersionMuistamoDevv1 ModelCatalogueItemApiVersion = "muistamo.dev/v1"
+)
+
+// Valid indicates whether the value is a known member of the ModelCatalogueItemApiVersion enum.
+func (e ModelCatalogueItemApiVersion) Valid() bool {
+	switch e {
+	case ModelCatalogueItemApiVersionMuistamoDevv1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelCatalogueItemKind.
+const (
+	ModelCatalogueItemKindModelCatalogueItem ModelCatalogueItemKind = "ModelCatalogueItem"
+)
+
+// Valid indicates whether the value is a known member of the ModelCatalogueItemKind enum.
+func (e ModelCatalogueItemKind) Valid() bool {
+	switch e {
+	case ModelCatalogueItemKindModelCatalogueItem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelCatalogueItemSpecPriceSheetCurrency.
+const (
+	ModelCatalogueItemSpecPriceSheetCurrencyEUR ModelCatalogueItemSpecPriceSheetCurrency = "EUR"
+)
+
+// Valid indicates whether the value is a known member of the ModelCatalogueItemSpecPriceSheetCurrency enum.
+func (e ModelCatalogueItemSpecPriceSheetCurrency) Valid() bool {
+	switch e {
+	case ModelCatalogueItemSpecPriceSheetCurrencyEUR:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PolicyDecisionDecision.
 const (
 	PolicyDecisionDecisionAllow PolicyDecisionDecision = "allow"
@@ -1113,6 +1233,69 @@ func (e ResolvedEntryLayer) Valid() bool {
 	case ResolvedEntryLayerRole:
 		return true
 	case ResolvedEntryLayerTeam:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RolloutEvaluationStatus.
+const (
+	RolloutEvaluationStatusNotRun RolloutEvaluationStatus = "not-run"
+)
+
+// Valid indicates whether the value is a known member of the RolloutEvaluationStatus enum.
+func (e RolloutEvaluationStatus) Valid() bool {
+	switch e {
+	case RolloutEvaluationStatusNotRun:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RolloutStatus.
+const (
+	RolloutStatusCompleted  RolloutStatus = "completed"
+	RolloutStatusRolledBack RolloutStatus = "rolled-back"
+)
+
+// Valid indicates whether the value is a known member of the RolloutStatus enum.
+func (e RolloutStatus) Valid() bool {
+	switch e {
+	case RolloutStatusCompleted:
+		return true
+	case RolloutStatusRolledBack:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RolloutStrategy.
+const (
+	RolloutStrategyImmediate RolloutStrategy = "immediate"
+)
+
+// Valid indicates whether the value is a known member of the RolloutStrategy enum.
+func (e RolloutStrategy) Valid() bool {
+	switch e {
+	case RolloutStrategyImmediate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RolloutRequestAcknowledgeUnevaluated.
+const (
+	RolloutRequestAcknowledgeUnevaluatedTrue RolloutRequestAcknowledgeUnevaluated = true
+)
+
+// Valid indicates whether the value is a known member of the RolloutRequestAcknowledgeUnevaluated enum.
+func (e RolloutRequestAcknowledgeUnevaluated) Valid() bool {
+	switch e {
+	case RolloutRequestAcknowledgeUnevaluatedTrue:
 		return true
 	default:
 		return false
@@ -1977,6 +2160,131 @@ type LeaverReviewPage struct {
 	Items []LeaverReview `json:"items"`
 }
 
+// ModelAlias A name templates use for a model, for example reasoning-default (PRD section 5, FR-602). It can target only an approved catalogue model, and changing its target is a rollout, never an edit.
+type ModelAlias struct {
+	ApiVersion ModelAliasApiVersion `json:"apiVersion"`
+	Kind       ModelAliasKind       `json:"kind"`
+
+	// Metadata Metadata shared by every Muistamo YAML kind.
+	Metadata ObjectMeta `json:"metadata"`
+	Spec     struct {
+		Description *string `json:"description,omitempty"`
+
+		// Target The catalogue model's name. Set on create; change it with a rollout.
+		Target string `json:"target"`
+	} `json:"spec"`
+}
+
+// ModelAliasApiVersion defines model for ModelAlias.ApiVersion.
+type ModelAliasApiVersion string
+
+// ModelAliasKind defines model for ModelAlias.Kind.
+type ModelAliasKind string
+
+// ModelAliasPage defines model for ModelAliasPage.
+type ModelAliasPage struct {
+	Items []ModelAliasRecord `json:"items"`
+}
+
+// ModelAliasRecord defines model for ModelAliasRecord.
+type ModelAliasRecord struct {
+	// Compliant The target exists and is approved: templates using the alias can be published and assigned.
+	Compliant bool      `json:"compliant"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Document A name templates use for a model, for example reasoning-default (PRD section 5, FR-602). It can target only an approved catalogue model, and changing its target is a rollout, never an edit.
+	Document  ModelAlias `json:"document"`
+	Reason    *string    `json:"reason,omitempty"`
+	Revision  int        `json:"revision"`
+	UpdatedAt time.Time  `json:"updatedAt"`
+	UpdatedBy string     `json:"updatedBy"`
+}
+
+// ModelApproval Where a catalogue model's approval stands. A change to the model's document resets it to pending.
+type ModelApproval struct {
+	DecidedAt *time.Time          `json:"decidedAt,omitempty"`
+	DecidedBy *string             `json:"decidedBy,omitempty"`
+	Reason    *string             `json:"reason,omitempty"`
+	Status    ModelApprovalStatus `json:"status"`
+}
+
+// ModelApprovalStatus defines model for ModelApproval.Status.
+type ModelApprovalStatus string
+
+// ModelApprovalDecision A privacy officer's decision on a catalogue model; never the person who last changed it.
+type ModelApprovalDecision struct {
+	Decision ModelApprovalDecisionDecision `json:"decision"`
+	Reason   string                        `json:"reason"`
+}
+
+// ModelApprovalDecisionDecision defines model for ModelApprovalDecision.Decision.
+type ModelApprovalDecisionDecision string
+
+// ModelCatalogueItem A provider model the company may use (PRD section 5, FR-601). Aliases can target it only once a privacy officer approves it, and any change to it needs approval again.
+type ModelCatalogueItem struct {
+	ApiVersion ModelCatalogueItemApiVersion `json:"apiVersion"`
+	Kind       ModelCatalogueItemKind       `json:"kind"`
+
+	// Metadata Metadata shared by every Muistamo YAML kind.
+	Metadata ObjectMeta `json:"metadata"`
+	Spec     struct {
+		// AiActProviderStatus The provider's status under the EU AI Act, for example gpai-provider.
+		AiActProviderStatus *string `json:"aiActProviderStatus,omitempty"`
+
+		// DpaRef Reference to the data processing agreement (GDPR Art 28).
+		DpaRef *string `json:"dpaRef,omitempty"`
+
+		// Model The provider's model id.
+		Model string `json:"model"`
+
+		// PriceSheet Provider list prices, passed through at cost (invariant 7).
+		PriceSheet struct {
+			CachedInputPerMTok *float32                                 `json:"cachedInputPerMTok,omitempty"`
+			Currency           ModelCatalogueItemSpecPriceSheetCurrency `json:"currency"`
+			InputPerMTok       float32                                  `json:"inputPerMTok"`
+			OutputPerMTok      float32                                  `json:"outputPerMTok"`
+		} `json:"priceSheet"`
+
+		// Provider For example anthropic, google, openai, mistral.
+		Provider string `json:"provider"`
+
+		// Region Where the provider processes requests, for example eu-west-1.
+		Region        string    `json:"region"`
+		SubProcessors *[]string `json:"subProcessors,omitempty"`
+
+		// TermsRef Reference to the reviewed provider terms.
+		TermsRef string  `json:"termsRef"`
+		Version  *string `json:"version,omitempty"`
+	} `json:"spec"`
+}
+
+// ModelCatalogueItemApiVersion defines model for ModelCatalogueItem.ApiVersion.
+type ModelCatalogueItemApiVersion string
+
+// ModelCatalogueItemKind defines model for ModelCatalogueItem.Kind.
+type ModelCatalogueItemKind string
+
+// ModelCatalogueItemSpecPriceSheetCurrency defines model for ModelCatalogueItem.Spec.PriceSheet.Currency.
+type ModelCatalogueItemSpecPriceSheetCurrency string
+
+// ModelCatalogueItemPage defines model for ModelCatalogueItemPage.
+type ModelCatalogueItemPage struct {
+	Items []ModelCatalogueItemRecord `json:"items"`
+}
+
+// ModelCatalogueItemRecord defines model for ModelCatalogueItemRecord.
+type ModelCatalogueItemRecord struct {
+	// Approval Where a catalogue model's approval stands. A change to the model's document resets it to pending.
+	Approval  ModelApproval `json:"approval"`
+	CreatedAt time.Time     `json:"createdAt"`
+
+	// Document A provider model the company may use (PRD section 5, FR-601). Aliases can target it only once a privacy officer approves it, and any change to it needs approval again.
+	Document  ModelCatalogueItem `json:"document"`
+	Revision  int                `json:"revision"`
+	UpdatedAt time.Time          `json:"updatedAt"`
+	UpdatedBy string             `json:"updatedBy"`
+}
+
 // ObjectMeta Metadata shared by every Muistamo YAML kind.
 type ObjectMeta struct {
 	Labels *map[string]string `json:"labels,omitempty"`
@@ -2271,6 +2579,58 @@ type RollbackInput struct {
 	ToVersion string `json:"toVersion"`
 }
 
+// RollbackRequest defines model for RollbackRequest.
+type RollbackRequest struct {
+	Reason string `json:"reason"`
+}
+
+// Rollout One model switch of an alias (PRD section 5): its audit record.
+type Rollout struct {
+	Alias      string    `json:"alias"`
+	CreatedAt  time.Time `json:"createdAt"`
+	CreatedBy  string    `json:"createdBy"`
+	Evaluation struct {
+		Reason string                  `json:"reason"`
+		Status RolloutEvaluationStatus `json:"status"`
+	} `json:"evaluation"`
+	From           string             `json:"from"`
+	Id             openapi_types.UUID `json:"id"`
+	Reason         string             `json:"reason"`
+	RollbackReason *string            `json:"rollbackReason,omitempty"`
+	RolledBackAt   *time.Time         `json:"rolledBackAt,omitempty"`
+	RolledBackBy   *string            `json:"rolledBackBy,omitempty"`
+	Status         RolloutStatus      `json:"status"`
+
+	// Strategy immediate in release 1; canary is release 2 (FR-604).
+	Strategy RolloutStrategy `json:"strategy"`
+	To       string          `json:"to"`
+}
+
+// RolloutEvaluationStatus defines model for Rollout.Evaluation.Status.
+type RolloutEvaluationStatus string
+
+// RolloutStatus defines model for Rollout.Status.
+type RolloutStatus string
+
+// RolloutStrategy immediate in release 1; canary is release 2 (FR-604).
+type RolloutStrategy string
+
+// RolloutPage Rollouts, newest first.
+type RolloutPage struct {
+	Items []Rollout `json:"items"`
+}
+
+// RolloutRequest Switch an alias to another approved model. The evaluation gate (FR-603) needs the gateway, which does not exist yet, so the switch is unevaluated and must be acknowledged as such.
+type RolloutRequest struct {
+	// AcknowledgeUnevaluated Must be true: the switch is made without an evaluation report.
+	AcknowledgeUnevaluated RolloutRequestAcknowledgeUnevaluated `json:"acknowledgeUnevaluated"`
+	Reason                 string                               `json:"reason"`
+	To                     string                               `json:"to"`
+}
+
+// RolloutRequestAcknowledgeUnevaluated Must be true: the switch is made without an evaluation report.
+type RolloutRequestAcknowledgeUnevaluated bool
+
 // SyncResult What a sync changed in the index.
 type SyncResult struct {
 	Indexed int    `json:"indexed"`
@@ -2360,6 +2720,18 @@ type TransitionInstanceJSONRequestBody = InstanceTransition
 // ApplyLinkJSONRequestBody defines body for ApplyLink for application/json ContentType.
 type ApplyLinkJSONRequestBody = AgentLink
 
+// ApplyModelAliasJSONRequestBody defines body for ApplyModelAlias for application/json ContentType.
+type ApplyModelAliasJSONRequestBody = ModelAlias
+
+// StartRolloutJSONRequestBody defines body for StartRollout for application/json ContentType.
+type StartRolloutJSONRequestBody = RolloutRequest
+
+// ApplyModelJSONRequestBody defines body for ApplyModel for application/json ContentType.
+type ApplyModelJSONRequestBody = ModelCatalogueItem
+
+// DecideModelJSONRequestBody defines body for DecideModel for application/json ContentType.
+type DecideModelJSONRequestBody = ModelApprovalDecision
+
 // DecidePolicyJSONRequestBody defines body for DecidePolicy for application/json ContentType.
 type DecidePolicyJSONRequestBody = PolicyDecisionRequest
 
@@ -2371,6 +2743,9 @@ type ExportPersonalDataJSONRequestBody = AccessRequest
 
 // ErasePersonalDataJSONRequestBody defines body for ErasePersonalData for application/json ContentType.
 type ErasePersonalDataJSONRequestBody = ErasureRequest
+
+// RollbackRolloutJSONRequestBody defines body for RollbackRollout for application/json ContentType.
+type RollbackRolloutJSONRequestBody = RollbackRequest
 
 // ApplyTemplateJSONRequestBody defines body for ApplyTemplate for application/json ContentType.
 type ApplyTemplateJSONRequestBody = AgentTemplate
@@ -2638,6 +3013,76 @@ type ClientInterface interface {
 	// Corresponds with PUT /v1/links/{name} (the `ApplyLink` operationId).
 	ApplyLink(ctx context.Context, name Name, body ApplyLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListModelAliases performs a GET /v1/model-aliases (the `ListModelAliases` operationId) request.
+	ListModelAliases(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetModelAlias performs a GET /v1/model-aliases/{name} (the `GetModelAlias` operationId) request.
+	GetModelAlias(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyModelAliasWithBody Create an alias on an approved model, or change its description; retargeting is a rollout
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/model-aliases/{name} (the `ApplyModelAlias` operationId).
+	ApplyModelAliasWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyModelAlias Create an alias on an approved model, or change its description; retargeting is a rollout
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/model-aliases/{name} (the `ApplyModelAlias` operationId).
+	ApplyModelAlias(ctx context.Context, name Name, body ApplyModelAliasJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartRolloutWithBody Switch the alias to another approved model (unevaluated until the gateway exists)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/model-aliases/{name}/rollouts (the `StartRollout` operationId).
+	StartRolloutWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartRollout Switch the alias to another approved model (unevaluated until the gateway exists)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/model-aliases/{name}/rollouts (the `StartRollout` operationId).
+	StartRollout(ctx context.Context, name Name, body StartRolloutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListModels The model catalogue and each model's approval
+	//
+	// Corresponds with GET /v1/models (the `ListModels` operationId).
+	ListModels(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetModel performs a GET /v1/models/{name} (the `GetModel` operationId) request.
+	GetModel(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyModelWithBody Add or change a catalogue model; any change needs approval again
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/models/{name} (the `ApplyModel` operationId).
+	ApplyModelWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyModel Add or change a catalogue model; any change needs approval again
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/models/{name} (the `ApplyModel` operationId).
+	ApplyModel(ctx context.Context, name Name, body ApplyModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DecideModelWithBody Approve, reject or revoke a model (privacy officers; never its last editor)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
+	DecideModelWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DecideModel Approve, reject or revoke a model (privacy officers; never its last editor)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
+	DecideModel(ctx context.Context, name Name, body DecideModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetCompiledPolicies The Cedar policy set the tenant's rules compile to
 	//
 	// Corresponds with GET /v1/policy/cedar (the `GetCompiledPolicies` operationId).
@@ -2711,6 +3156,26 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/privacy/erasures/{id} (the `GetErasure` operationId).
 	GetErasure(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListRollouts performs a GET /v1/rollouts (the `ListRollouts` operationId) request.
+	ListRollouts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRollout performs a GET /v1/rollouts/{id} (the `GetRollout` operationId) request.
+	GetRollout(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RollbackRolloutWithBody Return the alias to the model it had before this rollout, if that model is still approved
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/rollouts/{id}/rollback (the `RollbackRollout` operationId).
+	RollbackRolloutWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RollbackRollout Return the alias to the model it had before this rollout, if that model is still approved
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/rollouts/{id}/rollback (the `RollbackRollout` operationId).
+	RollbackRollout(ctx context.Context, id openapi_types.UUID, body RollbackRolloutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTemplates List the latest version of every template
 	//
@@ -3251,6 +3716,196 @@ func (c *Client) ApplyLink(ctx context.Context, name Name, body ApplyLinkJSONReq
 	return c.Client.Do(req)
 }
 
+// ListModelAliases performs a GET /v1/model-aliases (the `ListModelAliases` operationId) request.
+func (c *Client) ListModelAliases(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListModelAliasesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetModelAlias performs a GET /v1/model-aliases/{name} (the `GetModelAlias` operationId) request.
+func (c *Client) GetModelAlias(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetModelAliasRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyModelAliasWithBody Create an alias on an approved model, or change its description; retargeting is a rollout
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/model-aliases/{name} (the `ApplyModelAlias` operationId).
+func (c *Client) ApplyModelAliasWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyModelAliasRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyModelAlias Create an alias on an approved model, or change its description; retargeting is a rollout
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/model-aliases/{name} (the `ApplyModelAlias` operationId).
+func (c *Client) ApplyModelAlias(ctx context.Context, name Name, body ApplyModelAliasJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyModelAliasRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StartRolloutWithBody Switch the alias to another approved model (unevaluated until the gateway exists)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/model-aliases/{name}/rollouts (the `StartRollout` operationId).
+func (c *Client) StartRolloutWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartRolloutRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StartRollout Switch the alias to another approved model (unevaluated until the gateway exists)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/model-aliases/{name}/rollouts (the `StartRollout` operationId).
+func (c *Client) StartRollout(ctx context.Context, name Name, body StartRolloutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartRolloutRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListModels The model catalogue and each model's approval
+//
+// Corresponds with GET /v1/models (the `ListModels` operationId).
+func (c *Client) ListModels(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListModelsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetModel performs a GET /v1/models/{name} (the `GetModel` operationId) request.
+func (c *Client) GetModel(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetModelRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyModelWithBody Add or change a catalogue model; any change needs approval again
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/models/{name} (the `ApplyModel` operationId).
+func (c *Client) ApplyModelWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyModelRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApplyModel Add or change a catalogue model; any change needs approval again
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/models/{name} (the `ApplyModel` operationId).
+func (c *Client) ApplyModel(ctx context.Context, name Name, body ApplyModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyModelRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DecideModelWithBody Approve, reject or revoke a model (privacy officers; never its last editor)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
+func (c *Client) DecideModelWithBody(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDecideModelRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DecideModel Approve, reject or revoke a model (privacy officers; never its last editor)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
+func (c *Client) DecideModel(ctx context.Context, name Name, body DecideModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDecideModelRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetCompiledPolicies The Cedar policy set the tenant's rules compile to
 //
 // Corresponds with GET /v1/policy/cedar (the `GetCompiledPolicies` operationId).
@@ -3415,6 +4070,66 @@ func (c *Client) ErasePersonalData(ctx context.Context, body ErasePersonalDataJS
 // Corresponds with GET /v1/privacy/erasures/{id} (the `GetErasure` operationId).
 func (c *Client) GetErasure(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetErasureRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListRollouts performs a GET /v1/rollouts (the `ListRollouts` operationId) request.
+func (c *Client) ListRollouts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRolloutsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRollout performs a GET /v1/rollouts/{id} (the `GetRollout` operationId) request.
+func (c *Client) GetRollout(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRolloutRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RollbackRolloutWithBody Return the alias to the model it had before this rollout, if that model is still approved
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/rollouts/{id}/rollback (the `RollbackRollout` operationId).
+func (c *Client) RollbackRolloutWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRollbackRolloutRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RollbackRollout Return the alias to the model it had before this rollout, if that model is still approved
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/rollouts/{id}/rollback (the `RollbackRollout` operationId).
+func (c *Client) RollbackRollout(ctx context.Context, id openapi_types.UUID, body RollbackRolloutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRollbackRolloutRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4513,6 +5228,316 @@ func NewApplyLinkRequestWithBody(server string, name Name, contentType string, b
 	return req, nil
 }
 
+// NewListModelAliasesRequest constructs an http.Request for the ListModelAliases method
+func NewListModelAliasesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/model-aliases")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetModelAliasRequest constructs an http.Request for the GetModelAlias method
+func NewGetModelAliasRequest(server string, name Name) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/model-aliases/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApplyModelAliasRequest calls the generic ApplyModelAlias builder with application/json body
+func NewApplyModelAliasRequest(server string, name Name, body ApplyModelAliasJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewApplyModelAliasRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewApplyModelAliasRequestWithBody constructs an http.Request for the ApplyModelAlias method, with any body, and a specified content type
+func NewApplyModelAliasRequestWithBody(server string, name Name, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/model-aliases/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewStartRolloutRequest calls the generic StartRollout builder with application/json body
+func NewStartRolloutRequest(server string, name Name, body StartRolloutJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewStartRolloutRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewStartRolloutRequestWithBody constructs an http.Request for the StartRollout method, with any body, and a specified content type
+func NewStartRolloutRequestWithBody(server string, name Name, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/model-aliases/%s/rollouts", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListModelsRequest constructs an http.Request for the ListModels method
+func NewListModelsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/models")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetModelRequest constructs an http.Request for the GetModel method
+func NewGetModelRequest(server string, name Name) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/models/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApplyModelRequest calls the generic ApplyModel builder with application/json body
+func NewApplyModelRequest(server string, name Name, body ApplyModelJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewApplyModelRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewApplyModelRequestWithBody constructs an http.Request for the ApplyModel method, with any body, and a specified content type
+func NewApplyModelRequestWithBody(server string, name Name, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/models/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDecideModelRequest calls the generic DecideModel builder with application/json body
+func NewDecideModelRequest(server string, name Name, body DecideModelJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDecideModelRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewDecideModelRequestWithBody constructs an http.Request for the DecideModel method, with any body, and a specified content type
+func NewDecideModelRequestWithBody(server string, name Name, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/models/%s/approval", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetCompiledPoliciesRequest constructs an http.Request for the GetCompiledPolicies method
 func NewGetCompiledPoliciesRequest(server string) (*http.Request, error) {
 	var err error
@@ -4730,6 +5755,114 @@ func NewGetErasureRequest(server string, id openapi_types.UUID) (*http.Request, 
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListRolloutsRequest constructs an http.Request for the ListRollouts method
+func NewListRolloutsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/rollouts")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetRolloutRequest constructs an http.Request for the GetRollout method
+func NewGetRolloutRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/rollouts/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRollbackRolloutRequest calls the generic RollbackRollout builder with application/json body
+func NewRollbackRolloutRequest(server string, id openapi_types.UUID, body RollbackRolloutJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRollbackRolloutRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewRollbackRolloutRequestWithBody constructs an http.Request for the RollbackRollout method, with any body, and a specified content type
+func NewRollbackRolloutRequestWithBody(server string, id openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/rollouts/%s/rollback", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -5264,6 +6397,84 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /v1/links/{name} (the `ApplyLink` operationId).
 	ApplyLinkWithResponse(ctx context.Context, name Name, body ApplyLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyLinkResponse, error)
 
+	// ListModelAliasesWithResponse performs a GET /v1/model-aliases (the `ListModelAliases` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListModelAliasesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListModelAliasesResponse, error)
+
+	// GetModelAliasWithResponse performs a GET /v1/model-aliases/{name} (the `GetModelAlias` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetModelAliasWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*GetModelAliasResponse, error)
+
+	// ApplyModelAliasWithBodyWithResponse Create an alias on an approved model, or change its description; retargeting is a rollout
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/model-aliases/{name} (the `ApplyModelAlias` operationId).
+	ApplyModelAliasWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyModelAliasResponse, error)
+
+	// ApplyModelAliasWithResponse Create an alias on an approved model, or change its description; retargeting is a rollout
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/model-aliases/{name} (the `ApplyModelAlias` operationId).
+	ApplyModelAliasWithResponse(ctx context.Context, name Name, body ApplyModelAliasJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyModelAliasResponse, error)
+
+	// StartRolloutWithBodyWithResponse Switch the alias to another approved model (unevaluated until the gateway exists)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/model-aliases/{name}/rollouts (the `StartRollout` operationId).
+	StartRolloutWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartRolloutResponse, error)
+
+	// StartRolloutWithResponse Switch the alias to another approved model (unevaluated until the gateway exists)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/model-aliases/{name}/rollouts (the `StartRollout` operationId).
+	StartRolloutWithResponse(ctx context.Context, name Name, body StartRolloutJSONRequestBody, reqEditors ...RequestEditorFn) (*StartRolloutResponse, error)
+
+	// ListModelsWithResponse The model catalogue and each model's approval
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/models (the `ListModels` operationId).
+	ListModelsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListModelsResponse, error)
+
+	// GetModelWithResponse performs a GET /v1/models/{name} (the `GetModel` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetModelWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*GetModelResponse, error)
+
+	// ApplyModelWithBodyWithResponse Add or change a catalogue model; any change needs approval again
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/models/{name} (the `ApplyModel` operationId).
+	ApplyModelWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyModelResponse, error)
+
+	// ApplyModelWithResponse Add or change a catalogue model; any change needs approval again
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/models/{name} (the `ApplyModel` operationId).
+	ApplyModelWithResponse(ctx context.Context, name Name, body ApplyModelJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyModelResponse, error)
+
+	// DecideModelWithBodyWithResponse Approve, reject or revoke a model (privacy officers; never its last editor)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
+	DecideModelWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecideModelResponse, error)
+
+	// DecideModelWithResponse Approve, reject or revoke a model (privacy officers; never its last editor)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
+	DecideModelWithResponse(ctx context.Context, name Name, body DecideModelJSONRequestBody, reqEditors ...RequestEditorFn) (*DecideModelResponse, error)
+
 	// GetCompiledPoliciesWithResponse The Cedar policy set the tenant's rules compile to
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -5341,6 +6552,30 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/privacy/erasures/{id} (the `GetErasure` operationId).
 	GetErasureWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetErasureResponse, error)
+
+	// ListRolloutsWithResponse performs a GET /v1/rollouts (the `ListRollouts` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListRolloutsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListRolloutsResponse, error)
+
+	// GetRolloutWithResponse performs a GET /v1/rollouts/{id} (the `GetRollout` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetRolloutWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetRolloutResponse, error)
+
+	// RollbackRolloutWithBodyWithResponse Return the alias to the model it had before this rollout, if that model is still approved
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/rollouts/{id}/rollback (the `RollbackRollout` operationId).
+	RollbackRolloutWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RollbackRolloutResponse, error)
+
+	// RollbackRolloutWithResponse Return the alias to the model it had before this rollout, if that model is still approved
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/rollouts/{id}/rollback (the `RollbackRollout` operationId).
+	RollbackRolloutWithResponse(ctx context.Context, id openapi_types.UUID, body RollbackRolloutJSONRequestBody, reqEditors ...RequestEditorFn) (*RollbackRolloutResponse, error)
 
 	// ListTemplatesWithResponse List the latest version of every template
 	//
@@ -6649,6 +7884,404 @@ func (r ApplyLinkResponse) ContentType() string {
 	return ""
 }
 
+type ListModelAliasesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ModelAliasPage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListModelAliasesResponse) GetJSON200() *ModelAliasPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListModelAliasesResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListModelAliasesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListModelAliasesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListModelAliasesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListModelAliasesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetModelAliasResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ModelAliasRecord
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetModelAliasResponse) GetJSON200() *ModelAliasRecord {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetModelAliasResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetModelAliasResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetModelAliasResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetModelAliasResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetModelAliasResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ApplyModelAliasResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ModelAliasRecord
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ModelAliasRecord
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ApplyModelAliasResponse) GetJSON200() *ModelAliasRecord {
+	return r.JSON200
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r ApplyModelAliasResponse) GetJSON201() *ModelAliasRecord {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ApplyModelAliasResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ApplyModelAliasResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ApplyModelAliasResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApplyModelAliasResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ApplyModelAliasResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type StartRolloutResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Rollout
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r StartRolloutResponse) GetJSON201() *Rollout {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r StartRolloutResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r StartRolloutResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StartRolloutResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartRolloutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StartRolloutResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListModelsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ModelCatalogueItemPage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListModelsResponse) GetJSON200() *ModelCatalogueItemPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListModelsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListModelsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListModelsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListModelsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListModelsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetModelResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ModelCatalogueItemRecord
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetModelResponse) GetJSON200() *ModelCatalogueItemRecord {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetModelResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetModelResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetModelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetModelResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetModelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ApplyModelResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ModelCatalogueItemRecord
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ModelCatalogueItemRecord
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ApplyModelResponse) GetJSON200() *ModelCatalogueItemRecord {
+	return r.JSON200
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r ApplyModelResponse) GetJSON201() *ModelCatalogueItemRecord {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ApplyModelResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ApplyModelResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ApplyModelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApplyModelResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ApplyModelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DecideModelResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ModelCatalogueItemRecord
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DecideModelResponse) GetJSON200() *ModelCatalogueItemRecord {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DecideModelResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DecideModelResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DecideModelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DecideModelResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DecideModelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetCompiledPoliciesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6938,6 +8571,150 @@ func (r GetErasureResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetErasureResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListRolloutsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RolloutPage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListRolloutsResponse) GetJSON200() *RolloutPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListRolloutsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListRolloutsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListRolloutsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListRolloutsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListRolloutsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetRolloutResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Rollout
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRolloutResponse) GetJSON200() *Rollout {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetRolloutResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRolloutResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRolloutResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRolloutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRolloutResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RollbackRolloutResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Rollout
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RollbackRolloutResponse) GetJSON200() *Rollout {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RollbackRolloutResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RollbackRolloutResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RollbackRolloutResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RollbackRolloutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RollbackRolloutResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7676,6 +9453,156 @@ func (c *ClientWithResponses) ApplyLinkWithResponse(ctx context.Context, name Na
 	return ParseApplyLinkResponse(rsp)
 }
 
+// ListModelAliasesWithResponse performs a GET /v1/model-aliases (the `ListModelAliases` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListModelAliasesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListModelAliasesResponse, error) {
+	rsp, err := c.ListModelAliases(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListModelAliasesResponse(rsp)
+}
+
+// GetModelAliasWithResponse performs a GET /v1/model-aliases/{name} (the `GetModelAlias` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetModelAliasWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*GetModelAliasResponse, error) {
+	rsp, err := c.GetModelAlias(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetModelAliasResponse(rsp)
+}
+
+// ApplyModelAliasWithBodyWithResponse Create an alias on an approved model, or change its description; retargeting is a rollout
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/model-aliases/{name} (the `ApplyModelAlias` operationId).
+func (c *ClientWithResponses) ApplyModelAliasWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyModelAliasResponse, error) {
+	rsp, err := c.ApplyModelAliasWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyModelAliasResponse(rsp)
+}
+
+// ApplyModelAliasWithResponse Create an alias on an approved model, or change its description; retargeting is a rollout
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/model-aliases/{name} (the `ApplyModelAlias` operationId).
+func (c *ClientWithResponses) ApplyModelAliasWithResponse(ctx context.Context, name Name, body ApplyModelAliasJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyModelAliasResponse, error) {
+	rsp, err := c.ApplyModelAlias(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyModelAliasResponse(rsp)
+}
+
+// StartRolloutWithBodyWithResponse Switch the alias to another approved model (unevaluated until the gateway exists)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/model-aliases/{name}/rollouts (the `StartRollout` operationId).
+func (c *ClientWithResponses) StartRolloutWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartRolloutResponse, error) {
+	rsp, err := c.StartRolloutWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartRolloutResponse(rsp)
+}
+
+// StartRolloutWithResponse Switch the alias to another approved model (unevaluated until the gateway exists)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/model-aliases/{name}/rollouts (the `StartRollout` operationId).
+func (c *ClientWithResponses) StartRolloutWithResponse(ctx context.Context, name Name, body StartRolloutJSONRequestBody, reqEditors ...RequestEditorFn) (*StartRolloutResponse, error) {
+	rsp, err := c.StartRollout(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartRolloutResponse(rsp)
+}
+
+// ListModelsWithResponse The model catalogue and each model's approval
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/models (the `ListModels` operationId).
+func (c *ClientWithResponses) ListModelsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListModelsResponse, error) {
+	rsp, err := c.ListModels(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListModelsResponse(rsp)
+}
+
+// GetModelWithResponse performs a GET /v1/models/{name} (the `GetModel` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetModelWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*GetModelResponse, error) {
+	rsp, err := c.GetModel(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetModelResponse(rsp)
+}
+
+// ApplyModelWithBodyWithResponse Add or change a catalogue model; any change needs approval again
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/models/{name} (the `ApplyModel` operationId).
+func (c *ClientWithResponses) ApplyModelWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyModelResponse, error) {
+	rsp, err := c.ApplyModelWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyModelResponse(rsp)
+}
+
+// ApplyModelWithResponse Add or change a catalogue model; any change needs approval again
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/models/{name} (the `ApplyModel` operationId).
+func (c *ClientWithResponses) ApplyModelWithResponse(ctx context.Context, name Name, body ApplyModelJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyModelResponse, error) {
+	rsp, err := c.ApplyModel(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyModelResponse(rsp)
+}
+
+// DecideModelWithBodyWithResponse Approve, reject or revoke a model (privacy officers; never its last editor)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
+func (c *ClientWithResponses) DecideModelWithBodyWithResponse(ctx context.Context, name Name, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecideModelResponse, error) {
+	rsp, err := c.DecideModelWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDecideModelResponse(rsp)
+}
+
+// DecideModelWithResponse Approve, reject or revoke a model (privacy officers; never its last editor)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
+func (c *ClientWithResponses) DecideModelWithResponse(ctx context.Context, name Name, body DecideModelJSONRequestBody, reqEditors ...RequestEditorFn) (*DecideModelResponse, error) {
+	rsp, err := c.DecideModel(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDecideModelResponse(rsp)
+}
+
 // GetCompiledPoliciesWithResponse The Cedar policy set the tenant's rules compile to
 //
 // Returns a wrapper object for the known response body format(s).
@@ -7812,6 +9739,54 @@ func (c *ClientWithResponses) GetErasureWithResponse(ctx context.Context, id ope
 		return nil, err
 	}
 	return ParseGetErasureResponse(rsp)
+}
+
+// ListRolloutsWithResponse performs a GET /v1/rollouts (the `ListRollouts` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListRolloutsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListRolloutsResponse, error) {
+	rsp, err := c.ListRollouts(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListRolloutsResponse(rsp)
+}
+
+// GetRolloutWithResponse performs a GET /v1/rollouts/{id} (the `GetRollout` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetRolloutWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetRolloutResponse, error) {
+	rsp, err := c.GetRollout(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRolloutResponse(rsp)
+}
+
+// RollbackRolloutWithBodyWithResponse Return the alias to the model it had before this rollout, if that model is still approved
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/rollouts/{id}/rollback (the `RollbackRollout` operationId).
+func (c *ClientWithResponses) RollbackRolloutWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RollbackRolloutResponse, error) {
+	rsp, err := c.RollbackRolloutWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRollbackRolloutResponse(rsp)
+}
+
+// RollbackRolloutWithResponse Return the alias to the model it had before this rollout, if that model is still approved
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/rollouts/{id}/rollback (the `RollbackRollout` operationId).
+func (c *ClientWithResponses) RollbackRolloutWithResponse(ctx context.Context, id openapi_types.UUID, body RollbackRolloutJSONRequestBody, reqEditors ...RequestEditorFn) (*RollbackRolloutResponse, error) {
+	rsp, err := c.RollbackRollout(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRollbackRolloutResponse(rsp)
 }
 
 // ListTemplatesWithResponse List the latest version of every template
@@ -8883,6 +10858,284 @@ func ParseApplyLinkResponse(rsp *http.Response) (*ApplyLinkResponse, error) {
 	return response, nil
 }
 
+// ParseListModelAliasesResponse parses an HTTP response from a ListModelAliasesWithResponse call
+func ParseListModelAliasesResponse(rsp *http.Response) (*ListModelAliasesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListModelAliasesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ModelAliasPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetModelAliasResponse parses an HTTP response from a GetModelAliasWithResponse call
+func ParseGetModelAliasResponse(rsp *http.Response) (*GetModelAliasResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetModelAliasResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ModelAliasRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseApplyModelAliasResponse parses an HTTP response from a ApplyModelAliasWithResponse call
+func ParseApplyModelAliasResponse(rsp *http.Response) (*ApplyModelAliasResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApplyModelAliasResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ModelAliasRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ModelAliasRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStartRolloutResponse parses an HTTP response from a StartRolloutWithResponse call
+func ParseStartRolloutResponse(rsp *http.Response) (*StartRolloutResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartRolloutResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Rollout
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListModelsResponse parses an HTTP response from a ListModelsWithResponse call
+func ParseListModelsResponse(rsp *http.Response) (*ListModelsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListModelsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ModelCatalogueItemPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetModelResponse parses an HTTP response from a GetModelWithResponse call
+func ParseGetModelResponse(rsp *http.Response) (*GetModelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetModelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ModelCatalogueItemRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseApplyModelResponse parses an HTTP response from a ApplyModelWithResponse call
+func ParseApplyModelResponse(rsp *http.Response) (*ApplyModelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApplyModelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ModelCatalogueItemRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ModelCatalogueItemRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDecideModelResponse parses an HTTP response from a DecideModelWithResponse call
+func ParseDecideModelResponse(rsp *http.Response) (*DecideModelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DecideModelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ModelCatalogueItemRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetCompiledPoliciesResponse parses an HTTP response from a GetCompiledPoliciesWithResponse call
 func ParseGetCompiledPoliciesResponse(rsp *http.Response) (*GetCompiledPoliciesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -9071,6 +11324,105 @@ func ParseGetErasureResponse(rsp *http.Response) (*GetErasureResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ErasureProof
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListRolloutsResponse parses an HTTP response from a ListRolloutsWithResponse call
+func ParseListRolloutsResponse(rsp *http.Response) (*ListRolloutsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListRolloutsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RolloutPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRolloutResponse parses an HTTP response from a GetRolloutWithResponse call
+func ParseGetRolloutResponse(rsp *http.Response) (*GetRolloutResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRolloutResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Rollout
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRollbackRolloutResponse parses an HTTP response from a RollbackRolloutWithResponse call
+func ParseRollbackRolloutResponse(rsp *http.Response) (*RollbackRolloutResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RollbackRolloutResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Rollout
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -9416,6 +11768,30 @@ type ServerInterface interface {
 	// ApplyLink Create or change an agent link; an identical document changes nothing
 	// (PUT /v1/links/{name})
 	ApplyLink(w http.ResponseWriter, r *http.Request, name Name)
+
+	// (GET /v1/model-aliases)
+	ListModelAliases(w http.ResponseWriter, r *http.Request)
+
+	// (GET /v1/model-aliases/{name})
+	GetModelAlias(w http.ResponseWriter, r *http.Request, name Name)
+	// ApplyModelAlias Create an alias on an approved model, or change its description; retargeting is a rollout
+	// (PUT /v1/model-aliases/{name})
+	ApplyModelAlias(w http.ResponseWriter, r *http.Request, name Name)
+	// StartRollout Switch the alias to another approved model (unevaluated until the gateway exists)
+	// (POST /v1/model-aliases/{name}/rollouts)
+	StartRollout(w http.ResponseWriter, r *http.Request, name Name)
+	// ListModels The model catalogue and each model's approval
+	// (GET /v1/models)
+	ListModels(w http.ResponseWriter, r *http.Request)
+
+	// (GET /v1/models/{name})
+	GetModel(w http.ResponseWriter, r *http.Request, name Name)
+	// ApplyModel Add or change a catalogue model; any change needs approval again
+	// (PUT /v1/models/{name})
+	ApplyModel(w http.ResponseWriter, r *http.Request, name Name)
+	// DecideModel Approve, reject or revoke a model (privacy officers; never its last editor)
+	// (POST /v1/models/{name}/approval)
+	DecideModel(w http.ResponseWriter, r *http.Request, name Name)
 	// GetCompiledPolicies The Cedar policy set the tenant's rules compile to
 	// (GET /v1/policy/cedar)
 	GetCompiledPolicies(w http.ResponseWriter, r *http.Request)
@@ -9434,6 +11810,15 @@ type ServerInterface interface {
 	// GetErasure The proof of a completed erasure (privacy officers only)
 	// (GET /v1/privacy/erasures/{id})
 	GetErasure(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+
+	// (GET /v1/rollouts)
+	ListRollouts(w http.ResponseWriter, r *http.Request)
+
+	// (GET /v1/rollouts/{id})
+	GetRollout(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// RollbackRollout Return the alias to the model it had before this rollout, if that model is still approved
+	// (POST /v1/rollouts/{id}/rollback)
+	RollbackRollout(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// ListTemplates List the latest version of every template
 	// (GET /v1/templates)
 	ListTemplates(w http.ResponseWriter, r *http.Request, params ListTemplatesParams)
@@ -10110,6 +12495,190 @@ func (siw *ServerInterfaceWrapper) ApplyLink(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListModelAliases operation middleware
+func (siw *ServerInterfaceWrapper) ListModelAliases(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListModelAliases(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetModelAlias operation middleware
+func (siw *ServerInterfaceWrapper) GetModelAlias(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetModelAlias(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyModelAlias operation middleware
+func (siw *ServerInterfaceWrapper) ApplyModelAlias(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyModelAlias(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartRollout operation middleware
+func (siw *ServerInterfaceWrapper) StartRollout(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartRollout(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListModels operation middleware
+func (siw *ServerInterfaceWrapper) ListModels(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListModels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetModel operation middleware
+func (siw *ServerInterfaceWrapper) GetModel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetModel(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyModel operation middleware
+func (siw *ServerInterfaceWrapper) ApplyModel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyModel(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DecideModel operation middleware
+func (siw *ServerInterfaceWrapper) DecideModel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name Name
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DecideModel(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCompiledPolicies operation middleware
 func (siw *ServerInterfaceWrapper) GetCompiledPolicies(w http.ResponseWriter, r *http.Request) {
 
@@ -10197,6 +12766,72 @@ func (siw *ServerInterfaceWrapper) GetErasure(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetErasure(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRollouts operation middleware
+func (siw *ServerInterfaceWrapper) ListRollouts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRollouts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRollout operation middleware
+func (siw *ServerInterfaceWrapper) GetRollout(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRollout(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RollbackRollout operation middleware
+func (siw *ServerInterfaceWrapper) RollbackRollout(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RollbackRollout(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10535,6 +13170,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/clones/{name}", wrapper.ApplyClone)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/clones/{name}/sync", wrapper.SyncClone)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/templates/{name}/clones", wrapper.ListTemplateClones)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/models", wrapper.ListModels)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/models/{name}", wrapper.GetModel)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/models/{name}", wrapper.ApplyModel)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/models/{name}/approval", wrapper.DecideModel)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/model-aliases", wrapper.ListModelAliases)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/model-aliases/{name}", wrapper.GetModelAlias)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/model-aliases/{name}", wrapper.ApplyModelAlias)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/model-aliases/{name}/rollouts", wrapper.StartRollout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/rollouts", wrapper.ListRollouts)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/rollouts/{id}", wrapper.GetRollout)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/rollouts/{id}/rollback", wrapper.RollbackRollout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/instances", wrapper.ListInstances)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/instances/{name}", wrapper.GetInstance)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/instances/{name}", wrapper.ApplyInstance)
@@ -11653,6 +14299,348 @@ func (response ApplyLinkdefaultApplicationProblemPlusJSONResponse) VisitApplyLin
 	return err
 }
 
+type ListModelAliasesRequestObject struct {
+}
+
+type ListModelAliasesResponseObject interface {
+	VisitListModelAliasesResponse(w http.ResponseWriter) error
+}
+
+type ListModelAliases200JSONResponse ModelAliasPage
+
+func (response ListModelAliases200JSONResponse) VisitListModelAliasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListModelAliasesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListModelAliasesdefaultApplicationProblemPlusJSONResponse) VisitListModelAliasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetModelAliasRequestObject struct {
+	Name Name `json:"name"`
+}
+
+type GetModelAliasResponseObject interface {
+	VisitGetModelAliasResponse(w http.ResponseWriter) error
+}
+
+type GetModelAlias200JSONResponse ModelAliasRecord
+
+func (response GetModelAlias200JSONResponse) VisitGetModelAliasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetModelAliasdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetModelAliasdefaultApplicationProblemPlusJSONResponse) VisitGetModelAliasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyModelAliasRequestObject struct {
+	Name Name `json:"name"`
+	Body *ApplyModelAliasJSONRequestBody
+}
+
+type ApplyModelAliasResponseObject interface {
+	VisitApplyModelAliasResponse(w http.ResponseWriter) error
+}
+
+type ApplyModelAlias200JSONResponse ModelAliasRecord
+
+func (response ApplyModelAlias200JSONResponse) VisitApplyModelAliasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyModelAlias201JSONResponse ModelAliasRecord
+
+func (response ApplyModelAlias201JSONResponse) VisitApplyModelAliasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyModelAliasdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ApplyModelAliasdefaultApplicationProblemPlusJSONResponse) VisitApplyModelAliasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRolloutRequestObject struct {
+	Name Name `json:"name"`
+	Body *StartRolloutJSONRequestBody
+}
+
+type StartRolloutResponseObject interface {
+	VisitStartRolloutResponse(w http.ResponseWriter) error
+}
+
+type StartRollout201JSONResponse Rollout
+
+func (response StartRollout201JSONResponse) VisitStartRolloutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRolloutdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response StartRolloutdefaultApplicationProblemPlusJSONResponse) VisitStartRolloutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListModelsRequestObject struct {
+}
+
+type ListModelsResponseObject interface {
+	VisitListModelsResponse(w http.ResponseWriter) error
+}
+
+type ListModels200JSONResponse ModelCatalogueItemPage
+
+func (response ListModels200JSONResponse) VisitListModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListModelsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListModelsdefaultApplicationProblemPlusJSONResponse) VisitListModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetModelRequestObject struct {
+	Name Name `json:"name"`
+}
+
+type GetModelResponseObject interface {
+	VisitGetModelResponse(w http.ResponseWriter) error
+}
+
+type GetModel200JSONResponse ModelCatalogueItemRecord
+
+func (response GetModel200JSONResponse) VisitGetModelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetModeldefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetModeldefaultApplicationProblemPlusJSONResponse) VisitGetModelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyModelRequestObject struct {
+	Name Name `json:"name"`
+	Body *ApplyModelJSONRequestBody
+}
+
+type ApplyModelResponseObject interface {
+	VisitApplyModelResponse(w http.ResponseWriter) error
+}
+
+type ApplyModel200JSONResponse ModelCatalogueItemRecord
+
+func (response ApplyModel200JSONResponse) VisitApplyModelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyModel201JSONResponse ModelCatalogueItemRecord
+
+func (response ApplyModel201JSONResponse) VisitApplyModelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyModeldefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ApplyModeldefaultApplicationProblemPlusJSONResponse) VisitApplyModelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideModelRequestObject struct {
+	Name Name `json:"name"`
+	Body *DecideModelJSONRequestBody
+}
+
+type DecideModelResponseObject interface {
+	VisitDecideModelResponse(w http.ResponseWriter) error
+}
+
+type DecideModel200JSONResponse ModelCatalogueItemRecord
+
+func (response DecideModel200JSONResponse) VisitDecideModelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideModeldefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response DecideModeldefaultApplicationProblemPlusJSONResponse) VisitDecideModelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCompiledPoliciesRequestObject struct {
 }
 
@@ -11889,6 +14877,123 @@ type GetErasuredefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetErasuredefaultApplicationProblemPlusJSONResponse) VisitGetErasureResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRolloutsRequestObject struct {
+}
+
+type ListRolloutsResponseObject interface {
+	VisitListRolloutsResponse(w http.ResponseWriter) error
+}
+
+type ListRollouts200JSONResponse RolloutPage
+
+func (response ListRollouts200JSONResponse) VisitListRolloutsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRolloutsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListRolloutsdefaultApplicationProblemPlusJSONResponse) VisitListRolloutsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRolloutRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetRolloutResponseObject interface {
+	VisitGetRolloutResponse(w http.ResponseWriter) error
+}
+
+type GetRollout200JSONResponse Rollout
+
+func (response GetRollout200JSONResponse) VisitGetRolloutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRolloutdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetRolloutdefaultApplicationProblemPlusJSONResponse) VisitGetRolloutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RollbackRolloutRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *RollbackRolloutJSONRequestBody
+}
+
+type RollbackRolloutResponseObject interface {
+	VisitRollbackRolloutResponse(w http.ResponseWriter) error
+}
+
+type RollbackRollout200JSONResponse Rollout
+
+func (response RollbackRollout200JSONResponse) VisitRollbackRolloutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RollbackRolloutdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RollbackRolloutdefaultApplicationProblemPlusJSONResponse) VisitRollbackRolloutResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12244,6 +15349,30 @@ type StrictServerInterface interface {
 	// ApplyLink Create or change an agent link; an identical document changes nothing
 	// (PUT /v1/links/{name})
 	ApplyLink(ctx context.Context, request ApplyLinkRequestObject) (ApplyLinkResponseObject, error)
+
+	// (GET /v1/model-aliases)
+	ListModelAliases(ctx context.Context, request ListModelAliasesRequestObject) (ListModelAliasesResponseObject, error)
+
+	// (GET /v1/model-aliases/{name})
+	GetModelAlias(ctx context.Context, request GetModelAliasRequestObject) (GetModelAliasResponseObject, error)
+	// ApplyModelAlias Create an alias on an approved model, or change its description; retargeting is a rollout
+	// (PUT /v1/model-aliases/{name})
+	ApplyModelAlias(ctx context.Context, request ApplyModelAliasRequestObject) (ApplyModelAliasResponseObject, error)
+	// StartRollout Switch the alias to another approved model (unevaluated until the gateway exists)
+	// (POST /v1/model-aliases/{name}/rollouts)
+	StartRollout(ctx context.Context, request StartRolloutRequestObject) (StartRolloutResponseObject, error)
+	// ListModels The model catalogue and each model's approval
+	// (GET /v1/models)
+	ListModels(ctx context.Context, request ListModelsRequestObject) (ListModelsResponseObject, error)
+
+	// (GET /v1/models/{name})
+	GetModel(ctx context.Context, request GetModelRequestObject) (GetModelResponseObject, error)
+	// ApplyModel Add or change a catalogue model; any change needs approval again
+	// (PUT /v1/models/{name})
+	ApplyModel(ctx context.Context, request ApplyModelRequestObject) (ApplyModelResponseObject, error)
+	// DecideModel Approve, reject or revoke a model (privacy officers; never its last editor)
+	// (POST /v1/models/{name}/approval)
+	DecideModel(ctx context.Context, request DecideModelRequestObject) (DecideModelResponseObject, error)
 	// GetCompiledPolicies The Cedar policy set the tenant's rules compile to
 	// (GET /v1/policy/cedar)
 	GetCompiledPolicies(ctx context.Context, request GetCompiledPoliciesRequestObject) (GetCompiledPoliciesResponseObject, error)
@@ -12262,6 +15391,15 @@ type StrictServerInterface interface {
 	// GetErasure The proof of a completed erasure (privacy officers only)
 	// (GET /v1/privacy/erasures/{id})
 	GetErasure(ctx context.Context, request GetErasureRequestObject) (GetErasureResponseObject, error)
+
+	// (GET /v1/rollouts)
+	ListRollouts(ctx context.Context, request ListRolloutsRequestObject) (ListRolloutsResponseObject, error)
+
+	// (GET /v1/rollouts/{id})
+	GetRollout(ctx context.Context, request GetRolloutRequestObject) (GetRolloutResponseObject, error)
+	// RollbackRollout Return the alias to the model it had before this rollout, if that model is still approved
+	// (POST /v1/rollouts/{id}/rollback)
+	RollbackRollout(ctx context.Context, request RollbackRolloutRequestObject) (RollbackRolloutResponseObject, error)
 	// ListTemplates List the latest version of every template
 	// (GET /v1/templates)
 	ListTemplates(ctx context.Context, request ListTemplatesRequestObject) (ListTemplatesResponseObject, error)
@@ -12984,6 +16122,238 @@ func (sh *strictHandler) ApplyLink(w http.ResponseWriter, r *http.Request, name 
 	}
 }
 
+// ListModelAliases operation middleware
+func (sh *strictHandler) ListModelAliases(w http.ResponseWriter, r *http.Request) {
+	var request ListModelAliasesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListModelAliases(ctx, request.(ListModelAliasesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListModelAliases")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListModelAliasesResponseObject); ok {
+		if err := validResponse.VisitListModelAliasesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetModelAlias operation middleware
+func (sh *strictHandler) GetModelAlias(w http.ResponseWriter, r *http.Request, name Name) {
+	var request GetModelAliasRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetModelAlias(ctx, request.(GetModelAliasRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetModelAlias")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetModelAliasResponseObject); ok {
+		if err := validResponse.VisitGetModelAliasResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApplyModelAlias operation middleware
+func (sh *strictHandler) ApplyModelAlias(w http.ResponseWriter, r *http.Request, name Name) {
+	var request ApplyModelAliasRequestObject
+
+	request.Name = name
+
+	var body ApplyModelAliasJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApplyModelAlias(ctx, request.(ApplyModelAliasRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApplyModelAlias")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApplyModelAliasResponseObject); ok {
+		if err := validResponse.VisitApplyModelAliasResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartRollout operation middleware
+func (sh *strictHandler) StartRollout(w http.ResponseWriter, r *http.Request, name Name) {
+	var request StartRolloutRequestObject
+
+	request.Name = name
+
+	var body StartRolloutJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartRollout(ctx, request.(StartRolloutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartRollout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartRolloutResponseObject); ok {
+		if err := validResponse.VisitStartRolloutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListModels operation middleware
+func (sh *strictHandler) ListModels(w http.ResponseWriter, r *http.Request) {
+	var request ListModelsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListModels(ctx, request.(ListModelsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListModels")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListModelsResponseObject); ok {
+		if err := validResponse.VisitListModelsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetModel operation middleware
+func (sh *strictHandler) GetModel(w http.ResponseWriter, r *http.Request, name Name) {
+	var request GetModelRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetModel(ctx, request.(GetModelRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetModel")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetModelResponseObject); ok {
+		if err := validResponse.VisitGetModelResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApplyModel operation middleware
+func (sh *strictHandler) ApplyModel(w http.ResponseWriter, r *http.Request, name Name) {
+	var request ApplyModelRequestObject
+
+	request.Name = name
+
+	var body ApplyModelJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApplyModel(ctx, request.(ApplyModelRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApplyModel")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApplyModelResponseObject); ok {
+		if err := validResponse.VisitApplyModelResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DecideModel operation middleware
+func (sh *strictHandler) DecideModel(w http.ResponseWriter, r *http.Request, name Name) {
+	var request DecideModelRequestObject
+
+	request.Name = name
+
+	var body DecideModelJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DecideModel(ctx, request.(DecideModelRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DecideModel")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DecideModelResponseObject); ok {
+		if err := validResponse.VisitDecideModelResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetCompiledPolicies operation middleware
 func (sh *strictHandler) GetCompiledPolicies(w http.ResponseWriter, r *http.Request) {
 	var request GetCompiledPoliciesRequestObject
@@ -13151,6 +16521,89 @@ func (sh *strictHandler) GetErasure(w http.ResponseWriter, r *http.Request, id o
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetErasureResponseObject); ok {
 		if err := validResponse.VisitGetErasureResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRollouts operation middleware
+func (sh *strictHandler) ListRollouts(w http.ResponseWriter, r *http.Request) {
+	var request ListRolloutsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRollouts(ctx, request.(ListRolloutsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRollouts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRolloutsResponseObject); ok {
+		if err := validResponse.VisitListRolloutsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRollout operation middleware
+func (sh *strictHandler) GetRollout(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetRolloutRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRollout(ctx, request.(GetRolloutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRollout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRolloutResponseObject); ok {
+		if err := validResponse.VisitGetRolloutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RollbackRollout operation middleware
+func (sh *strictHandler) RollbackRollout(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request RollbackRolloutRequestObject
+
+	request.Id = id
+
+	var body RollbackRolloutJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RollbackRollout(ctx, request.(RollbackRolloutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RollbackRollout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RollbackRolloutResponseObject); ok {
+		if err := validResponse.VisitRollbackRolloutResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

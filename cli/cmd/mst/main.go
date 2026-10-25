@@ -34,7 +34,7 @@ func main() {
 	flags.StringVar(&opts.tenant, "tenant", os.Getenv("MST_TENANT"), "tenant id, development only (MST_TENANT)")
 	flags.StringVar(&opts.actor, "actor", envOr("MST_ACTOR", os.Getenv("USER")), "acting person, development only (MST_ACTOR)")
 
-	root.AddCommand(cloneCmd(opts))
+	root.AddCommand(cloneCmd(opts), modelsCmd(opts), rolloutCmd(opts))
 	root.AddCommand(
 		&cobra.Command{
 			Use:   "version",
@@ -138,11 +138,11 @@ func diffCmd(opts *options) *cobra.Command {
 func getCmd(opts *options) *cobra.Command {
 	var effective bool
 	cmd := &cobra.Command{
-		Use:       "get templates|clones|instances|links|action-policies [NAME]",
+		Use:       "get templates|clones|instances|links|action-policies|models|model-aliases|rollouts [NAME]",
 		Short:     "Print templates, clones, instances, links or action policies as JSON",
 		Long:      "With --effective, an instance is printed as the spec it runs with, through its clone if it has one.",
 		Args:      cobra.RangeArgs(1, 2),
-		ValidArgs: []string{"templates", "clones", "instances", "links", "action-policies"},
+		ValidArgs: []string{"templates", "clones", "instances", "links", "action-policies", "models", "model-aliases", "rollouts"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := opts.client()
 			if err != nil {
@@ -174,6 +174,36 @@ func getCmd(opts *options) *cobra.Command {
 				res, body = r, r.Body
 			case args[0] == "instances" && !effective:
 				r, err := client.GetInstanceWithResponse(ctx, args[1])
+				if err != nil {
+					return err
+				}
+				res, body = r, r.Body
+			case args[0] == "models" && len(args) == 1:
+				r, err := client.ListModelsWithResponse(ctx)
+				if err != nil {
+					return err
+				}
+				res, body = r, r.Body
+			case args[0] == "models":
+				r, err := client.GetModelWithResponse(ctx, args[1])
+				if err != nil {
+					return err
+				}
+				res, body = r, r.Body
+			case args[0] == "model-aliases" && len(args) == 1:
+				r, err := client.ListModelAliasesWithResponse(ctx)
+				if err != nil {
+					return err
+				}
+				res, body = r, r.Body
+			case args[0] == "model-aliases":
+				r, err := client.GetModelAliasWithResponse(ctx, args[1])
+				if err != nil {
+					return err
+				}
+				res, body = r, r.Body
+			case args[0] == "rollouts" && len(args) == 1:
+				r, err := client.ListRolloutsWithResponse(ctx)
 				if err != nil {
 					return err
 				}
@@ -221,7 +251,7 @@ func getCmd(opts *options) *cobra.Command {
 				}
 				res, body = r, r.Body
 			default:
-				return fmt.Errorf("unknown resource %q: use templates, clones, instances, links or action-policies", args[0])
+				return fmt.Errorf("unknown resource %q: use templates, clones, instances, links, action-policies, models, model-aliases or rollouts", args[0])
 			}
 			if res.StatusCode() != http.StatusOK {
 				return problem(res.StatusCode(), body)
@@ -275,6 +305,38 @@ func apply(cmd *cobra.Command, client *muistamov1.ClientWithResponses, doc manif
 			cmd.Printf("%s/%s: created (state requested)\n", doc.Kind, doc.Name)
 		case http.StatusOK:
 			cmd.Printf("%s/%s: applied (revision %d; state is changed only by transitions)\n", doc.Kind, doc.Name, res.JSON200.Revision)
+		default:
+			return problem(res.StatusCode(), res.Body)
+		}
+	case "ModelCatalogueItem":
+		res, err := client.ApplyModelWithBodyWithResponse(ctx, doc.Name, "application/json", bytes.NewReader(doc.JSON))
+		if err != nil {
+			return fmt.Errorf("apply %s/%s: %w", doc.Kind, doc.Name, err)
+		}
+		switch res.StatusCode() {
+		case http.StatusCreated, http.StatusOK:
+			r := res.JSON201
+			if r == nil {
+				r = res.JSON200
+			}
+			cmd.Printf("%s/%s: revision %d, approval %s\n", doc.Kind, doc.Name, r.Revision, r.Approval.Status)
+			return nil
+		default:
+			return problem(res.StatusCode(), res.Body)
+		}
+	case "ModelAlias":
+		res, err := client.ApplyModelAliasWithBodyWithResponse(ctx, doc.Name, "application/json", bytes.NewReader(doc.JSON))
+		if err != nil {
+			return fmt.Errorf("apply %s/%s: %w", doc.Kind, doc.Name, err)
+		}
+		switch res.StatusCode() {
+		case http.StatusCreated, http.StatusOK:
+			r := res.JSON201
+			if r == nil {
+				r = res.JSON200
+			}
+			cmd.Printf("%s/%s: revision %d, target %s\n", doc.Kind, doc.Name, r.Revision, r.Document.Spec.Target)
+			return nil
 		default:
 			return problem(res.StatusCode(), res.Body)
 		}
@@ -343,6 +405,32 @@ func fetch(ctx context.Context, client *muistamov1.ClientWithResponses, doc mani
 		}
 		current, err := json.Marshal(res.JSON200.Document)
 		return current, res.HTTPResponse.Header.Get("ETag"), err
+	case "ModelCatalogueItem":
+		res, err := client.GetModelWithResponse(ctx, doc.Name)
+		if err != nil {
+			return nil, "", fmt.Errorf("get %s/%s: %w", doc.Kind, doc.Name, err)
+		}
+		if res.StatusCode() == http.StatusNotFound {
+			return nil, "", nil
+		}
+		if res.StatusCode() != http.StatusOK {
+			return nil, "", problem(res.StatusCode(), res.Body)
+		}
+		current, err := json.Marshal(res.JSON200.Document)
+		return current, "", err
+	case "ModelAlias":
+		res, err := client.GetModelAliasWithResponse(ctx, doc.Name)
+		if err != nil {
+			return nil, "", fmt.Errorf("get %s/%s: %w", doc.Kind, doc.Name, err)
+		}
+		if res.StatusCode() == http.StatusNotFound {
+			return nil, "", nil
+		}
+		if res.StatusCode() != http.StatusOK {
+			return nil, "", problem(res.StatusCode(), res.Body)
+		}
+		current, err := json.Marshal(res.JSON200.Document)
+		return current, "", err
 	case "AgentClone":
 		res, err := client.GetCloneWithResponse(ctx, doc.Name)
 		if err != nil {

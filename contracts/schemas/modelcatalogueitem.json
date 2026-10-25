@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/modelcatalogueitem.json",
+  "title": "ModelCatalogueItem",
+  "description": "A provider model the company may use (PRD section 5, FR-601). Aliases can target it only once a privacy officer approves it, and any change to it needs approval again.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "type": "string", "const": "muistamo.dev/v1" },
+    "kind": { "type": "string", "const": "ModelCatalogueItem" },
+    "metadata": { "$ref": "common/objectmeta.json" },
+    "spec": {
+      "title": "ModelCatalogueItemSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model", "region", "termsRef", "priceSheet"],
+      "properties": {
+        "provider": { "description": "For example anthropic, google, openai, mistral.", "type": "string", "minLength": 1 },
+        "model": { "description": "The provider's model id.", "type": "string", "minLength": 1 },
+        "version": { "type": "string" },
+        "region": { "description": "Where the provider processes requests, for example eu-west-1.", "type": "string", "minLength": 1 },
+        "termsRef": { "description": "Reference to the reviewed provider terms.", "type": "string", "minLength": 1 },
+        "dpaRef": { "description": "Reference to the data processing agreement (GDPR Art 28).", "type": "string" },
+        "subProcessors": { "type": "array", "items": { "type": "string" } },
+        "aiActProviderStatus": { "description": "The provider's status under the EU AI Act, for example gpai-provider.", "type": "string" },
+        "priceSheet": {
+          "title": "ModelPriceSheet",
+          "description": "Provider list prices, passed through at cost (invariant 7).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["currency", "inputPerMTok", "outputPerMTok"],
+          "properties": {
+            "currency": { "type": "string", "const": "EUR" },
+            "inputPerMTok": { "type": "number", "minimum": 0 },
+            "outputPerMTok": { "type": "number", "minimum": 0 },
+            "cachedInputPerMTok": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    }
+  }
+}

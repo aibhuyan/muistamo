@@ -86,6 +86,10 @@ func decodeExample(t *testing.T, path string, mutate func(map[string]any)) error
 		target = &muistamov1.KnowledgePack{}
 	case "KnowledgeSource":
 		target = &muistamov1.KnowledgeSource{}
+	case "ModelCatalogueItem":
+		target = &muistamov1.ModelCatalogueItem{}
+	case "ModelAlias":
+		target = &muistamov1.ModelAlias{}
 	case "AgentClone":
 		target = &muistamov1.AgentClone{}
 	case "AgentLink":

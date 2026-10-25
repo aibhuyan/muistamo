@@ -55,6 +55,10 @@ func (s *Service) RequestPublication(ctx context.Context, actor Actor, template 
 		if err != nil {
 			return err
 		}
+		// Refuse up front a version that could never be published (E5.4).
+		if err := requireCompliantAlias(ctx, tx, template, version); err != nil {
+			return err
+		}
 		var open int
 		if err := tx.QueryRow(ctx, `SELECT count(*) FROM catalogue_requests WHERE template = $1 AND version = $2 AND state = 'pending'`,
 			template, version).Scan(&open); err != nil {
@@ -240,6 +244,10 @@ func (s *Service) ListCatalogueRequests(ctx context.Context, actor Actor, state 
 }
 
 func publish(ctx context.Context, tx pgx.Tx, s *Service, actor Actor, id uuid.UUID, template string, version int) error {
+	// Checked again here: the model may have been revoked while the request awaited approval.
+	if err := requireCompliantAlias(ctx, tx, template, version); err != nil {
+		return err
+	}
 	var previous uuid.UUID
 	var previousVersion int
 	err := tx.QueryRow(ctx, `SELECT request_id, version FROM catalogue_published WHERE template = $1 FOR UPDATE`, template).Scan(&previous, &previousVersion)
