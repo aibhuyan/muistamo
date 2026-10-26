@@ -1,0 +1,168 @@
+:root {
+  --fg: #1c1c1e;
+  --muted: #5f6368;
+  --bg: #ffffff;
+  --panel: #f5f5f7;
+  --line: #d8d8dc;
+  --accent: #2f5bd3;
+  --alert-bg: #fdecea;
+  --alert-fg: #8a1c12;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #ececf0;
+    --muted: #a1a1aa;
+    --bg: #17171a;
+    --panel: #222226;
+    --line: #3a3a40;
+    --accent: #8aa8ff;
+    --alert-bg: #3b1d1a;
+    --alert-fg: #ffb4a8;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 15px/1.5 system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+header nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.brand {
+  font-weight: 600;
+}
+
+.who {
+  margin-left: auto;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  color: var(--muted);
+}
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.entry {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.entry pre {
+  white-space: pre-wrap;
+  margin: 0.5rem 0 0;
+  font: inherit;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.refusal {
+  background: var(--alert-bg);
+  color: var(--alert-fg);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.refusal p {
+  margin: 0.25rem 0 0;
+}
+
+form.decision,
+form.stack {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 36rem;
+  margin-top: 1rem;
+}
+
+label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+fieldset label {
+  display: inline-flex;
+  gap: 0.35rem;
+  margin-right: 1rem;
+}
+
+input[type="text"],
+textarea {
+  font: inherit;
+  padding: 0.4rem;
+  width: 100%;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  justify-self: start;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+
+.cards a {
+  display: block;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.cards strong {
+  display: block;
+  font-size: 1.6rem;
+}
