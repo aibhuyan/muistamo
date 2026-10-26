@@ -51,3 +51,11 @@ func (s Server) SetCatalogueApprovers(t *testing.T, approvers ...string) {
 		t.Fatal(err)
 	}
 }
+
+// SetPrivacyOfficers replaces the test tenant's privacy officers.
+func (s Server) SetPrivacyOfficers(t *testing.T, officers ...string) {
+	t.Helper()
+	if err := store.SetPrivacyOfficers(context.Background(), s.OwnerURL, s.Tenant, officers); err != nil {
+		t.Fatal(err)
+	}
+}
