@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 import yaml
 from muistamo_contracts.v1.actionpolicy import ActionPolicy
+from muistamo_contracts.v1.agentclone import AgentClone
 from muistamo_contracts.v1.agentinstance import AgentInstance
 from muistamo_contracts.v1.agentlink import AgentLink
 from muistamo_contracts.v1.agenttemplate import AgentTemplate
@@ -19,6 +20,7 @@ MODELS = {
         KnowledgeSource,
         AgentLink,
         ActionPolicy,
+        AgentClone,
     )
 }
 

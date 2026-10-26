@@ -55,7 +55,11 @@ func (a *Activities) MatchTemplates(ctx context.Context, scope Scope, jobCode st
 func (a *Activities) EnsureInstance(ctx context.Context, scope Scope, template registry.TemplateVersionRef, person Person) (string, error) {
 	actor := scope.actor()
 	for attempt := 1; attempt <= 9; attempt++ {
-		name := InstanceName(template.Name, person.ID, attempt)
+		base := template.Name
+		if template.Clone != "" {
+			base = template.Clone
+		}
+		name := InstanceName(base, person.ID, attempt)
 		existing, err := a.Registry.GetInstance(ctx, actor, name)
 		switch {
 		case err == nil && existing.Document.Spec.State == muistamov1.InstanceStateRetired:
@@ -166,6 +170,10 @@ func newInstance(name string, template registry.TemplateVersionRef, person Perso
 	doc.Metadata.Labels = &labels
 	doc.Spec.TemplateRef.Name = template.Name
 	doc.Spec.TemplateRef.Version = strconv.Itoa(template.Version)
+	if template.Clone != "" {
+		clone := template.Clone
+		doc.Spec.CloneRef = &clone
+	}
 	doc.Spec.Binding.Type = muistamov1.AgentInstanceSpecBindingTypeUser
 	doc.Spec.Binding.Ref = person.Email
 	doc.Spec.State = muistamov1.InstanceStateRequested
