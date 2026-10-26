@@ -22,6 +22,7 @@ func (f fixture) clone(t *testing.T, name, sync string, jobCodes ...string) {
 		t.Fatal(err)
 	}
 	actor := registry.Actor{Tenant: f.scope.Tenant, Name: "dev:admin@example.invalid", RequestID: "seed"}
+	testdb.CatalogueApprover(t, f.db.OwnerURL, f.scope.Tenant, actor.Name)
 	if _, _, err := f.svc.ApplyClone(context.Background(), actor, doc); err != nil {
 		t.Fatalf("clone %s: %v", name, err)
 	}
@@ -126,5 +127,47 @@ func TestJoinersStopGettingTemplatesOnARevokedModel(t *testing.T) {
 	}
 	if refs := f.match(t, "ANALYST_FI"); len(refs) != 0 {
 		t.Errorf("clone after revocation: %+v", refs)
+	}
+	// Each skipped match is evidenced with the reason, so a joiner without an agent is explained;
+	// a job code nothing would have matched records nothing.
+	f.match(t, "NOBODY")
+	raw := testdb.Scalar(t, f.db.OwnerURL, `SELECT string_agg(after::text, '|' ORDER BY seq) FROM evidence_events WHERE action = 'assignment.skipped'`)
+	if strings.Count(raw, "|") != 1 || !strings.Contains(raw, `"jobCode": "ANALYST"`) || !strings.Contains(raw, `"jobCode": "ANALYST_FI"`) ||
+		!strings.Contains(raw, "revoked") {
+		t.Errorf("skip evidence = %s", raw)
+	}
+}
+
+func TestEnsureInstanceNeverReusesAnotherAgentsInstance(t *testing.T) {
+	f := setup(t)
+	f.template(t, "analyst", "ANALYST")
+	f.template(t, "other", "OTHER")
+	person := lifecycle.Person{ID: "P-1", Email: "p1@example.invalid", JobCode: "ANALYST"}
+	// An instance of another template already holds the name the analyst instance would get.
+	var doc muistamov1.AgentInstance
+	taken := lifecycle.InstanceName("analyst", person.ID, 1)
+	if err := json.Unmarshal([]byte(`{"apiVersion":"muistamo.dev/v1","kind":"AgentInstance","metadata":{"name":"`+taken+`"},
+		"spec":{"templateRef":{"name":"other","version":"1"},"binding":{"type":"user","ref":"p1@example.invalid"},"state":"requested"}}`), &doc); err != nil {
+		t.Fatal(err)
+	}
+	admin := registry.Actor{Tenant: f.scope.Tenant, Name: "dev:admin@example.invalid", RequestID: "seed"}
+	if _, _, err := f.svc.ApplyInstance(context.Background(), admin, doc, ""); err != nil {
+		t.Fatal(err)
+	}
+	name, err := f.acts.EnsureInstance(context.Background(), f.scope, registry.TemplateVersionRef{Name: "analyst", Version: 1}, person)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name == taken {
+		t.Fatalf("EnsureInstance returned %s, which is an instance of another template", name)
+	}
+	got, err := f.svc.GetInstance(context.Background(), admin, name)
+	if err != nil || got.Document.Spec.TemplateRef.Name != "analyst" {
+		t.Errorf("instance %s = %+v, %v; want one of analyst", name, got.Document.Spec.TemplateRef, err)
+	}
+	// And asked again, it finds that same instance rather than making a third.
+	again, err := f.acts.EnsureInstance(context.Background(), f.scope, registry.TemplateVersionRef{Name: "analyst", Version: 1}, person)
+	if err != nil || again != name {
+		t.Errorf("second EnsureInstance = %s, %v; want %s", again, err, name)
 	}
 }

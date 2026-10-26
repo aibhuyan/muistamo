@@ -259,3 +259,25 @@ func ApprovedModelAlias(t *testing.T, ownerURL string, tenant uuid.UUID, alias s
 		t.Fatalf("seed approved model alias %s: %v", alias, err)
 	}
 }
+
+// CatalogueApprover adds identity to the tenant's catalogue approvers, keeping the others. Clones
+// are a catalogue decision, so fixtures that create them need an approver.
+func CatalogueApprover(t *testing.T, ownerURL string, tenant uuid.UUID, identity string) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, ownerURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	err = pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('muistamo.tenant_id', $1, true)`, tenant.String()); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO catalogue_approvers (tenant_id, approver) VALUES ($1, $2) ON CONFLICT DO NOTHING`, tenant, identity)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("add catalogue approver %s: %v", identity, err)
+	}
+}

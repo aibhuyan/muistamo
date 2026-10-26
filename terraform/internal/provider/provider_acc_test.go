@@ -182,6 +182,7 @@ func TestAccCatalogueDataSource(t *testing.T) {
 func TestAccAgentClone(t *testing.T) {
 	requireTofu(t)
 	cp := controlplanetest.New(t)
+	cp.SetCatalogueApprovers(t, "dev:terraform@example.invalid")
 	tenant := cp.Tenant.String()
 	prefix := providerBlock(cp.URL, "", tenant)
 	config := func(budget int) string {

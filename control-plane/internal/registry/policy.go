@@ -52,7 +52,15 @@ func (s *Service) ApplyLink(ctx context.Context, actor Actor, doc muistamov1.Age
 	if doc.Kind != kindLink {
 		return muistamov1.AgentLinkRecord{}, false, fmt.Errorf("kind %q is not AgentLink: %w", doc.Kind, ErrInvalid)
 	}
-	d, created, err := s.applyPolicyDocument(ctx, actor, kindLink, doc.Metadata.Name, nil, doc)
+	// A link naming a clone that does not exist yet would hand its rights to whatever clone
+	// later takes that name, so both ends must exist (clones are never deleted).
+	var clones []string
+	for _, end := range []muistamov1.AgentLinkEndpoint{doc.Spec.From, doc.Spec.To} {
+		if end.Clone != nil {
+			clones = append(clones, *end.Clone)
+		}
+	}
+	d, created, err := s.applyPolicyDocument(ctx, actor, kindLink, doc.Metadata.Name, nil, clones, doc)
 	if err != nil {
 		return muistamov1.AgentLinkRecord{}, false, err
 	}
@@ -69,7 +77,11 @@ func (s *Service) ApplyActionPolicy(ctx context.Context, actor Actor, doc muista
 	if (target.template == nil) == (target.clone == nil) {
 		return muistamov1.ActionPolicyRecord{}, false, fmt.Errorf("appliesTo must name exactly one template or clone: %w", ErrInvalid)
 	}
-	d, created, err := s.applyPolicyDocument(ctx, actor, kindPolicy, doc.Metadata.Name, &target, doc)
+	var clones []string
+	if target.clone != nil {
+		clones = []string{*target.clone}
+	}
+	d, created, err := s.applyPolicyDocument(ctx, actor, kindPolicy, doc.Metadata.Name, &target, clones, doc)
 	if err != nil {
 		return muistamov1.ActionPolicyRecord{}, false, err
 	}
@@ -87,7 +99,7 @@ func (t policyTarget) column() (string, string) {
 	return "clone", *t.clone
 }
 
-func (s *Service) applyPolicyDocument(ctx context.Context, actor Actor, kind, name string, target *policyTarget, doc any) (storedDoc, bool, error) {
+func (s *Service) applyPolicyDocument(ctx context.Context, actor Actor, kind, name string, target *policyTarget, clones []string, doc any) (storedDoc, bool, error) {
 	body, err := json.Marshal(doc)
 	if err != nil {
 		return storedDoc{}, false, fmt.Errorf("encode %s: %w", kind, err)
@@ -121,14 +133,14 @@ func (s *Service) applyPolicyDocument(ctx context.Context, actor Actor, kind, na
 			if !errors.Is(err, pgx.ErrNoRows) {
 				return fmt.Errorf("check action policies for %s %q: %w", column, value, err)
 			}
-			if clone != nil {
-				var exists bool
-				if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM agent_clones WHERE name = $1)`, *clone).Scan(&exists); err != nil {
-					return fmt.Errorf("check clone %q: %w", *clone, err)
-				}
-				if !exists {
-					return fmt.Errorf("clone %q does not exist: %w", *clone, ErrInvalid)
-				}
+		}
+		for _, c := range clones {
+			var exists bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM agent_clones WHERE name = $1)`, c).Scan(&exists); err != nil {
+				return fmt.Errorf("check clone %q: %w", c, err)
+			}
+			if !exists {
+				return fmt.Errorf("clone %q does not exist: %w", c, ErrInvalid)
 			}
 		}
 

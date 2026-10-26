@@ -23,8 +23,9 @@ CREATE TABLE model_catalogue (
   updated_by      text NOT NULL,
   PRIMARY KEY (tenant_id, name),
   CHECK ((approval_status = 'pending') = (decided_by IS NULL)),
-  -- Nobody approves their own change.
-  CHECK (decided_by IS DISTINCT FROM updated_by)
+  -- Nobody approves their own change. Erasure maps all of a subject's identities to one
+  -- pseudonym, so two erased identities may coincide; refusing that would make erasure fail.
+  CHECK (decided_by IS DISTINCT FROM updated_by OR decided_by LIKE 'erased:%')
 );
 
 CREATE TABLE model_aliases (
@@ -181,13 +182,16 @@ BEGIN
   total := 0;
   FOREACH v IN ARRAY subject_values LOOP
     needle := to_jsonb(v)::text;
-    UPDATE agent_clones SET document = replace(document::text, needle, repl)::jsonb
+    UPDATE agent_clones SET document = replace(document::text, needle, repl)::jsonb,
+      revision = revision + 1, updated_at = now()
       WHERE tenant_id = t AND strpos(document::text, needle) > 0;
     GET DIAGNOSTICS n = ROW_COUNT; total := total + n;
-    UPDATE model_catalogue SET document = replace(document::text, needle, repl)::jsonb
+    UPDATE model_catalogue SET document = replace(document::text, needle, repl)::jsonb,
+      revision = revision + 1, updated_at = now()
       WHERE tenant_id = t AND strpos(document::text, needle) > 0;
     GET DIAGNOSTICS n = ROW_COUNT; total := total + n;
-    UPDATE model_aliases SET document = replace(document::text, needle, repl)::jsonb
+    UPDATE model_aliases SET document = replace(document::text, needle, repl)::jsonb,
+      revision = revision + 1, updated_at = now()
       WHERE tenant_id = t AND strpos(document::text, needle) > 0;
     GET DIAGNOSTICS n = ROW_COUNT; total := total + n;
   END LOOP;

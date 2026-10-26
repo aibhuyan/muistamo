@@ -70,7 +70,7 @@ func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
 	}
 	clone := `{"apiVersion":"muistamo.dev/v1","kind":"AgentClone","metadata":{"name":"analyst-intern-fi"},
 	  "spec":{"template":"analyst-intern","sync":"follow","overlay":{"budget":{"perInstanceMonthlyEUR":1}}}}`
-	if got := h.call(t, a, http.MethodPut, "/v1/clones/analyst-intern-fi", clone); got.status != http.StatusCreated {
+	if got := h.call(t, a, http.MethodPut, "/v1/clones/analyst-intern-fi", clone, "X-Muistamo-Actor", "cat-1@example.invalid"); got.status != http.StatusCreated {
 		t.Fatalf("seed clone = %d: %s", got.status, got.raw)
 	}
 	if err := store.SetKnowledgeSecret(context.Background(), h.db.OwnerURL, a, []byte("mks_tenant-a-test-only-not-a-secret-000000")); err != nil {
@@ -523,6 +523,8 @@ func TestAuthzKnowledgeSecretsAreTenantScoped(t *testing.T) {
 func TestAuthzClonesAreTenantScoped(t *testing.T) {
 	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
 	a, b := seedTenantA(t, h)
+	// B's caller may manage clones in B, so only the tenant boundary stands in the way.
+	testdb.CatalogueApprover(t, h.db.OwnerURL, b, "dev:person-a@example.invalid")
 	for _, path := range []string{"/v1/clones/analyst-intern-fi", "/v1/templates/analyst-intern/clones"} {
 		if got := h.call(t, b, http.MethodGet, path, ""); got.status != http.StatusNotFound {
 			t.Errorf("B GET %s = %d, want 404", path, got.status)
@@ -577,6 +579,7 @@ func TestAuthzCloneSelectorsAreTenantScoped(t *testing.T) {
 	if got := h.call(t, b, http.MethodPut, "/v1/templates/analyst-intern", templateJSON); got.status != http.StatusCreated {
 		t.Fatalf("B template = %d", got.status)
 	}
+	testdb.CatalogueApprover(t, h.db.OwnerURL, b, "dev:person-a@example.invalid")
 	clone := `{"apiVersion":"muistamo.dev/v1","kind":"AgentClone","metadata":{"name":"analyst-intern-fi"},
 	  "spec":{"template":"analyst-intern","sync":"follow"}}`
 	if got := h.call(t, b, http.MethodPut, "/v1/clones/analyst-intern-fi", clone); got.status != http.StatusCreated {

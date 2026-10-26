@@ -70,6 +70,41 @@ func seedPerson(t *testing.T, h harness, tenant uuid.UUID) {
 	if got := h.call(t, tenant, http.MethodPost, "/v1/templates/analyst-b/versions/1/publication", ""); got.status != http.StatusCreated {
 		t.Fatalf("A's publication request = %d: %s", got.status, got.raw)
 	}
+	// A clone, two models, an alias and a rolled-back rollout, all by A.
+	for _, c := range []struct{ method, path, body, who string }{
+		{http.MethodPut, "/v1/clones/analyst-fi", `{"apiVersion":"muistamo.dev/v1","kind":"AgentClone","metadata":{"name":"analyst-fi"},"spec":{"template":"analyst-intern","sync":"follow"}}`, ""},
+		{http.MethodPut, "/v1/models/m-eu", modelJSON("m-eu", "eu-west-1"), ""},
+		{http.MethodPost, "/v1/models/m-eu/approval", `{"decision":"approve","reason":"ok"}`, officer},
+		{http.MethodPut, "/v1/models/m-two", modelJSON("m-two", "eu-west-1"), ""},
+		{http.MethodPost, "/v1/models/m-two/approval", `{"decision":"approve","reason":"ok"}`, officer},
+		{http.MethodPut, "/v1/model-aliases/a-fast", aliasJSON("a-fast", "m-eu"), ""},
+	} {
+		var who []string
+		if c.who != "" {
+			who = as(c.who)
+		}
+		if got := h.call(t, tenant, c.method, c.path, c.body, who...); got.status >= 300 {
+			t.Fatalf("%s %s = %d: %s", c.method, c.path, got.status, got.raw)
+		}
+	}
+	rollout := h.call(t, tenant, http.MethodPost, "/v1/model-aliases/a-fast/rollouts", `{"to":"m-two","reason":"cheaper","acknowledgeUnevaluated":true}`)
+	if rollout.status != http.StatusCreated {
+		t.Fatalf("rollout = %d: %s", rollout.status, rollout.raw)
+	}
+	if got := h.call(t, tenant, http.MethodPost, "/v1/rollouts/"+rollout.body["id"].(string)+"/rollback", `{"reason":"quality"}`); got.status != http.StatusOK {
+		t.Fatalf("rollback = %d: %s", got.status, got.raw)
+	}
+	// A decided a model under one identity that they changed under another: erasure maps both to
+	// one pseudonym, which the no-self-approval check must not turn into a failed erasure.
+	conn, err := pgx.Connect(context.Background(), h.db.OwnerURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	if _, err := conn.Exec(context.Background(), `UPDATE model_catalogue SET decided_by = $2, updated_by = $3 WHERE tenant_id = $1 AND name = 'm-two'`,
+		tenant, subjectIdentity, subjectEmail); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func retire(t *testing.T, h harness, tenant uuid.UUID) {

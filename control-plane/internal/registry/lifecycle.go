@@ -62,13 +62,9 @@ func (s *Service) MatchTemplatesByJobCode(ctx context.Context, actor Actor, jobC
 		}
 
 		for _, c := range candidates {
-			// A template whose model is not approved now gets no new agents, clone or not (E5.4).
-			compliant, _, err := aliasCompliance(ctx, tx, c.alias)
+			compliant, why, err := aliasCompliance(ctx, tx, c.alias)
 			if err != nil {
 				return err
-			}
-			if !compliant {
-				continue
 			}
 			clones, err := listClones(ctx, tx, c.ref.Name)
 			if err != nil {
@@ -88,6 +84,18 @@ func (s *Service) MatchTemplatesByJobCode(ctx context.Context, actor Actor, jobC
 				if r.assignable && r.version != nil && *r.version == c.ref.Version {
 					matching = append(matching, clone.doc.Metadata.Name)
 				}
+			}
+			if !compliant {
+				// A template whose model is not approved gets no new agents, clone or not (E5.4).
+				// Say so when it would have matched, so a joiner without an agent is explained.
+				if len(matching) > 0 || c.matches {
+					if err := recordEvidence(ctx, tx, s.signer, actor, "assignment.skipped", "AgentTemplate", c.ref.Name, nil,
+						map[string]any{"jobCode": jobCode, "alias": c.alias, "clones": matching,
+							"reason": "the template's model alias is not compliant: " + why}); err != nil {
+						return err
+					}
+				}
+				continue
 			}
 			switch {
 			case len(matching) == 1:

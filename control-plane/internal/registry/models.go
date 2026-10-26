@@ -82,6 +82,9 @@ func (s *Service) ApplyModel(ctx context.Context, actor Actor, doc muistamov1.Mo
 			created = true
 		}
 		if err != nil {
+			if isUniqueViolation(err) {
+				return fmt.Errorf("model %q was created concurrently; retry: %w", name, ErrConflict)
+			}
 			return fmt.Errorf("store model %q: %w", name, err)
 		}
 		rec, _, err = scanModel(tx.QueryRow(ctx, modelColumns+` WHERE name = $1`, name), name)
@@ -307,6 +310,9 @@ func (s *Service) ApplyModelAlias(ctx context.Context, actor Actor, doc muistamo
 				updated_by = $4 WHERE name = $1`, name, digest, body, actor.Name)
 		}
 		if err != nil {
+			if isUniqueViolation(err) {
+				return fmt.Errorf("model alias %q was created concurrently; retry: %w", name, ErrConflict)
+			}
 			return fmt.Errorf("store model alias %q: %w", name, err)
 		}
 		next, _, err := scanAlias(tx.QueryRow(ctx, aliasColumns+` WHERE name = $1`, name), name)

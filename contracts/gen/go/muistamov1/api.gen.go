@@ -1411,7 +1411,7 @@ type ActionPolicyRecord struct {
 	UpdatedBy string       `json:"updatedBy"`
 }
 
-// AgentClone A variant of a template with its own instances (PRD section 5, FR-103). The overlay can add knowledge packs and set its own budget and HR assignment; nothing else of the template can change, so a clone never widens what the catalogue approved.
+// AgentClone A variant of a template with its own instances (PRD section 5, FR-103). The overlay can add knowledge packs and set its own budget and HR assignment; nothing else of the template can change. Because the overlay changes who gets an agent and with what knowledge, only catalogue approvers create, change or sync clones, and a clone cannot take a template's name.
 type AgentClone struct {
 	ApiVersion AgentCloneApiVersion `json:"apiVersion"`
 	Kind       AgentCloneKind       `json:"kind"`
@@ -1463,7 +1463,7 @@ type AgentCloneRecord struct {
 	Assignable bool      `json:"assignable"`
 	CreatedAt  time.Time `json:"createdAt"`
 
-	// Document A variant of a template with its own instances (PRD section 5, FR-103). The overlay can add knowledge packs and set its own budget and HR assignment; nothing else of the template can change, so a clone never widens what the catalogue approved.
+	// Document A variant of a template with its own instances (PRD section 5, FR-103). The overlay can add knowledge packs and set its own budget and HR assignment; nothing else of the template can change. Because the overlay changes who gets an agent and with what knowledge, only catalogue approvers create, change or sync clones, and a clone cannot take a template's name.
 	Document AgentClone `json:"document"`
 
 	// Reason Why the clone is not assignable, or is behind upstream.

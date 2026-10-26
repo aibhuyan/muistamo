@@ -11,6 +11,7 @@ import (
 
 	"muistamo.dev/muistamo/control-plane/internal/api"
 	"muistamo.dev/muistamo/control-plane/internal/store"
+	"muistamo.dev/muistamo/control-plane/internal/testdb"
 )
 
 // lowTemplate is a low-risk template, so requesting publication publishes it at once.
@@ -59,6 +60,8 @@ func getClone(t *testing.T, h harness, tenant uuid.UUID, name string) cloneState
 func TestCloneSyncPolicies(t *testing.T) {
 	h := newHarness(t, api.InsecureDevHeaders{})
 	a := h.tenant(t, "tenant-a")
+	// Clones are a catalogue decision; A creates them here.
+	testdb.CatalogueApprover(t, h.db.OwnerURL, a, "dev:person-a@example.invalid")
 	publishVersion(t, h, a, "analyst", 1, "Support analysts")
 
 	for name, body := range map[string]string{
@@ -102,7 +105,7 @@ func TestCloneSyncPolicies(t *testing.T) {
 	}
 
 	// Withdrawing the template leaves follow clones with nothing to resolve to.
-	if err := store.SetCatalogueApprovers(context.Background(), h.db.OwnerURL, a, []string{"dev:cat-1@example.invalid"}); err != nil {
+	if err := store.SetCatalogueApprovers(context.Background(), h.db.OwnerURL, a, []string{"dev:cat-1@example.invalid", "dev:person-a@example.invalid"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := h.call(t, a, http.MethodDelete, "/v1/catalogue/analyst", "", "X-Muistamo-Actor", "cat-1@example.invalid"); got.status != http.StatusNoContent {
@@ -127,6 +130,8 @@ func TestCloneSyncPolicies(t *testing.T) {
 func TestCloneRules(t *testing.T) {
 	h := newHarness(t, api.InsecureDevHeaders{})
 	a := h.tenant(t, "tenant-a")
+	// Clones are a catalogue decision; A creates them here.
+	testdb.CatalogueApprover(t, h.db.OwnerURL, a, "dev:person-a@example.invalid")
 	if got := h.call(t, a, http.MethodPut, "/v1/templates/analyst", lowTemplate("analyst", "x")); got.status != http.StatusCreated {
 		t.Fatal(got.raw)
 	}
@@ -167,6 +172,8 @@ func TestCloneRules(t *testing.T) {
 func TestEffectiveSpecMergesOnlyTheOverlay(t *testing.T) {
 	h := newHarness(t, api.InsecureDevHeaders{})
 	a := h.tenant(t, "tenant-a")
+	// Clones are a catalogue decision; A creates them here.
+	testdb.CatalogueApprover(t, h.db.OwnerURL, a, "dev:person-a@example.invalid")
 	publishVersion(t, h, a, "analyst", 1, "Support analysts")
 	overlay := `,"overlay":{"knowledgePacks":[{"name":"basics","version":"2.x"},{"name":"finland-tax"}],
 	  "budget":{"perInstanceMonthlyEUR":50},"assignment":{"hrJobCodes":["ANALYST_FI"]}}`
@@ -225,7 +232,7 @@ func TestEffectiveSpecMergesOnlyTheOverlay(t *testing.T) {
 	}
 
 	// Withdrawn: the clone cannot resolve, and effective refuses rather than guessing.
-	if err := store.SetCatalogueApprovers(context.Background(), h.db.OwnerURL, a, []string{"dev:cat-1@example.invalid"}); err != nil {
+	if err := store.SetCatalogueApprovers(context.Background(), h.db.OwnerURL, a, []string{"dev:cat-1@example.invalid", "dev:person-a@example.invalid"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := h.call(t, a, http.MethodDelete, "/v1/catalogue/analyst", "", "X-Muistamo-Actor", "cat-1@example.invalid"); got.status != http.StatusNoContent {
@@ -250,6 +257,8 @@ func testdbAfter(t *testing.T, h harness, tenant uuid.UUID, action string) strin
 func TestPolicyWithClones(t *testing.T) {
 	h := newHarness(t, api.InsecureDevHeaders{})
 	a := h.tenant(t, "tenant-a")
+	// Clones are a catalogue decision; A creates them here.
+	testdb.CatalogueApprover(t, h.db.OwnerURL, a, "dev:person-a@example.invalid")
 	publishVersion(t, h, a, "analyst", 1, "Support analysts")
 	for _, c := range []string{"analyst-fi", "analyst-se"} {
 		if got := h.call(t, a, http.MethodPut, "/v1/clones/"+c, cloneJSON(c, "follow", "")); got.status != http.StatusCreated {
@@ -314,5 +323,75 @@ func TestPolicyWithClones(t *testing.T) {
 	cedarText := h.call(t, a, http.MethodGet, "/v1/policy/cedar", "").body["cedar"].(string)
 	if !strings.Contains(cedarText, `principal == Muistamo::Clone::"analyst-fi"`) || !strings.Contains(cedarText, `principal in Muistamo::Template::"analyst"`) {
 		t.Errorf("compiled Cedar:\n%s", cedarText)
+	}
+}
+
+func TestClonesAreACatalogueDecision(t *testing.T) {
+	h := newHarness(t, api.InsecureDevHeaders{})
+	a := h.tenant(t, "tenant-a")
+	publishVersion(t, h, a, "analyst", 1, "v1")
+	if err := store.SetCatalogueApprovers(context.Background(), h.db.OwnerURL, a, []string{"dev:cat-1@example.invalid"}); err != nil {
+		t.Fatal(err)
+	}
+	cat := as("cat-1@example.invalid")
+	// Anyone else changing who gets an agent, or with what, is refused: create, change and sync.
+	if got := h.call(t, a, http.MethodPut, "/v1/clones/c", cloneJSON("c", "follow", "")); got.status != http.StatusForbidden {
+		t.Errorf("non-approver creates a clone = %d, want 403", got.status)
+	}
+	if got := h.call(t, a, http.MethodPut, "/v1/clones/c", cloneJSON("c", "manual", ""), cat...); got.status != http.StatusCreated {
+		t.Fatalf("approver creates a clone = %d: %s", got.status, got.raw)
+	}
+	widened := cloneJSON("c", "manual", `,"overlay":{"assignment":{"hrJobCodes":["CFO"]}}`)
+	if got := h.call(t, a, http.MethodPut, "/v1/clones/c", widened); got.status != http.StatusForbidden {
+		t.Errorf("non-approver widens a clone = %d, want 403", got.status)
+	}
+	if got := h.call(t, a, http.MethodPost, "/v1/clones/c/sync", ""); got.status != http.StatusForbidden {
+		t.Errorf("non-approver syncs a clone = %d, want 403", got.status)
+	}
+	if got := h.call(t, a, http.MethodPut, "/v1/clones/c", widened, cat...); got.status != http.StatusOK {
+		t.Errorf("approver changes a clone = %d: %s", got.status, got.raw)
+	}
+	if who := testdb.Scalar(t, h.db.OwnerURL, `SELECT actor FROM evidence_events WHERE action = 'clone.updated' ORDER BY seq DESC LIMIT 1`); who != "dev:cat-1@example.invalid" {
+		t.Errorf("the change is evidenced as %q, want the approver's", who)
+	}
+}
+
+func TestClonesAndTemplatesShareOneNamespace(t *testing.T) {
+	h := newHarness(t, api.InsecureDevHeaders{})
+	a := h.tenant(t, "tenant-a")
+	publishVersion(t, h, a, "analyst", 1, "v1")
+	publishVersion(t, h, a, "support", 1, "v1")
+	testdb.CatalogueApprover(t, h.db.OwnerURL, a, "dev:person-a@example.invalid")
+	// Instances are named after their clone or template: a clone named like a template would
+	// share its instances' names.
+	if got := h.call(t, a, http.MethodPut, "/v1/clones/support", cloneJSON("support", "follow", "")); got.status != http.StatusConflict {
+		t.Errorf("clone named like a template = %d, want 409: %s", got.status, got.raw)
+	}
+	if got := h.call(t, a, http.MethodPut, "/v1/clones/analyst-fi", cloneJSON("analyst-fi", "follow", "")); got.status != http.StatusCreated {
+		t.Fatalf("clone = %d: %s", got.status, got.raw)
+	}
+	if got := h.call(t, a, http.MethodPut, "/v1/templates/analyst-fi", lowTemplate("analyst-fi", "x")); got.status != http.StatusConflict {
+		t.Errorf("template named like a clone = %d, want 409: %s", got.status, got.raw)
+	}
+}
+
+func TestLinksNameOnlyExistingClones(t *testing.T) {
+	h := newHarness(t, api.InsecureDevHeaders{})
+	a := h.tenant(t, "tenant-a")
+	publishVersion(t, h, a, "analyst", 1, "v1")
+	link := func(from string) string {
+		return `{"apiVersion":"muistamo.dev/v1","kind":"AgentLink","metadata":{"name":"l"},
+		 "spec":{"from":{"clone":"` + from + `"},"to":{"template":"analyst"},"allowedSkills":["s"],"dataClasses":["public"]}}`
+	}
+	// A link to a clone that does not exist yet would pass its rights to whatever later takes the name.
+	if got := h.call(t, a, http.MethodPut, "/v1/links/l", link("fi-tax")); got.status != http.StatusUnprocessableEntity {
+		t.Errorf("link from a missing clone = %d, want 422: %s", got.status, got.raw)
+	}
+	testdb.CatalogueApprover(t, h.db.OwnerURL, a, "dev:person-a@example.invalid")
+	if got := h.call(t, a, http.MethodPut, "/v1/clones/fi-tax", cloneJSON("fi-tax", "follow", "")); got.status != http.StatusCreated {
+		t.Fatalf("clone = %d: %s", got.status, got.raw)
+	}
+	if got := h.call(t, a, http.MethodPut, "/v1/links/l", link("fi-tax")); got.status != http.StatusCreated {
+		t.Errorf("link from an existing clone = %d: %s", got.status, got.raw)
 	}
 }

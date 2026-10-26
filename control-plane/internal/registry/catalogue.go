@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 )
@@ -300,6 +301,25 @@ func followClones(ctx context.Context, tx pgx.Tx, template string) ([]string, er
 		names = append(names, n)
 	}
 	return names, rows.Err()
+}
+
+// requireApprover refuses unless the actor is one of the tenant's catalogue approvers.
+func requireApprover(ctx context.Context, tx pgx.Tx, actor Actor, what string) error {
+	ok, err := isApprover(ctx, tx, actor.Name)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("only catalogue approvers can %s: %w", what, ErrForbidden)
+	}
+	return nil
+}
+
+// isUniqueViolation reports whether err is a unique constraint violation, which a concurrent
+// first create of the same name produces: FOR UPDATE on a missing row locks nothing.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func isApprover(ctx context.Context, tx pgx.Tx, name string) (bool, error) {
