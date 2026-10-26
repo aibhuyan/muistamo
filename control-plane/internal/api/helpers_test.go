@@ -102,6 +102,8 @@ func (h harness) tenant(t *testing.T, name string) uuid.UUID {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Templates in these tests use reasoning-default; publication needs it on an approved model.
+	testdb.ApprovedModelAlias(t, h.db.OwnerURL, id, "reasoning-default")
 	return id
 }
 

@@ -55,10 +55,17 @@ func (a *Activities) MatchTemplates(ctx context.Context, scope Scope, jobCode st
 func (a *Activities) EnsureInstance(ctx context.Context, scope Scope, template registry.TemplateVersionRef, person Person) (string, error) {
 	actor := scope.actor()
 	for attempt := 1; attempt <= 9; attempt++ {
-		name := InstanceName(template.Name, person.ID, attempt)
+		base := template.Name
+		if template.Clone != "" {
+			base = template.Clone
+		}
+		name := InstanceName(base, person.ID, attempt)
 		existing, err := a.Registry.GetInstance(ctx, actor, name)
 		switch {
 		case err == nil && existing.Document.Spec.State == muistamov1.InstanceStateRetired:
+			continue
+		case err == nil && !sameAgent(existing.Document, template):
+			// The name belongs to another template's or clone's instance; this one needs its own.
 			continue
 		case err == nil:
 			return name, nil
@@ -157,6 +164,15 @@ func (a *Activities) RecordPersonalLayerDecision(ctx context.Context, scope Scop
 		map[string]any{"decision": "none", "reason": "this leaver workflow started before personal-layer reviews existed; no review was opened"})
 }
 
+// sameAgent reports whether an instance is of the template, or clone, a joiner was matched to.
+func sameAgent(doc muistamov1.AgentInstance, template registry.TemplateVersionRef) bool {
+	clone := ""
+	if doc.Spec.CloneRef != nil {
+		clone = *doc.Spec.CloneRef
+	}
+	return doc.Spec.TemplateRef.Name == template.Name && clone == template.Clone
+}
+
 func newInstance(name string, template registry.TemplateVersionRef, person Person) muistamov1.AgentInstance {
 	var doc muistamov1.AgentInstance
 	doc.ApiVersion = muistamov1.AgentInstanceApiVersionMuistamoDevv1
@@ -166,6 +182,10 @@ func newInstance(name string, template registry.TemplateVersionRef, person Perso
 	doc.Metadata.Labels = &labels
 	doc.Spec.TemplateRef.Name = template.Name
 	doc.Spec.TemplateRef.Version = strconv.Itoa(template.Version)
+	if template.Clone != "" {
+		clone := template.Clone
+		doc.Spec.CloneRef = &clone
+	}
 	doc.Spec.Binding.Type = muistamov1.AgentInstanceSpecBindingTypeUser
 	doc.Spec.Binding.Ref = person.Email
 	doc.Spec.State = muistamov1.InstanceStateRequested

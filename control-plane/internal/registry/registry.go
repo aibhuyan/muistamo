@@ -69,7 +69,18 @@ func (s *Service) ApplyTemplate(ctx context.Context, actor Actor, doc muistamov1
 		err := tx.QueryRow(ctx, `SELECT latest_version FROM agent_templates WHERE name = $1 FOR UPDATE`, name).Scan(&latest)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
+			// Instances are named after their clone or template, so the two share one namespace.
+			var clone bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM agent_clones WHERE name = $1)`, name).Scan(&clone); err != nil {
+				return fmt.Errorf("check clone %q: %w", name, err)
+			}
+			if clone {
+				return fmt.Errorf("%q is already a clone's name; a template needs its own: %w", name, ErrConflict)
+			}
 			if _, err := tx.Exec(ctx, `INSERT INTO agent_templates (tenant_id, name, latest_version) VALUES ($1, $2, 1)`, actor.Tenant, name); err != nil {
+				if isUniqueViolation(err) {
+					return fmt.Errorf("template %q was created concurrently; retry: %w", name, ErrConflict)
+				}
 				return fmt.Errorf("insert template %q: %w", name, err)
 			}
 		case err != nil:
@@ -346,6 +357,11 @@ func createInstance(ctx context.Context, tx pgx.Tx, signer evidence.Signer, acto
 			return muistamov1.AgentInstanceRecord{}, fmt.Errorf("templateRef %s version %d does not exist: %w", ref.Name, version, ErrInvalid)
 		}
 		return muistamov1.AgentInstanceRecord{}, err
+	}
+	if doc.Spec.CloneRef != nil {
+		if err := cloneForInstance(ctx, tx, *doc.Spec.CloneRef, ref.Name, version); err != nil {
+			return muistamov1.AgentInstanceRecord{}, err
+		}
 	}
 	body, err := json.Marshal(doc)
 	if err != nil {

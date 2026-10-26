@@ -15,6 +15,7 @@ import (
 // requestFlags builds a PolicyDecisionRequest from command-line flags.
 type requestFlags struct {
 	from, to, skill, actFor, agent, action string
+	fromClone, toClone, agentClone         string
 	dataClasses, attributes                []string
 	depth                                  int
 }
@@ -23,6 +24,9 @@ func (f *requestFlags) register(cmd *cobra.Command) {
 	fl := cmd.Flags()
 	fl.StringVar(&f.from, "from", "", "call: the calling template")
 	fl.StringVar(&f.to, "to", "", "call: the called template")
+	fl.StringVar(&f.fromClone, "from-clone", "", "call: the caller's clone, if it is one (a clone of --from)")
+	fl.StringVar(&f.toClone, "to-clone", "", "call: the callee's clone, if it is one (a clone of --to)")
+	fl.StringVar(&f.agentClone, "agent-clone", "", "action: the agent's clone, if it is one (a clone of --agent)")
 	fl.StringVar(&f.skill, "skill", "", "call: the skill used")
 	fl.StringSliceVar(&f.dataClasses, "data-class", nil, "call: a data class the call carries (repeatable)")
 	fl.IntVar(&f.depth, "depth", 0, "call: position in the delegation chain (default 1)")
@@ -44,6 +48,8 @@ func (f *requestFlags) request(kind string) (muistamov1.PolicyDecisionRequest, e
 		set(&req.From, f.from)
 		set(&req.To, f.to)
 		set(&req.Skill, f.skill)
+		set(&req.FromClone, f.fromClone)
+		set(&req.ToClone, f.toClone)
 		if len(f.dataClasses) > 0 {
 			req.DataClasses = &f.dataClasses
 		}
@@ -57,6 +63,7 @@ func (f *requestFlags) request(kind string) (muistamov1.PolicyDecisionRequest, e
 	case "action":
 		set(&req.Agent, f.agent)
 		set(&req.Action, f.action)
+		set(&req.AgentClone, f.agentClone)
 		if len(f.attributes) > 0 {
 			attrs := map[string]bool{}
 			for _, kv := range f.attributes {

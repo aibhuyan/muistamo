@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/rolloutrequest.json",
+  "title": "RolloutRequest",
+  "description": "Switch an alias to another approved model. The evaluation gate (FR-603) needs the gateway, which does not exist yet, so the switch is unevaluated and must be acknowledged as such.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "to",
+    "reason",
+    "acknowledgeUnevaluated"
+  ],
+  "properties": {
+    "to": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "acknowledgeUnevaluated": {
+      "description": "Must be true: the switch is made without an evaluation report.",
+      "type": "boolean",
+      "const": true
+    }
+  }
+}

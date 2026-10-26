@@ -3,11 +3,14 @@ from pathlib import Path
 import pytest
 import yaml
 from muistamo_contracts.v1.actionpolicy import ActionPolicy
+from muistamo_contracts.v1.agentclone import AgentClone
 from muistamo_contracts.v1.agentinstance import AgentInstance
 from muistamo_contracts.v1.agentlink import AgentLink
 from muistamo_contracts.v1.agenttemplate import AgentTemplate
 from muistamo_contracts.v1.knowledgepack import KnowledgePack
 from muistamo_contracts.v1.knowledgesource import KnowledgeSource
+from muistamo_contracts.v1.modelalias import ModelAlias
+from muistamo_contracts.v1.modelcatalogueitem import ModelCatalogueItem
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 MODELS = {
@@ -19,6 +22,9 @@ MODELS = {
         KnowledgeSource,
         AgentLink,
         ActionPolicy,
+        AgentClone,
+        ModelCatalogueItem,
+        ModelAlias,
     )
 }
 

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/modelalias.json",
+  "title": "ModelAlias",
+  "description": "A name templates use for a model, for example reasoning-default (PRD section 5, FR-602). It can target only an approved catalogue model, and changing its target is a rollout, never an edit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "type": "string", "const": "muistamo.dev/v1" },
+    "kind": { "type": "string", "const": "ModelAlias" },
+    "metadata": { "$ref": "common/objectmeta.json" },
+    "spec": {
+      "title": "ModelAliasSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target"],
+      "properties": {
+        "target": { "description": "The catalogue model's name. Set on create; change it with a rollout.", "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" },
+        "description": { "type": "string" }
+      }
+    }
+  }
+}

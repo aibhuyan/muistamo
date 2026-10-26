@@ -30,7 +30,8 @@ import (
 // search all of them, and the tests scan all of them after an erasure.
 var PersonalDataTables = []string{
 	"agent_template_versions", "agent_instances", "hr_events", "catalogue_approvers", "catalogue_requests",
-	"catalogue_approvals", "policy_documents", "privacy_officers", "erasure_requests", "evidence_events",
+	"catalogue_approvals", "policy_documents", "privacy_officers", "erasure_requests", "agent_clones",
+	"model_catalogue", "model_aliases", "rollouts", "evidence_events",
 }
 
 type retention = struct {

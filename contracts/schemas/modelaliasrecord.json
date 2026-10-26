@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/modelaliasrecord.json",
+  "title": "ModelAliasRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "revision",
+    "createdAt",
+    "updatedAt",
+    "updatedBy",
+    "document",
+    "compliant"
+  ],
+  "properties": {
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedBy": {
+      "type": "string"
+    },
+    "document": {
+      "$ref": "modelalias.json"
+    },
+    "compliant": {
+      "description": "The target exists and is approved: templates using the alias can be published and assigned.",
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string"
+    }
+  }
+}

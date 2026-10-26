@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agentclonerecord.json",
+  "title": "AgentCloneRecord",
+  "description": "A clone and how it currently resolves. Revision increments on every change to the document or the synced version.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["revision", "createdAt", "updatedAt", "updatedBy", "document", "assignable"],
+  "properties": {
+    "revision": { "type": "integer", "minimum": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "updatedBy": { "type": "string" },
+    "document": { "$ref": "agentclone.json" },
+    "resolvedVersion": { "description": "The template version the clone uses now; absent when it cannot resolve.", "type": "integer", "minimum": 1 },
+    "upstreamVersion": { "description": "The template's published version, when it differs from resolvedVersion.", "type": "integer", "minimum": 1 },
+    "assignable": { "description": "Whether joiners can get this clone: its resolved version is the published one.", "type": "boolean" },
+    "reason": { "description": "Why the clone is not assignable, or is behind upstream.", "type": "string" }
+  }
+}

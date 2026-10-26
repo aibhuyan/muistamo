@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agenttemplatespec.json",
+  "title": "AgentTemplateSpec",
+  "description": "What an agent template defines (PRD section 5).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "purpose",
+    "modelAlias"
+  ],
+  "properties": {
+    "purpose": {
+      "type": "string"
+    },
+    "riskTier": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "modelAlias": {
+      "description": "Name of a ModelAlias, never a concrete provider model.",
+      "type": "string"
+    },
+    "knowledgePacks": {
+      "type": "array",
+      "items": {
+        "$ref": "knowledgepackref.json"
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dataClasses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "autonomy": {
+      "type": "string"
+    },
+    "assignment": {
+      "title": "AgentTemplateAssignment",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hrJobCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "budget": {
+      "title": "AgentTemplateBudget",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "perInstanceMonthlyEUR": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "evaluationSet": {
+      "type": "string"
+    }
+  }
+}

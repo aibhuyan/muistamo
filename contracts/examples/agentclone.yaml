@@ -1,0 +1,19 @@
+# The Finnish variant of the analyst intern (PRD J5): Finnish tax knowledge on top of the
+# template's packs, its own budget, and Finnish interns' job code. Purpose, model, tools and risk
+# tier stay the template's.
+apiVersion: muistamo.dev/v1
+kind: AgentClone
+metadata:
+  name: analyst-intern-fi
+  owner: team-equity-research-fi
+spec:
+  template: analyst-intern
+  sync: follow               # or pin (with version), or manual
+  overlay:
+    knowledgePacks:
+      - name: finland-tax
+        version: 1.x
+    budget:
+      perInstanceMonthlyEUR: 40
+    assignment:
+      hrJobCodes: [ANALYST_INTERN_FI]

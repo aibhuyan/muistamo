@@ -34,10 +34,24 @@ class PolicyDecisionRequest(BaseModel):
             pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
         ),
     ] = None
+    fromClone: Annotated[
+        str | None,
+        Field(
+            description="call: the caller's clone, if it is one; it must be a clone of from.",
+            pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+        ),
+    ] = None
     to: Annotated[
         str | None,
         Field(
             description="call: the called template.", pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+        ),
+    ] = None
+    toClone: Annotated[
+        str | None,
+        Field(
+            description="call: the callee's clone, if it is one; it must be a clone of to.",
+            pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
         ),
     ] = None
     skill: Annotated[
@@ -67,6 +81,13 @@ class PolicyDecisionRequest(BaseModel):
         str | None,
         Field(
             description="action: the template taking the action.",
+            pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+        ),
+    ] = None
+    agentClone: Annotated[
+        str | None,
+        Field(
+            description="action: the agent's clone, if it is one; it must be a clone of agent.",
             pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
         ),
     ] = None

@@ -22,7 +22,8 @@ import (
 )
 
 var tenantTables = []string{"agent_templates", "agent_template_versions", "agent_instances", "evidence_events", "evidence_heads", "hr_events", "hr_webhook_secrets",
-	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published", "policy_documents", "privacy_officers", "erasure_requests", "knowledge_service_secrets"}
+	"catalogue_approvers", "catalogue_requests", "catalogue_approvals", "catalogue_published", "policy_documents", "privacy_officers", "erasure_requests", "knowledge_service_secrets", "agent_clones",
+	"model_catalogue", "model_aliases", "rollouts"}
 
 // seedTenantA gives tenant A a template, an instance, an HR secret and one HR event.
 func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
@@ -67,8 +68,24 @@ func seedTenantA(t *testing.T, h harness) (a, b uuid.UUID) {
 			t.Fatal(err)
 		}
 	}
+	clone := `{"apiVersion":"muistamo.dev/v1","kind":"AgentClone","metadata":{"name":"analyst-intern-fi"},
+	  "spec":{"template":"analyst-intern","sync":"follow","overlay":{"budget":{"perInstanceMonthlyEUR":1}}}}`
+	if got := h.call(t, a, http.MethodPut, "/v1/clones/analyst-intern-fi", clone, "X-Muistamo-Actor", "cat-1@example.invalid"); got.status != http.StatusCreated {
+		t.Fatalf("seed clone = %d: %s", got.status, got.raw)
+	}
 	if err := store.SetKnowledgeSecret(context.Background(), h.db.OwnerURL, a, []byte("mks_tenant-a-test-only-not-a-secret-000000")); err != nil {
 		t.Fatal(err)
+	}
+	// A has a second, approved model and one rollout onto it, so the model tables have rows of A's.
+	if got := h.call(t, a, http.MethodPut, "/v1/models/a-alt-model", modelJSON("a-alt-model", "eu-west-1")); got.status != http.StatusCreated {
+		t.Fatalf("seed model = %d: %s", got.status, got.raw)
+	}
+	if got := decideModel(t, h, a, officer, "a-alt-model", "approve"); got.status != http.StatusOK {
+		t.Fatalf("seed approval = %d: %s", got.status, got.raw)
+	}
+	if got := h.call(t, a, http.MethodPost, "/v1/model-aliases/reasoning-default/rollouts",
+		`{"to":"a-alt-model","reason":"seed","acknowledgeUnevaluated":true}`); got.status != http.StatusCreated {
+		t.Fatalf("seed rollout = %d: %s", got.status, got.raw)
 	}
 	nobody := `{"id":"` + seededErasure + `","reason":"seed","subject":{"identities":["dev:nobody@example.invalid"],"email":"nobody@example.invalid"}}`
 	if got := h.call(t, a, http.MethodPost, "/v1/privacy/erasures", nobody, asOfficer()...); got.status != http.StatusCreated {
@@ -500,5 +517,129 @@ func TestAuthzKnowledgeSecretsAreTenantScoped(t *testing.T) {
 	}
 	if secret, err := svc.KnowledgeSecret(context.Background(), registry.Actor{Tenant: a, Name: "workflow:x"}); err != nil || len(secret) == 0 {
 		t.Errorf("A's worker got no secret (%v)", err)
+	}
+}
+
+func TestAuthzClonesAreTenantScoped(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a, b := seedTenantA(t, h)
+	// B's caller may manage clones in B, so only the tenant boundary stands in the way.
+	testdb.CatalogueApprover(t, h.db.OwnerURL, b, "dev:person-a@example.invalid")
+	for _, path := range []string{"/v1/clones/analyst-intern-fi", "/v1/templates/analyst-intern/clones"} {
+		if got := h.call(t, b, http.MethodGet, path, ""); got.status != http.StatusNotFound {
+			t.Errorf("B GET %s = %d, want 404", path, got.status)
+		}
+	}
+	if got := h.call(t, b, http.MethodGet, "/v1/clones", ""); len(got.body["items"].([]any)) != 0 {
+		t.Errorf("B lists A's clones: %s", got.raw)
+	}
+	if got := h.call(t, b, http.MethodPost, "/v1/clones/analyst-intern-fi/sync", ""); got.status != http.StatusNotFound {
+		t.Errorf("B syncs A's clone = %d", got.status)
+	}
+	// B cannot clone A's template: it does not exist for B.
+	clone := `{"apiVersion":"muistamo.dev/v1","kind":"AgentClone","metadata":{"name":"stolen"},"spec":{"template":"analyst-intern","sync":"follow"}}`
+	if got := h.call(t, b, http.MethodPut, "/v1/clones/stolen", clone); got.status != http.StatusUnprocessableEntity {
+		t.Errorf("B clones A's template = %d, want 422", got.status)
+	}
+	// Nor reach A's instances' effective spec.
+	if got := h.call(t, b, http.MethodGet, "/v1/instances/analyst-intern-person-a/effective", ""); got.status != http.StatusNotFound {
+		t.Errorf("B reads A's effective spec = %d", got.status)
+	}
+	for name, stmt := range map[string]string{
+		"plant a clone in A": `INSERT INTO agent_clones (tenant_id, name, template, sync, revision, digest, document, updated_by)
+			VALUES ($1, 'planted', 'analyst-intern', 'follow', 1, 'x', '{}', 'x')`,
+	} {
+		if err := testdb.ExecErr(h.db.AppURL, b, stmt, a); err == nil || !strings.Contains(err.Error(), "row-level security") {
+			t.Errorf("%s as B: err = %v, want a row-level security violation", name, err)
+		}
+	}
+	if n := testdb.CountIn(t, h.db.AppURL, b, `SELECT count(*) FROM agent_clones WHERE tenant_id = $1`, a); n != 0 {
+		t.Errorf("B sees %d of A's clones by SQL", n)
+	}
+}
+
+func TestAuthzCloneSelectorsAreTenantScoped(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a, b := seedTenantA(t, h)
+	// A links its clone to a tax agent. B has the same template name but no such clone.
+	link := `{"apiVersion":"muistamo.dev/v1","kind":"AgentLink","metadata":{"name":"fi-to-tax"},
+	 "spec":{"from":{"clone":"analyst-intern-fi"},"to":{"template":"finland-tax"},"allowedSkills":["get-rates"],"dataClasses":[]}}`
+	if got := h.call(t, a, http.MethodPut, "/v1/links/fi-to-tax", link); got.status != http.StatusCreated {
+		t.Fatalf("A's clone link = %d: %s", got.status, got.raw)
+	}
+	req := `{"kind":"call","from":"analyst-intern","fromClone":"analyst-intern-fi","to":"finland-tax","skill":"get-rates"}`
+	if got := decisionOf(t, h.call(t, a, http.MethodPost, "/v1/policy/decisions", req)); got != "allow" {
+		t.Fatalf("A's own clone call: %s, want allow (the attack must be real)", got)
+	}
+	// B naming A's clone is refused: A's clones are not entities in B's decisions.
+	if got := h.call(t, b, http.MethodPost, "/v1/policy/decisions", req); got.status != http.StatusUnprocessableEntity {
+		t.Errorf("B naming A's clone = %d, want 422: %s", got.status, got.raw)
+	}
+	// Even if B makes its own clone of that name, A's clone link never applies in B.
+	if got := h.call(t, b, http.MethodPut, "/v1/templates/analyst-intern", templateJSON); got.status != http.StatusCreated {
+		t.Fatalf("B template = %d", got.status)
+	}
+	testdb.CatalogueApprover(t, h.db.OwnerURL, b, "dev:person-a@example.invalid")
+	clone := `{"apiVersion":"muistamo.dev/v1","kind":"AgentClone","metadata":{"name":"analyst-intern-fi"},
+	  "spec":{"template":"analyst-intern","sync":"follow"}}`
+	if got := h.call(t, b, http.MethodPut, "/v1/clones/analyst-intern-fi", clone); got.status != http.StatusCreated {
+		t.Fatalf("B clone = %d: %s", got.status, got.raw)
+	}
+	if got := decisionOf(t, h.call(t, b, http.MethodPost, "/v1/policy/decisions", req)); got != "deny" {
+		t.Errorf("B's same-named clone using A's link: %s, want deny", got)
+	}
+}
+
+func TestAuthzModelsAreTenantScoped(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a, b := seedTenantA(t, h)
+	rollouts := h.call(t, a, http.MethodGet, "/v1/rollouts", "")
+	id := rollouts.body["items"].([]any)[0].(map[string]any)["id"].(string)
+
+	if got := h.call(t, b, http.MethodGet, "/v1/models/a-alt-model", ""); got.status != http.StatusNotFound {
+		t.Errorf("B reads A's model = %d", got.status)
+	}
+	for _, path := range []string{"/v1/rollouts/" + id} {
+		if got := h.call(t, b, http.MethodGet, path, ""); got.status != http.StatusNotFound {
+			t.Errorf("B GET %s = %d", path, got.status)
+		}
+	}
+	if got := h.call(t, b, http.MethodGet, "/v1/rollouts", ""); len(got.body["items"].([]any)) != 0 {
+		t.Errorf("B lists A's rollouts: %s", got.raw)
+	}
+	// B's officer cannot decide A's model; B cannot roll back A's rollout or switch onto A's model.
+	if got := decideModel(t, h, b, officer, "a-alt-model", "revoke"); got.status != http.StatusNotFound {
+		t.Errorf("B revokes A's model = %d, want 404", got.status)
+	}
+	if got := h.call(t, b, http.MethodPost, "/v1/rollouts/"+id+"/rollback", `{"reason":"x"}`); got.status != http.StatusNotFound {
+		t.Errorf("B rolls back A's rollout = %d", got.status)
+	}
+	if got := h.call(t, b, http.MethodPost, "/v1/model-aliases/reasoning-default/rollouts",
+		`{"to":"a-alt-model","reason":"x","acknowledgeUnevaluated":true}`); got.status != http.StatusUnprocessableEntity {
+		t.Errorf("B switches onto A's model = %d, want 422 (not in B's catalogue)", got.status)
+	}
+	if got := h.call(t, a, http.MethodGet, "/v1/models/a-alt-model", ""); got.body["approval"].(map[string]any)["status"] != "approved" {
+		t.Errorf("A's model after B's attempts: %s", got.raw)
+	}
+
+	for name, stmt := range map[string]string{
+		"plant an approved model in A": `INSERT INTO model_catalogue (tenant_id, name, revision, digest, document, approval_status, decided_by, decided_at, updated_by)
+			VALUES ($1, 'planted', 1, 'x', '{}', 'approved', 'x', now(), 'y')`,
+		"retarget A's alias": `INSERT INTO model_aliases (tenant_id, name, target, revision, digest, document, updated_by)
+			VALUES ($1, 'planted', 'a-alt-model', 1, 'x', '{}', 'x')`,
+	} {
+		if err := testdb.ExecErr(h.db.AppURL, b, stmt, a); err == nil || !strings.Contains(err.Error(), "row-level security") {
+			t.Errorf("%s as B: err = %v, want a row-level security violation", name, err)
+		}
+	}
+	if err := testdb.ExecErr(h.db.AppURL, b, `UPDATE model_catalogue SET approval_status = 'revoked' WHERE tenant_id = $1`, a); err != nil {
+		t.Fatalf("UPDATE as B: %v", err)
+	}
+	if n := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM model_catalogue WHERE tenant_id = $1 AND approval_status = 'approved'`, a); n != 2 {
+		t.Errorf("A's approved models after B's UPDATE = %d, want 2", n)
+	}
+	// Nobody approves their own change, even by SQL.
+	if err := testdb.ExecErr(h.db.AppURL, a, `UPDATE model_catalogue SET decided_by = updated_by WHERE name = 'a-alt-model'`); err == nil {
+		t.Errorf("self-approval by SQL was accepted")
 	}
 }

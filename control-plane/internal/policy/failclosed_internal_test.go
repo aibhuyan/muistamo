@@ -12,7 +12,7 @@ import (
 // Cedar skips a policy whose condition fails to evaluate. For a forbid that would turn a denial
 // into an allow, so Decide must deny whenever Cedar reports any evaluation error.
 func TestEvaluationErrorsFailClosed(t *testing.T) {
-	set, err := Compile(nil, nil)
+	set, err := Compile(nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
