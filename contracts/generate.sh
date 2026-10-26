@@ -23,6 +23,15 @@ uv run --no-sync datamodel-codegen \
   --use-title-as-name \
   --disable-timestamp \
   --formatters ruff-format
+# datamodel-codegen writes the platform's line endings; generated code is LF everywhere, so
+# check-generated compares like with like on Windows too.
+uv run --no-sync python -c '
+import pathlib, sys
+for path in pathlib.Path(sys.argv[1]).rglob("*.py"):
+    data = path.read_bytes()
+    if b"\r\n" in data:
+        path.write_bytes(data.replace(b"\r\n", b"\n"))
+' "$py_out"
 
 # oapi-codegen inlines external $refs as anonymous types, so it reads a bundled document.
 uv run --no-sync python contracts/bundle.py contracts/openapi/muistamo.v1.yaml "$bundle"
