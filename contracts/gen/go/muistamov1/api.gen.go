@@ -2781,9 +2781,11 @@ type SyncResult struct {
 	Total   int    `json:"total"`
 }
 
-// VerificationInput A reviewer confirms that a pack entry is still right, which restarts its decay clock.
+// VerificationInput A reviewer confirms the immutable entry revision they inspected, restarting its decay clock. A replaced revision is refused with 409.
 type VerificationInput struct {
-	Reason string `json:"reason"`
+	// EntryId The immutable entry ID shown to the reviewer; never silently confirm a replacement with the same key.
+	EntryId openapi_types.UUID `json:"entryId"`
+	Reason  string             `json:"reason"`
 }
 
 // VerificationPage Entries due or expired in packs the caller may confirm, soonest to expire first.

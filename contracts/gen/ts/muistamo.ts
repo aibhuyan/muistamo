@@ -2088,9 +2088,14 @@ export interface components {
         };
         /**
          * VerificationInput
-         * @description A reviewer confirms that a pack entry is still right, which restarts its decay clock.
+         * @description A reviewer confirms the immutable entry revision they inspected, restarting its decay clock. A replaced revision is refused with 409.
          */
         VerificationInput: {
+            /**
+             * Format: uuid
+             * @description The immutable entry ID shown to the reviewer; never silently confirm a replacement with the same key.
+             */
+            entryId: string;
             reason: string;
         };
         /**

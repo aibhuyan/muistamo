@@ -2,6 +2,7 @@
 #   filename:  verificationinput.json
 
 from __future__ import annotations
+from uuid import UUID
 from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,4 +11,10 @@ class VerificationInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    entryId: Annotated[
+        UUID,
+        Field(
+            description="The immutable entry ID shown to the reviewer; never silently confirm a replacement with the same key."
+        ),
+    ]
     reason: Annotated[str, Field(max_length=2000, min_length=1)]

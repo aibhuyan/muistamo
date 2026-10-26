@@ -4,7 +4,6 @@ service's clock, never waited for."""
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -77,6 +76,15 @@ def queue(world, person: str = R) -> list[dict]:
     res = world.client(person).get("/v1/knowledge/verifications")
     assert res.status_code == 200, res.text
     return res.json()["items"]
+
+
+def verification(world, pack_name: str, key: str, reason: str) -> dict:
+    latest = world.client(R).get(f"/v1/knowledge/packs/{pack_name}").json()["latestVersion"]
+    entries = (
+        world.client(R).get(f"/v1/knowledge/packs/{pack_name}/versions/{latest}").json()["entries"]
+    )
+    entry_id = next(e["entry"]["id"] for e in entries if e["entry"]["key"] == key)
+    return {"entryId": entry_id, "reason": reason}
 
 
 def events(world, action: str) -> list:
@@ -166,7 +174,8 @@ def test_a_reviewer_confirms_an_entry_and_its_clock_restarts(rules, clock) -> No
     world = rules
     clock.advance(12)
     res = world.client(R).post(
-        "/v1/knowledge/packs/rules/entries/expenses/verification", json={"reason": "still policy"}
+        "/v1/knowledge/packs/rules/entries/expenses/verification",
+        json=verification(world, "rules", "expenses", "still policy"),
     )
     assert res.status_code == 200, res.text
     body = res.json()
@@ -187,7 +196,8 @@ def test_an_expired_entry_can_still_be_confirmed_until_the_sweep(rules, clock) -
     clock.advance(20)
     assert "expenses" not in resolved(world, packs="rules")
     res = world.client(R).post(
-        "/v1/knowledge/packs/rules/entries/expenses/verification", json={"reason": "checked"}
+        "/v1/knowledge/packs/rules/entries/expenses/verification",
+        json=verification(world, "rules", "expenses", "checked"),
     )
     assert res.status_code == 200, res.text
     assert resolved(world, packs="rules")["expenses"]["decay"]["status"] == "current"
@@ -200,18 +210,25 @@ def test_only_reviewers_other_than_the_contributor_confirm(world, clock) -> None
     merge(world, "shared", "k", "A's knowledge, approved by R.")
     url = "/v1/knowledge/packs/shared/entries/k/verification"
     # A reviews the pack but contributed the entry: vouching for oneself is no check.
-    res = world.client(A).post(url, json={"reason": "mine"})
+    res = world.client(A).post(url, json=verification(world, "shared", "k", "mine"))
     assert res.status_code == 403 and "own entry" in res.text
-    assert world.client(B).post(url, json={"reason": "x"}).status_code == 403
+    assert (
+        world.client(B).post(url, json=verification(world, "shared", "k", "x")).status_code == 403
+    )
     assert (
         world.client(R)
-        .post("/v1/knowledge/packs/shared/entries/nope/verification", json={"reason": "x"})
+        .post(
+            "/v1/knowledge/packs/shared/entries/nope/verification",
+            json=verification(world, "shared", "k", "x"),
+        )
         .status_code
         == 404
     )
-    assert world.client(R).post(url, json={"reason": ""}).status_code == 422
+    assert world.client(R).post(url, json=verification(world, "shared", "k", "")).status_code == 422
     assert events(world, "knowledge.entry.verified") == []
-    assert world.client(R).post(url, json={"reason": "ok"}).status_code == 200
+    assert (
+        world.client(R).post(url, json=verification(world, "shared", "k", "ok")).status_code == 200
+    )
 
 
 def test_the_sweep_removes_expired_entries_and_rollback_restores_them(rules, clock) -> None:
@@ -221,7 +238,10 @@ def test_the_sweep_removes_expired_entries_and_rollback_restores_them(rules, clo
     # Confirm travel only, so that just expenses expires.
     assert (
         world.client(R)
-        .post("/v1/knowledge/packs/rules/entries/travel/verification", json={"reason": "ok"})
+        .post(
+            "/v1/knowledge/packs/rules/entries/travel/verification",
+            json=verification(world, "rules", "travel", "ok"),
+        )
         .status_code
         == 200
     )
@@ -272,7 +292,7 @@ def test_mandatory_packs_are_flagged_never_removed(world, clock) -> None:
     assert item["mandatory"] is True and item["decay"]["status"] == "due"
     res = world.client(DPO).post(
         "/v1/knowledge/packs/company-rules/entries/data-handling/verification",
-        json={"reason": "still the rule"},
+        json=verification(world, "company-rules", "data-handling", "still the rule"),
     )
     assert res.status_code == 200, res.text
     assert resolved(world)["data-handling"]["decay"]["status"] == "current"
@@ -329,24 +349,55 @@ def test_provenance_is_explained_and_never_changes_ranking(world, clock) -> None
     assert [i["score"] for i in entries] == sorted((i["score"] for i in entries), reverse=True)
 
 
-def test_the_migration_backfills_who_last_verified_each_entry(rules) -> None:
-    world = rules
+def _backfill_sql() -> str:
+    """The migration's backfill section: row security off, the insert, the count check."""
     sql = (Path(__file__).parents[1] / "migrations" / "0007_decay.sql").read_text(encoding="utf-8")
-    backfill = re.search(r"INSERT INTO knowledge\.verifications .*?;", sql, re.S).group(0)
+    start = sql.index("SET LOCAL row_security = off;")
+    end = sql.index("SET LOCAL row_security = on;")
+    return sql[start:end]
+
+
+def test_the_migration_backfills_who_last_verified_each_entry(rules, clock) -> None:
+    world = rules
+    merge(world, "rules", "old-rule", "Approved long before decay existed.")
     with psycopg.connect(world.db.owner_url) as conn:
-        expected = conn.execute(
-            "SELECT p.reviewer FROM knowledge.proposals p WHERE p.status = 'approved'"
-        ).fetchall()
+        # One entry was approved two years ago; the pack's review interval is 10 days.
+        conn.execute(
+            "UPDATE knowledge.proposals SET decided_at = now() - interval '2 years'"
+            " WHERE id IN (SELECT proposal_id FROM knowledge.pack_version_entries WHERE key = 'old-rule')"
+        )
         conn.execute("DELETE FROM knowledge.verifications")
-        conn.execute(backfill)
-        rows = conn.execute(
-            "SELECT v.verified_by, v.verified_at = p.decided_at, v.reason FROM knowledge.verifications v"
-            " JOIN knowledge.pack_version_entries e ON e.tenant_id = v.tenant_id AND e.entry_id = v.entry_id"
-            " JOIN knowledge.proposals p ON p.tenant_id = e.tenant_id AND p.id = e.proposal_id"
-        ).fetchall()
-    assert rows and [(r[0],) for r in rows] == expected
-    assert all(r[1] and r[2] == "merged (backfilled)" for r in rows)
-    assert resolved(world, packs="rules")["expenses"]["decay"]["verifiedBy"] == "dev:" + R
+        with conn.transaction():
+            conn.execute(_backfill_sql())
+        rows = dict(
+            (r[0], r[1:])
+            for r in conn.execute(
+                "SELECT e.key, v.verified_by, v.verified_at = p.decided_at, v.reason,"
+                " v.verified_at > now() - interval '10 days 1 minute'"
+                " FROM knowledge.verifications v"
+                " JOIN knowledge.pack_version_entries e ON e.tenant_id = v.tenant_id AND e.entry_id = v.entry_id"
+                "  AND e.version = (SELECT latest_version FROM knowledge.packs WHERE name = e.pack)"
+                " JOIN knowledge.proposals p ON p.tenant_id = e.tenant_id AND p.id = e.proposal_id"
+            ).fetchall()
+        )
+    assert rows["expenses"] == ("dev:" + R, True, "merged (backfilled)", True)
+    # The old entry does not expire the moment decay is switched on: it starts due, with grace.
+    by, exact, reason, floored = rows["old-rule"]
+    assert by == "dev:" + R and not exact and floored
+    assert reason == "merged before decay existed (backfilled; due when decay began)"
+    clock.now = datetime.now(UTC)
+    got = resolved(world, B, packs="rules")
+    assert got["old-rule"]["decay"]["status"] == "due"
+    assert got["expenses"]["decay"]["status"] == "current"
+
+
+def test_the_backfill_fails_loudly_rather_than_silently_skipping(rules) -> None:
+    """A migration role that row-level security would filter must not 'succeed' with nothing
+    backfilled: every published entry would then count as unverified and be withheld."""
+    with psycopg.connect(rules.db.app_url) as conn:  # a role without BYPASSRLS
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="row-level security"):
+            with conn.transaction():
+                conn.execute(_backfill_sql())
 
 
 def test_the_server_role_cannot_rewrite_or_delete_verifications(rules) -> None:
@@ -414,3 +465,156 @@ def test_the_sweep_command_sweeps_named_tenants_and_fails_loudly(
     with pytest.raises(SystemExit) as exited:
         cli.main()
     assert exited.value.code == 2  # --tenant is required
+
+
+def test_confirmation_refuses_a_replaced_revision(rules, clock) -> None:
+    clock.advance(10)
+    [shown] = queue(rules)
+    merge(rules, "rules", "expenses", "The replacement policy needs a fresh review.")
+    res = rules.client(R).post(
+        "/v1/knowledge/packs/rules/entries/expenses/verification",
+        json={"entryId": shown["entry"]["id"], "reason": "checked the old policy"},
+    )
+    assert res.status_code == 409, res.text
+    assert events(rules, "knowledge.entry.verified") == []
+
+
+@pytest.mark.parametrize("person", [A, B])
+def test_only_existing_reviewers_can_change_a_pack(rules, person) -> None:
+    changed = pack("rules", every=100)
+    changed["spec"]["reviewers"].append("dev:" + person)
+    res = rules.client(person).put("/v1/knowledge/packs/rules", json=changed)
+    assert res.status_code == 403, res.text
+    assert (
+        rules.client(R)
+        .get("/v1/knowledge/packs/rules")
+        .json()["document"]["spec"]["decay"]["reviewEveryDays"]
+        == 10
+    )
+
+
+@pytest.mark.parametrize("every,grace", [(100, 5), (10, 100)])
+def test_a_contributor_cannot_extend_their_own_decay_policy(world, clock, every, grace) -> None:
+    shared = pack("shared", reviewers=["dev:" + A, "dev:" + R])
+    assert world.client(R).put("/v1/knowledge/packs/shared", json=shared).status_code == 201
+    merge(world, "shared", "expenses", "A's policy, independently reviewed by R.")
+    clock.advance(16)
+    assert "expenses" not in resolved(world, B, "shared")
+    changed = pack("shared", every=every, grace=grace, reviewers=shared["spec"]["reviewers"])
+    res = world.client(A).put("/v1/knowledge/packs/shared", json=changed)
+    assert res.status_code == 403, res.text
+    assert "expenses" not in resolved(world, B, "shared")
+    # An independent reviewer can change the policy for the pack.
+    assert world.client(R).put("/v1/knowledge/packs/shared", json=changed).status_code == 200
+    assert "expenses" in resolved(world, B, "shared")
+
+
+def test_rollback_cannot_renew_the_rollers_own_expired_entry(world, clock) -> None:
+    shared = pack("shared", reviewers=["dev:" + A, "dev:" + R])
+    assert world.client(R).put("/v1/knowledge/packs/shared", json=shared).status_code == 201
+    merge(world, "shared", "expenses", "A's knowledge.")
+    before = world.client(R).get("/v1/knowledge/packs/shared").json()["latestVersion"]
+    clock.advance(16)
+    assert world.knowledge.sweep_decay(world.tenant) == {"shared": ["expenses"]}
+    res = world.client(A).post(
+        "/v1/knowledge/packs/shared/rollback", json={"toVersion": before, "reason": "restore"}
+    )
+    assert res.status_code == 201, res.text
+    assert "expenses" not in resolved(world, B, "shared")
+    assert events(world, "knowledge.entry.verified") == []
+    assert queue(world, A) == []
+
+
+def test_expired_skills_are_withheld_from_historical_exports(rules, clock) -> None:
+    version = rules.client(R).get("/v1/knowledge/packs/rules").json()["latestVersion"]
+    clock.advance(16)
+    for requested in ("latest", version):
+        res = rules.client(R).get(f"/v1/knowledge/packs/rules/versions/{requested}/skills.zip")
+        assert res.status_code == 409, res.text
+        assert "expired" in res.text
+    assert events(rules, "knowledge.pack.exported") == []
+
+
+def test_the_migration_backfills_historical_revisions_once(rules, clock) -> None:
+    merge(rules, "rules", "travel", "Take the train.")
+    historical = rules.client(R).get("/v1/knowledge/packs/rules").json()["latestVersion"]
+    merge(rules, "rules", "expenses", "The new expenses policy.")
+    with psycopg.connect(rules.db.owner_url) as conn:
+        conn.execute("DELETE FROM knowledge.verifications")
+        with conn.transaction():
+            conn.execute(_backfill_sql())
+        assert conn.execute("SELECT count(*) FROM knowledge.verifications").fetchone()[0] == 3
+    clock.now = datetime.now(UTC)
+    res = rules.client(R).get(f"/v1/knowledge/packs/rules/versions/{historical}/skills.zip")
+    assert res.status_code == 200, res.text
+
+
+def test_rollback_renews_an_expired_entry_before_the_sweep(rules, clock) -> None:
+    version = rules.client(R).get("/v1/knowledge/packs/rules").json()["latestVersion"]
+    clock.advance(16)
+    assert resolved(rules, B, "rules") == {}
+    res = rules.client(R).post(
+        "/v1/knowledge/packs/rules/rollback",
+        json={"toVersion": version, "reason": "independently checked"},
+    )
+    assert res.status_code == 201, res.text
+    assert resolved(rules, B, "rules")["expenses"]["decay"]["status"] == "current"
+    [verified] = events(rules, "knowledge.entry.verified")
+    assert verified.after["key"] == "expenses"
+
+
+def test_self_extension_is_refused_for_historical_entries_too(world, clock) -> None:
+    shared = pack("shared", reviewers=["dev:" + A, "dev:" + R])
+    assert world.client(R).put("/v1/knowledge/packs/shared", json=shared).status_code == 201
+    merge(world, "shared", "expenses", "A's knowledge.")
+    historical = world.client(R).get("/v1/knowledge/packs/shared").json()["latestVersion"]
+    clock.advance(16)
+    world.knowledge.sweep_decay(world.tenant)
+    changed = pack("shared", every=100, reviewers=shared["spec"]["reviewers"])
+    res = world.client(A).put("/v1/knowledge/packs/shared", json=changed)
+    assert res.status_code == 403, res.text
+    assert world.client(R).put("/v1/knowledge/packs/shared", json=changed).status_code == 200
+    assert (
+        world.client(R)
+        .get(f"/v1/knowledge/packs/shared/versions/{historical}/skills.zip")
+        .status_code
+        == 200
+    )
+
+
+@pytest.mark.parametrize("action", ["confirm", "sweep"])
+def test_decay_writes_roll_back_if_their_evidence_fails(rules, clock, monkeypatch, action) -> None:
+    clock.advance(16)
+    latest = rules.client(R).get("/v1/knowledge/packs/rules").json()["latestVersion"]
+    before = rules.knowledge.events(rules.actor(R), 0, 1000)
+    original = rules.knowledge._evidence
+
+    def fail(cur, actor, event, *args, **kwargs):
+        if event in ("knowledge.entry.verified", "knowledge.entry.expired"):
+            raise RuntimeError("evidence unavailable")
+        return original(cur, actor, event, *args, **kwargs)
+
+    monkeypatch.setattr(rules.knowledge, "_evidence", fail)
+    if action == "confirm":
+        res = rules.client(R).post(
+            "/v1/knowledge/packs/rules/entries/expenses/verification",
+            json=verification(rules, "rules", "expenses", "checked"),
+        )
+        assert res.status_code == 500
+    else:
+        with pytest.raises(RuntimeError, match="evidence unavailable"):
+            rules.knowledge.sweep_decay(rules.tenant)
+    assert rules.client(R).get("/v1/knowledge/packs/rules").json()["latestVersion"] == latest
+    assert queue(rules)[0]["decay"]["status"] == "expired"
+    assert rules.knowledge.events(rules.actor(R), 0, 1000) == before
+
+
+@pytest.mark.parametrize(
+    "payload", [{"reason": "checked"}, {"entryId": "invalid", "reason": "checked"}]
+)
+def test_confirmation_requires_an_immutable_revision(rules, payload) -> None:
+    res = rules.client(R).post(
+        "/v1/knowledge/packs/rules/entries/expenses/verification", json=payload
+    )
+    assert res.status_code == 422, res.text
+    assert events(rules, "knowledge.entry.verified") == []

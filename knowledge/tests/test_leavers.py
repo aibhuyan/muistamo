@@ -175,6 +175,15 @@ def test_merge_proposes_for_the_leaver_and_purges_the_rest(world, svc) -> None:
     assert [(i["entry"]["key"], i["entry"]["contributor"]) for i in resolved] == [
         ("fiscal-year", "dev:" + A)
     ]
+    # FR-307: proposing for a leaver cannot become self-approval through later confirmation
+    # or an extension of the pack's decay policy.
+    verify = "/v1/knowledge/packs/basics/entries/fiscal-year/verification"
+    body = {"entryId": resolved[0]["entry"]["id"], "reason": "still useful"}
+    assert m.post(verify, json=body).status_code == 403
+    changed = {**PACK, "spec": {**PACK["spec"], "decay": {"reviewEveryDays": 1000}}}
+    assert m.put("/v1/knowledge/packs/basics", json=changed).status_code == 403
+    assert world.client(R).post(verify, json=body).status_code == 200
+
     # A closed review takes no further decisions.
     assert (
         m.post(

@@ -114,7 +114,7 @@ class Knowledge:
         requires_eval = "evaluation" in (spec.get("mergePolicy") or {}).get("requires", [])
         with self.db.in_tenant(actor.tenant) as cur:
             cur.execute(
-                "SELECT document, mandatory FROM knowledge.packs WHERE name = %s FOR UPDATE",
+                "SELECT document, mandatory, reviewers FROM knowledge.packs WHERE name = %s FOR UPDATE",
                 (name,),
             )
             row = cur.fetchone()
@@ -135,6 +135,31 @@ class Knowledge:
 
                 if not is_officer(cur, actor.name):
                     raise Forbidden("only privacy officers can create or change a mandatory pack")
+            elif row is not None and actor.name not in row[2]:
+                # Changing a pack is the reviewers' call: its reviewers decide what it says and its
+                # decay policy decides how long that stays served (FR-307). Anyone could otherwise
+                # make themselves its reviewer, or stretch the policy to revive expired entries.
+                from muistamo_knowledge.privacy import is_officer
+
+                if not is_officer(cur, actor.name):
+                    raise Forbidden("only the pack's reviewers can change it")
+            if row is not None:
+                old_every, old_grace = decay.policy(row[0]["spec"].get("decay"))
+                new_every, new_grace = decay.policy(spec.get("decay"))
+                if new_every > old_every or new_every + new_grace > old_every + old_grace:
+                    # Policy changes apply to historical exports too. Extending a contributor's
+                    # own confirmation must require someone independent, just like verifying it.
+                    cur.execute(
+                        "SELECT 1 FROM knowledge.pack_version_entries v"
+                        " JOIN knowledge.entries e ON e.tenant_id = v.tenant_id AND e.id = v.entry_id"
+                        " JOIN knowledge.proposals p ON p.tenant_id = v.tenant_id AND p.id = v.proposal_id"
+                        " WHERE v.pack = %s AND (e.contributor = %s OR p.proposed_by = %s) LIMIT 1",
+                        (name, actor.name, actor.name),
+                    )
+                    if cur.fetchone() is not None:
+                        raise Forbidden(
+                            "cannot extend decay for your own entries; ask another reviewer"
+                        )
             if mandatory != was:
                 self._evidence(
                     cur,
@@ -587,7 +612,13 @@ class Knowledge:
             lineage = {
                 e["entry"]["key"]: (e["entry"]["id"], e["proposal"], e["reviewer"]) for e in target
             }
-            current = {e["entry"]["id"] for e in self._version_entries(cur, pack, info["latest"])}
+            # Entries the rollback brings back into service: absent from the latest version, or
+            # present but expired (withheld, not yet swept).
+            served = {
+                e["entry"]["id"]
+                for e in self._decayed(cur, pack, info)
+                if e["decay"]["status"] != "expired"
+            }
             self._publish(
                 cur,
                 actor,
@@ -597,20 +628,30 @@ class Knowledge:
                 f"rollback to {to_version}: {reason}",
                 lineage,
             )
-            # Bringing an entry back is vouching for it, so a restored entry (an expired one,
-            # for example) starts a fresh decay clock. Entries already in the pack keep theirs.
+            # Bringing an entry back is vouching for it, so a restored entry starts a fresh decay
+            # clock, evidenced like any confirmation. Entries still in service keep theirs. A
+            # rollback never vouches for the roller's own entry: that would let a contributor who
+            # reviews the pack renew their own knowledge without anyone else (FR-307, ASI06).
             now = self.clock()
             for e in target:
-                if e["entry"]["id"] not in current:
-                    decay.record(
-                        cur,
-                        actor.tenant,
-                        pack,
-                        e["entry"]["id"],
-                        now,
-                        actor.name,
-                        f"restored by rollback to {to_version}",
-                    )
+                if e["entry"]["id"] in served or actor.name in self._cannot_vouch(cur, e):
+                    continue
+                why = f"restored by rollback to {to_version}"
+                decay.record(cur, actor.tenant, pack, e["entry"]["id"], now, actor.name, why)
+                self._evidence(
+                    cur,
+                    actor,
+                    "knowledge.entry.verified",
+                    "KnowledgePack",
+                    pack,
+                    after={
+                        "key": e["entry"]["key"],
+                        "entryId": str(e["entry"]["id"]),
+                        "version": version,
+                        "reason": why,
+                        "verifiedAt": _iso(now),
+                    },
+                )
             result = self._version(cur, pack, version)
         self._published(actor, pack, version)
         return result
@@ -629,9 +670,16 @@ class Knowledge:
             resolved = info["latest"] if version == "latest" else version
             if resolved == "0.0.0":
                 raise Conflict(f"pack {pack!r} has nothing published to export")
-            entries = self._version(cur, pack, resolved)["entries"]
+            # Knowledge nobody vouches for any more does not leave as skills either (FR-307),
+            # from any version: an expired entry is withheld wherever it is read.
+            decayed = self._decayed(cur, pack, info, resolved)
+            entries = [e for e in decayed if e["decay"]["status"] != "expired"]
+            withheld = len(decayed) - len(entries)
             if not entries:
-                raise Conflict(f"pack {pack!r} version {resolved} has no entries to export")
+                raise Conflict(
+                    f"pack {pack!r} version {resolved} has no entries to export"
+                    + (f" ({withheld} expired, awaiting confirmation)" if withheld else "")
+                )
             data = skills.archive(skills.render(pack, resolved, info["layer"], entries))
             # Knowledge leaving Muistamo is recorded; the evidence names the archive, not its content.
             self._evidence(
@@ -645,6 +693,7 @@ class Knowledge:
                     "format": "agent-skills-zip",
                     "sha256": hashlib.sha256(data).hexdigest(),
                     "entries": len(entries),
+                    "withheldExpired": withheld,
                 },
             )
             return resolved, data
@@ -814,9 +863,11 @@ class Knowledge:
 
     # Decay (FR-307) -------------------------------------------------------------------------
 
-    def _decayed(self, cur: Cursor, pack: str, info: dict[str, Any]) -> list[dict[str, Any]]:
-        """The latest version's entries, each with its decay state and provenance."""
-        entries = self._version_entries(cur, pack, info["latest"])
+    def _decayed(
+        self, cur: Cursor, pack: str, info: dict[str, Any], version: str | None = None
+    ) -> list[dict[str, Any]]:
+        """A version's entries (the latest by default), each with its decay state and provenance."""
+        entries = self._version_entries(cur, pack, version or info["latest"])
         ids = [e["entry"]["id"] for e in entries]
         verified = decay.latest(cur, pack, ids)
         edited = decay.edited(cur, [(e["entry"]["id"], e["proposal"]) for e in entries])
@@ -840,6 +891,13 @@ class Knowledge:
             )
         return out
 
+    def _cannot_vouch(self, cur: Cursor, e: dict[str, Any]) -> set[str]:
+        """Who may never vouch for a pack entry: its contributor, and whoever proposed it on a
+        leaver's behalf, just as neither may approve it (FR-305, E4.2)."""
+        cur.execute("SELECT proposed_by FROM knowledge.proposals WHERE id = %s", (e["proposal"],))
+        row = cur.fetchone()
+        return {e["entry"]["contributor"]} | ({row[0]} if row and row[0] else set())
+
     def _may_confirm(self, cur: Cursor, actor: Actor, info: dict[str, Any]) -> bool:
         if actor.name in info["reviewers"]:
             return True
@@ -862,7 +920,9 @@ class Knowledge:
             out["mandatory"] = True
         return out
 
-    def verify_entry(self, actor: Actor, pack: str, key: str, reason: str) -> dict[str, Any]:
+    def verify_entry(
+        self, actor: Actor, pack: str, key: str, entry_id: UUID, reason: str
+    ) -> dict[str, Any]:
         """A reviewer confirms an entry is still right, restarting its decay clock."""
         with self.db.in_tenant(actor.tenant) as cur:
             info = self._pack(cur, pack, lock=True)
@@ -872,8 +932,10 @@ class Knowledge:
             if key not in current:
                 raise NotFound(f"entry {key!r} in pack {pack!r}")
             entry = current[key]["entry"]
+            if entry["id"] != entry_id:
+                raise Conflict("the entry changed; reload it before confirming")
             # Vouching for one's own knowledge is no check at all, as with approving it.
-            if entry["contributor"] == actor.name:
+            if actor.name in self._cannot_vouch(cur, current[key]):
                 raise Forbidden("nobody can confirm their own entry")
             before = current[key]["decay"]
             now = self.clock()
@@ -906,7 +968,9 @@ class Knowledge:
                 if not self._may_confirm(cur, actor, info):
                     continue
                 for e in self._decayed(cur, name, info):
-                    if e["decay"]["status"] != "current":
+                    if e["decay"]["status"] != "current" and actor.name not in self._cannot_vouch(
+                        cur, e
+                    ):
                         out.append(self._verification(name, info, e))
         far = datetime.max.replace(tzinfo=UTC)
         out.sort(

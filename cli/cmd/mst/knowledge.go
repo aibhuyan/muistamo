@@ -11,10 +11,13 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"muistamo.dev/muistamo/cli/internal/manifest"
+	muistamov1 "muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 )
 
 // knowledgeCall sends a request to the knowledge service with the development identity headers.
@@ -143,31 +146,23 @@ func knowledgeCmd(opts *options) *cobra.Command {
 	return cmd
 }
 
-// entryVerification is the part of an EntryVerification the commands print.
-type entryVerification struct {
-	Pack      string `json:"pack"`
-	Mandatory bool   `json:"mandatory"`
-	Entry     struct {
-		Key string `json:"key"`
-	} `json:"entry"`
-	Decay struct {
-		Status     string `json:"status"`
-		VerifiedBy string `json:"verifiedBy"`
-		DueAt      string `json:"dueAt"`
-		ExpiresAt  string `json:"expiresAt"`
-	} `json:"decay"`
-	Provenance struct {
-		Score int `json:"score"`
-	} `json:"provenance"`
-}
-
-func (v entryVerification) line() string {
-	expires := v.Decay.ExpiresAt
-	if v.Mandatory {
+func verificationLine(v muistamov1.EntryVerification) string {
+	timestamp := func(t *time.Time) string {
+		if t == nil {
+			return "unconfirmed"
+		}
+		return t.Format(time.RFC3339)
+	}
+	expires := timestamp(v.Decay.ExpiresAt)
+	if v.Mandatory != nil && *v.Mandatory {
 		expires = "never (mandatory)"
 	}
-	return fmt.Sprintf("%s/%s\t%s\tdue %s\texpires %s\tlast verified by %s\tprovenance %d",
-		v.Pack, v.Entry.Key, v.Decay.Status, v.Decay.DueAt, expires, v.Decay.VerifiedBy, v.Provenance.Score)
+	verifiedBy := "unconfirmed"
+	if v.Decay.VerifiedBy != nil {
+		verifiedBy = *v.Decay.VerifiedBy
+	}
+	return fmt.Sprintf("%s/%s\t%s\tentry %s\tversion %s\tdue %s\texpires %s\tlast verified by %s\tprovenance %d",
+		v.Pack, v.Entry.Key, v.Decay.Status, v.Entry.Id, v.Version, timestamp(v.Decay.DueAt), expires, verifiedBy, v.Provenance.Score)
 }
 
 func verificationsCmd(opts *options) *cobra.Command {
@@ -183,9 +178,7 @@ func verificationsCmd(opts *options) *cobra.Command {
 			if status != http.StatusOK {
 				return problem(status, body)
 			}
-			var page struct {
-				Items []entryVerification `json:"items"`
-			}
+			var page muistamov1.VerificationPage
 			if err := json.Unmarshal(body, &page); err != nil {
 				return fmt.Errorf("decode verifications: %w", err)
 			}
@@ -193,7 +186,7 @@ func verificationsCmd(opts *options) *cobra.Command {
 				cmd.Println("nothing to confirm")
 			}
 			for _, v := range page.Items {
-				cmd.Println(v.line())
+				cmd.Println(verificationLine(v))
 			}
 			return nil
 		},
@@ -201,13 +194,17 @@ func verificationsCmd(opts *options) *cobra.Command {
 }
 
 func verifyEntryCmd(opts *options) *cobra.Command {
-	var reason string
+	var reason, entryID string
 	cmd := &cobra.Command{
-		Use:   "verify PACK KEY --reason TEXT",
+		Use:   "verify PACK KEY --entry-id ID --reason TEXT",
 		Short: "Confirm a pack entry is still right, restarting its decay clock",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			payload, err := json.Marshal(map[string]string{"reason": reason})
+			id, err := uuid.Parse(entryID)
+			if err != nil {
+				return fmt.Errorf("invalid --entry-id: %w", err)
+			}
+			payload, err := json.Marshal(muistamov1.VerificationInput{EntryId: id, Reason: reason})
 			if err != nil {
 				return err
 			}
@@ -219,14 +216,16 @@ func verifyEntryCmd(opts *options) *cobra.Command {
 			if status != http.StatusOK {
 				return problem(status, body)
 			}
-			var v entryVerification
+			var v muistamov1.EntryVerification
 			if err := json.Unmarshal(body, &v); err != nil {
 				return fmt.Errorf("decode verification: %w", err)
 			}
-			cmd.Println(v.line())
+			cmd.Println(verificationLine(v))
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&entryID, "entry-id", "", "immutable entry ID you inspected (from the verification queue)")
+	_ = cmd.MarkFlagRequired("entry-id")
 	cmd.Flags().StringVar(&reason, "reason", "", "why the entry is still right")
 	_ = cmd.MarkFlagRequired("reason")
 	return cmd

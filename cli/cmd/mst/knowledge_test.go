@@ -10,7 +10,9 @@ import (
 	"testing"
 )
 
-const verificationJSON = `{"pack":"rules","version":"0.2.0","entry":{"key":"expenses"},
+const verificationEntryID = "11111111-2222-4333-8444-555555555555"
+
+const verificationJSON = `{"pack":"rules","version":"0.2.0","entry":{"id":"11111111-2222-4333-8444-555555555555","key":"expenses"},
  "decay":{"status":"current","verifiedBy":"dev:reviewer-r@example.invalid","dueAt":"2027-01-01T00:00:00+00:00","expiresAt":"2027-01-31T00:00:00+00:00"},
  "provenance":{"score":70,"factors":[]}}`
 
@@ -38,14 +40,14 @@ func TestVerifySendsTheReasonAsTheCaller(t *testing.T) {
 		got.tenant, got.actor = r.Header.Get("X-Muistamo-Tenant"), r.Header.Get("X-Muistamo-Actor")
 		_ = json.NewDecoder(r.Body).Decode(&got.body)
 		_, _ = io.WriteString(w, verificationJSON)
-	}, "verify", "rules", "expenses", "--reason", "still policy")
+	}, "verify", "rules", "expenses", "--reason", "still policy", "--entry-id", verificationEntryID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.method != http.MethodPost || got.path != "/v1/knowledge/packs/rules/entries/expenses/verification" {
 		t.Errorf("request = %s %s", got.method, got.path)
 	}
-	if got.actor != "reviewer-r@example.invalid" || got.tenant == "" || got.body["reason"] != "still policy" {
+	if got.actor != "reviewer-r@example.invalid" || got.tenant == "" || got.body["reason"] != "still policy" || got.body["entryId"] != verificationEntryID {
 		t.Errorf("headers %q %q, body %v", got.tenant, got.actor, got.body)
 	}
 	if !strings.Contains(out, "rules/expenses\tcurrent") || !strings.Contains(out, "provenance 70") {
@@ -56,13 +58,13 @@ func TestVerifySendsTheReasonAsTheCaller(t *testing.T) {
 func TestVerifyRequiresAReasonAndReportsRefusals(t *testing.T) {
 	if _, err := runKnowledge(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("no request should be sent without a reason")
-	}, "verify", "rules", "expenses"); err == nil {
+	}, "verify", "rules", "expenses", "--entry-id", verificationEntryID); err == nil {
 		t.Error("verify without --reason succeeded")
 	}
 	_, err := runKnowledge(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = io.WriteString(w, `{"title":"Forbidden","status":403,"detail":"nobody can confirm their own entry"}`)
-	}, "verify", "rules", "expenses", "--reason", "mine")
+	}, "verify", "rules", "expenses", "--reason", "mine", "--entry-id", verificationEntryID)
 	if err == nil || !strings.Contains(err.Error(), "nobody can confirm their own entry") {
 		t.Errorf("refusal = %v", err)
 	}
@@ -89,5 +91,19 @@ func TestVerificationsListsTheQueue(t *testing.T) {
 	}, "verifications")
 	if err != nil || !strings.Contains(empty, "nothing to confirm") {
 		t.Errorf("empty queue = %q, %v", empty, err)
+	}
+}
+
+func TestVerifyRequiresTheInspectedEntryID(t *testing.T) {
+	for _, id := range []string{"", "not-a-uuid"} {
+		args := []string{"verify", "rules", "expenses", "--reason", "checked"}
+		if id != "" {
+			args = append(args, "--entry-id", id)
+		}
+		if _, err := runKnowledge(t, func(http.ResponseWriter, *http.Request) {
+			t.Error("no request should be sent without a valid entry ID")
+		}, args...); err == nil {
+			t.Errorf("verify with entry ID %q succeeded", id)
+		}
 	}
 }

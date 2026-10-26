@@ -162,7 +162,7 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
 
     @app.post("/v1/knowledge/packs/{name}/entries/{key}/verification")
     def verify_entry(name: str, key: str, body: VerificationInput, who: Who) -> JSONResponse:
-        return ok(svc().verify_entry(who, name, key, body.reason))
+        return ok(svc().verify_entry(who, name, key, body.entryId, body.reason))
 
     @app.get("/v1/knowledge/verifications")
     def list_verifications(who: Who) -> JSONResponse:

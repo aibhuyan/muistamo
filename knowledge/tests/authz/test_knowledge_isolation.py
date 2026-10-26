@@ -486,7 +486,12 @@ def test_decay_is_tenant_scoped(world) -> None:
         assert r2.get("/v1/knowledge/verifications").json()["items"] == []
         res = r2.post(
             "/v1/knowledge/packs/equity-research-basics/entries/report-deadline/verification",
-            json={"reason": "from tenant 2"},
+            json={
+                "entryId": world.client(R)
+                .get("/v1/knowledge/verifications")
+                .json()["items"][0]["entry"]["id"],
+                "reason": "from tenant 2",
+            },
         )
         assert res.status_code == 404, res.text
         # Sweeping tenant 2 leaves tenant 1's expired entry in its pack.

@@ -28,14 +28,47 @@ CREATE POLICY tenant_isolation ON knowledge.verifications
 
 GRANT SELECT, INSERT ON knowledge.verifications TO muistamo_knowledge_app;
 
--- Entries already published were verified by the reviewer who approved them, when they did.
+-- Every published revision, including historical versions, was verified by its approving reviewer.
+-- Backfill each revision once, even if it appears in several versions.
+--
+-- Every source table forces row-level security, and no tenant is set here. Filtering would turn
+-- this into a silent no-op, after which every published entry would count as unverified and be
+-- withheld. Turning row security off makes a role that may not bypass it fail loudly instead;
+-- the count check below catches anything else.
+SET LOCAL row_security = off;
+
+-- Nothing expires the moment decay is switched on: an entry approved longer ago than its pack's
+-- review interval starts the clock as due, so its reviewers get the whole grace period.
 INSERT INTO knowledge.verifications (tenant_id, id, pack, entry_id, verified_at, verified_by, reason)
-SELECT v.tenant_id, gen_random_uuid(), v.pack, v.entry_id, p.decided_at, p.reviewer, 'merged (backfilled)'
+SELECT DISTINCT ON (v.tenant_id, v.pack, v.entry_id)
+       v.tenant_id, gen_random_uuid(), v.pack, v.entry_id,
+       greatest(p.decided_at, now() - make_interval(days => coalesce((k.document -> 'spec' -> 'decay' ->> 'reviewEveryDays')::int, 365))),
+       p.reviewer,
+       CASE WHEN p.decided_at >= now() - make_interval(days => coalesce((k.document -> 'spec' -> 'decay' ->> 'reviewEveryDays')::int, 365))
+            THEN 'merged (backfilled)'
+            ELSE 'merged before decay existed (backfilled; due when decay began)' END
   FROM knowledge.packs k
   JOIN knowledge.pack_version_entries v
-    ON v.tenant_id = k.tenant_id AND v.pack = k.name AND v.version = k.latest_version
+    ON v.tenant_id = k.tenant_id AND v.pack = k.name
   JOIN knowledge.proposals p ON p.tenant_id = v.tenant_id AND p.id = v.proposal_id
  WHERE p.decided_at IS NOT NULL AND p.reviewer IS NOT NULL;
+
+DO $$
+DECLARE
+  published bigint;
+  verified  bigint;
+BEGIN
+  SELECT count(*) INTO published FROM (
+    SELECT DISTINCT tenant_id, pack, entry_id FROM knowledge.pack_version_entries
+  ) revisions;
+  SELECT count(*) INTO verified FROM knowledge.verifications;
+  IF verified <> published THEN
+    RAISE EXCEPTION 'decay backfill verified % of % published entries', verified, published;
+  END IF;
+END
+$$;
+
+SET LOCAL row_security = on;
 
 -- Erasure (0004, 0005) must reach the verifier too: redefine erase_subject with it.
 CREATE OR REPLACE FUNCTION knowledge.erase_subject(subject_values text[], pseudonym text, redact uuid[])
