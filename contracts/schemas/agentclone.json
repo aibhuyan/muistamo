@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://muistamo.dev/schemas/v1/agentclone.json",
   "title": "AgentClone",
-  "description": "A variant of a template with its own instances (PRD section 5, FR-103). The overlay can add knowledge packs and set its own budget and HR assignment; nothing else of the template can change, so a clone never widens what the catalogue approved.",
+  "description": "A variant of a template with its own instances (PRD section 5, FR-103). The overlay can add knowledge packs and set its own budget and HR assignment; nothing else of the template can change. Because the overlay changes who gets an agent and with what knowledge, only catalogue approvers create, change or sync clones, and a clone cannot take a template's name.",
   "type": "object",
   "additionalProperties": false,
   "required": ["apiVersion", "kind", "metadata", "spec"],

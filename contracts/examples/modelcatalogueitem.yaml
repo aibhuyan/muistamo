@@ -1,0 +1,20 @@
+# A provider model the company may use, once a privacy officer approves it (FR-601, E5.4).
+# Any change, such as a new region, needs approval again.
+apiVersion: muistamo.dev/v1
+kind: ModelCatalogueItem
+metadata:
+  name: claude-sonnet-eu
+  owner: platform-team
+spec:
+  provider: anthropic
+  model: claude-sonnet-5-5
+  region: eu-west-1
+  termsRef: legal/anthropic-commercial-terms-2026
+  dpaRef: legal/anthropic-dpa-2026
+  subProcessors: [aws-eu-west-1]
+  aiActProviderStatus: gpai-provider
+  priceSheet:
+    currency: EUR
+    inputPerMTok: 2.80
+    outputPerMTok: 14.00
+    cachedInputPerMTok: 0.28

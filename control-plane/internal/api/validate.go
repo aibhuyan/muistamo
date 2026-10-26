@@ -29,6 +29,12 @@ func validateDocuments(next http.Handler) http.Handler {
 			validate = func(b []byte) error { return contracts.ValidateAgainst("hrevent.json", b) }
 		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/clones/") && strings.HasSuffix(r.URL.Path, "/sync"):
 			validate = emptyBody
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/models/") && strings.HasSuffix(r.URL.Path, "/approval"):
+			validate = func(b []byte) error { return contracts.ValidateAgainst("modelapprovaldecision.json", b) }
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/model-aliases/") && strings.HasSuffix(r.URL.Path, "/rollouts"):
+			validate = func(b []byte) error { return contracts.ValidateAgainst("rolloutrequest.json", b) }
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/rollouts/") && strings.HasSuffix(r.URL.Path, "/rollback"):
+			validate = func(b []byte) error { return contracts.ValidateAgainst("rollbackrequest.json", b) }
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/policy/decisions":
 			validate = func(b []byte) error { return contracts.ValidateAgainst("policydecisionrequest.json", b) }
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/policy/simulate":

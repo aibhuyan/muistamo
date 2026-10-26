@@ -27,13 +27,15 @@ type TemplateVersionRef struct {
 //   - with none, the template itself if its published version lists jobCode;
 //   - two or more matching clones of one template are ambiguous: the joiner gets neither, and
 //     the ambiguity is recorded, rather than one being picked silently.
+//   - a template whose model alias is not on an approved model matches nothing (E5.4).
 //
 // Templates that are not published, and clones that are not assignable, never match.
 func (s *Service) MatchTemplatesByJobCode(ctx context.Context, actor Actor, jobCode string) ([]TemplateVersionRef, error) {
 	var refs []TemplateVersionRef
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
-			SELECT p.template, p.version, coalesce(v.document -> 'spec' -> 'assignment' -> 'hrJobCodes' ? $1, false)
+			SELECT p.template, p.version, coalesce(v.document -> 'spec' -> 'assignment' -> 'hrJobCodes' ? $1, false),
+			       v.document -> 'spec' ->> 'modelAlias'
 			FROM catalogue_published p
 			JOIN agent_template_versions v ON v.tenant_id = p.tenant_id AND v.name = p.template AND v.version = p.version
 			ORDER BY p.template`, jobCode)
@@ -43,11 +45,12 @@ func (s *Service) MatchTemplatesByJobCode(ctx context.Context, actor Actor, jobC
 		type published struct {
 			ref     TemplateVersionRef
 			matches bool
+			alias   string
 		}
 		var candidates []published
 		for rows.Next() {
 			var c published
-			if err := rows.Scan(&c.ref.Name, &c.ref.Version, &c.matches); err != nil {
+			if err := rows.Scan(&c.ref.Name, &c.ref.Version, &c.matches, &c.alias); err != nil {
 				rows.Close()
 				return fmt.Errorf("scan template: %w", err)
 			}
@@ -59,6 +62,10 @@ func (s *Service) MatchTemplatesByJobCode(ctx context.Context, actor Actor, jobC
 		}
 
 		for _, c := range candidates {
+			compliant, why, err := aliasCompliance(ctx, tx, c.alias)
+			if err != nil {
+				return err
+			}
 			clones, err := listClones(ctx, tx, c.ref.Name)
 			if err != nil {
 				return err
@@ -77,6 +84,18 @@ func (s *Service) MatchTemplatesByJobCode(ctx context.Context, actor Actor, jobC
 				if r.assignable && r.version != nil && *r.version == c.ref.Version {
 					matching = append(matching, clone.doc.Metadata.Name)
 				}
+			}
+			if !compliant {
+				// A template whose model is not approved gets no new agents, clone or not (E5.4).
+				// Say so when it would have matched, so a joiner without an agent is explained.
+				if len(matching) > 0 || c.matches {
+					if err := recordEvidence(ctx, tx, s.signer, actor, "assignment.skipped", "AgentTemplate", c.ref.Name, nil,
+						map[string]any{"jobCode": jobCode, "alias": c.alias, "clones": matching,
+							"reason": "the template's model alias is not compliant: " + why}); err != nil {
+						return err
+					}
+				}
+				continue
 			}
 			switch {
 			case len(matching) == 1:

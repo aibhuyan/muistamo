@@ -64,6 +64,9 @@ func (a *Activities) EnsureInstance(ctx context.Context, scope Scope, template r
 		switch {
 		case err == nil && existing.Document.Spec.State == muistamov1.InstanceStateRetired:
 			continue
+		case err == nil && !sameAgent(existing.Document, template):
+			// The name belongs to another template's or clone's instance; this one needs its own.
+			continue
 		case err == nil:
 			return name, nil
 		case !errors.Is(err, registry.ErrNotFound):
@@ -159,6 +162,15 @@ func (a *Activities) SetIdentityEnabled(ctx context.Context, scope Scope, instan
 func (a *Activities) RecordPersonalLayerDecision(ctx context.Context, scope Scope, instance string) error {
 	return a.Registry.RecordLifecycleEvent(ctx, scope.actor(), "personal-layer.decision", instance,
 		map[string]any{"decision": "none", "reason": "this leaver workflow started before personal-layer reviews existed; no review was opened"})
+}
+
+// sameAgent reports whether an instance is of the template, or clone, a joiner was matched to.
+func sameAgent(doc muistamov1.AgentInstance, template registry.TemplateVersionRef) bool {
+	clone := ""
+	if doc.Spec.CloneRef != nil {
+		clone = *doc.Spec.CloneRef
+	}
+	return doc.Spec.TemplateRef.Name == template.Name && clone == template.Clone
 }
 
 func newInstance(name string, template registry.TemplateVersionRef, person Person) muistamov1.AgentInstance {

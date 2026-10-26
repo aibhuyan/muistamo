@@ -1,0 +1,10 @@
+# The name templates use for their model (FR-602). It targets an approved catalogue model;
+# switching it to another is a rollout (mst rollout start), never an edit of this file.
+apiVersion: muistamo.dev/v1
+kind: ModelAlias
+metadata:
+  name: reasoning-default
+  owner: platform-team
+spec:
+  target: claude-sonnet-eu
+  description: Default model for reasoning-heavy agents

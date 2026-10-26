@@ -135,12 +135,24 @@ func (s *Service) ApplyClone(ctx context.Context, actor Actor, doc muistamov1.Ag
 	var rec muistamov1.AgentCloneRecord
 	var created bool
 	err = s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		// A clone changes who gets an agent and with what knowledge, so it is a catalogue
+		// decision: catalogue approvers only.
+		if err := requireApprover(ctx, tx, actor, "create or change clones"); err != nil {
+			return err
+		}
 		var exists bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM agent_templates WHERE name = $1)`, template).Scan(&exists); err != nil {
 			return fmt.Errorf("check template %q: %w", template, err)
 		}
 		if !exists {
 			return fmt.Errorf("template %q does not exist: %w", template, ErrInvalid)
+		}
+		// Instances are named after their clone or template, so the two share one namespace.
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM agent_templates WHERE name = $1)`, name).Scan(&exists); err != nil {
+			return fmt.Errorf("check template %q: %w", name, err)
+		}
+		if exists {
+			return fmt.Errorf("%q is already a template's name; a clone needs its own: %w", name, ErrConflict)
 		}
 		if doc.Spec.Sync == muistamov1.AgentCloneSpecSyncPin {
 			if _, _, err := templateVersion(ctx, tx, template, *doc.Spec.Version); err != nil {
@@ -193,6 +205,9 @@ func (s *Service) ApplyClone(ctx context.Context, actor Actor, doc muistamov1.Ag
 			created = true
 		}
 		if err != nil {
+			if isUniqueViolation(err) {
+				return fmt.Errorf("clone %q was created concurrently; retry: %w", name, ErrConflict)
+			}
 			return fmt.Errorf("store clone %q: %w", name, err)
 		}
 		next.doc = doc
@@ -268,6 +283,9 @@ func listClones(ctx context.Context, tx pgx.Tx, template string) ([]cloneRow, er
 func (s *Service) SyncClone(ctx context.Context, actor Actor, name string) (muistamov1.AgentCloneRecord, error) {
 	var rec muistamov1.AgentCloneRecord
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		if err := requireApprover(ctx, tx, actor, "sync clones"); err != nil {
+			return err
+		}
 		c, err := scanClone(tx.QueryRow(ctx, cloneColumns+` WHERE name = $1 FOR UPDATE`, name), name)
 		if err != nil {
 			return err

@@ -343,7 +343,10 @@ func (s *Set) Rules() []muistamov1.PolicyRuleRef {
 }
 
 // agentUID is the entity a request names: the clone when one is given, which must be a clone of
-// the given template, else the template.
+// the given template, else the template. A request naming only the template is judged as the
+// template, so a clone's narrowing rules do not apply to it. Requests are self-asserted only while
+// decisions are observe-only; whatever enforces them (the gateway, D28) must take the clone from
+// the calling instance's cloneRef, never from the caller.
 func (s *Set) agentUID(template string, clone *string, what string) (types.EntityUID, error) {
 	if clone == nil {
 		return templateUID(template), nil

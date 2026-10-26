@@ -234,6 +234,210 @@ paths:
                 $ref: '#/components/schemas/AgentClonePage'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/models:
+    get:
+      operationId: listModels
+      summary: The model catalogue and each model's approval
+      responses:
+        '200':
+          description: Models, by name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelCatalogueItemPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/models/{name}:
+    parameters:
+    - $ref: '#/components/parameters/Name'
+    get:
+      operationId: getModel
+      responses:
+        '200':
+          description: A model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelCatalogueItemRecord'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: applyModel
+      summary: Add or change a catalogue model; any change needs approval again
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelCatalogueItem'
+      responses:
+        '200':
+          description: Changed (or unchanged).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelCatalogueItemRecord'
+        '201':
+          description: Added.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelCatalogueItemRecord'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/models/{name}/approval:
+    parameters:
+    - $ref: '#/components/parameters/Name'
+    post:
+      operationId: decideModel
+      summary: Approve, reject or revoke a model (privacy officers; never its last
+        editor)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelApprovalDecision'
+      responses:
+        '200':
+          description: The model after the decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelCatalogueItemRecord'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/model-aliases:
+    get:
+      operationId: listModelAliases
+      responses:
+        '200':
+          description: Aliases, by name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelAliasPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/model-aliases/{name}:
+    parameters:
+    - $ref: '#/components/parameters/Name'
+    get:
+      operationId: getModelAlias
+      responses:
+        '200':
+          description: An alias.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelAliasRecord'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: applyModelAlias
+      summary: Create an alias on an approved model, or change its description; retargeting
+        is a rollout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelAlias'
+      responses:
+        '200':
+          description: Changed (or unchanged).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelAliasRecord'
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelAliasRecord'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/model-aliases/{name}/rollouts:
+    parameters:
+    - $ref: '#/components/parameters/Name'
+    post:
+      operationId: startRollout
+      summary: Switch the alias to another approved model (unevaluated until the gateway
+        exists)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RolloutRequest'
+      responses:
+        '201':
+          description: The rollout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rollout'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/rollouts:
+    get:
+      operationId: listRollouts
+      responses:
+        '200':
+          description: Rollouts, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RolloutPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/rollouts/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      operationId: getRollout
+      responses:
+        '200':
+          description: A rollout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rollout'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/rollouts/{id}/rollback:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      operationId: rollbackRollout
+      summary: Return the alias to the model it had before this rollout, if that model
+        is still approved
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackRequest'
+      responses:
+        '200':
+          description: The rolled-back rollout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rollout'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/instances:
     get:
       operationId: listInstances
@@ -882,8 +1086,9 @@ components:
       title: AgentClone
       description: A variant of a template with its own instances (PRD section 5,
         FR-103). The overlay can add knowledge packs and set its own budget and HR
-        assignment; nothing else of the template can change, so a clone never widens
-        what the catalogue approved.
+        assignment; nothing else of the template can change. Because the overlay changes
+        who gets an agent and with what knowledge, only catalogue approvers create,
+        change or sync clones, and a clone cannot take a template's name.
       type: object
       additionalProperties: false
       required:
@@ -2481,6 +2686,248 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LeaverReview'
+    ModelAlias:
+      title: ModelAlias
+      description: A name templates use for a model, for example reasoning-default
+        (PRD section 5, FR-602). It can target only an approved catalogue model, and
+        changing its target is a rollout, never an edit.
+      type: object
+      additionalProperties: false
+      required:
+      - apiVersion
+      - kind
+      - metadata
+      - spec
+      properties:
+        apiVersion:
+          type: string
+          const: muistamo.dev/v1
+        kind:
+          type: string
+          const: ModelAlias
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          title: ModelAliasSpec
+          type: object
+          additionalProperties: false
+          required:
+          - target
+          properties:
+            target:
+              description: The catalogue model's name. Set on create; change it with
+                a rollout.
+              type: string
+              pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+            description:
+              type: string
+    ModelAliasPage:
+      title: ModelAliasPage
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelAliasRecord'
+    ModelAliasRecord:
+      title: ModelAliasRecord
+      type: object
+      additionalProperties: false
+      required:
+      - revision
+      - createdAt
+      - updatedAt
+      - updatedBy
+      - document
+      - compliant
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        document:
+          $ref: '#/components/schemas/ModelAlias'
+        compliant:
+          description: 'The target exists and is approved: templates using the alias
+            can be published and assigned.'
+          type: boolean
+        reason:
+          type: string
+    ModelApproval:
+      title: ModelApproval
+      description: Where a catalogue model's approval stands. A change to the model's
+        document resets it to pending.
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+          - revoked
+        decidedBy:
+          type: string
+        reason:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+    ModelApprovalDecision:
+      title: ModelApprovalDecision
+      description: A privacy officer's decision on a catalogue model; never the person
+        who last changed it.
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      - reason
+      properties:
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+          - revoke
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    ModelCatalogueItem:
+      title: ModelCatalogueItem
+      description: A provider model the company may use (PRD section 5, FR-601). Aliases
+        can target it only once a privacy officer approves it, and any change to it
+        needs approval again.
+      type: object
+      additionalProperties: false
+      required:
+      - apiVersion
+      - kind
+      - metadata
+      - spec
+      properties:
+        apiVersion:
+          type: string
+          const: muistamo.dev/v1
+        kind:
+          type: string
+          const: ModelCatalogueItem
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          title: ModelCatalogueItemSpec
+          type: object
+          additionalProperties: false
+          required:
+          - provider
+          - model
+          - region
+          - termsRef
+          - priceSheet
+          properties:
+            provider:
+              description: For example anthropic, google, openai, mistral.
+              type: string
+              minLength: 1
+            model:
+              description: The provider's model id.
+              type: string
+              minLength: 1
+            version:
+              type: string
+            region:
+              description: Where the provider processes requests, for example eu-west-1.
+              type: string
+              minLength: 1
+            termsRef:
+              description: Reference to the reviewed provider terms.
+              type: string
+              minLength: 1
+            dpaRef:
+              description: Reference to the data processing agreement (GDPR Art 28).
+              type: string
+            subProcessors:
+              type: array
+              items:
+                type: string
+            aiActProviderStatus:
+              description: The provider's status under the EU AI Act, for example
+                gpai-provider.
+              type: string
+            priceSheet:
+              title: ModelPriceSheet
+              description: Provider list prices, passed through at cost (invariant
+                7).
+              type: object
+              additionalProperties: false
+              required:
+              - currency
+              - inputPerMTok
+              - outputPerMTok
+              properties:
+                currency:
+                  type: string
+                  const: EUR
+                inputPerMTok:
+                  type: number
+                  minimum: 0
+                outputPerMTok:
+                  type: number
+                  minimum: 0
+                cachedInputPerMTok:
+                  type: number
+                  minimum: 0
+    ModelCatalogueItemPage:
+      title: ModelCatalogueItemPage
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelCatalogueItemRecord'
+    ModelCatalogueItemRecord:
+      title: ModelCatalogueItemRecord
+      type: object
+      additionalProperties: false
+      required:
+      - revision
+      - createdAt
+      - updatedAt
+      - updatedBy
+      - document
+      - approval
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        document:
+          $ref: '#/components/schemas/ModelCatalogueItem'
+        approval:
+          $ref: '#/components/schemas/ModelApproval'
     ObjectMeta:
       title: ObjectMeta
       description: Metadata shared by every Muistamo YAML kind.
@@ -3124,6 +3571,116 @@ components:
           type: string
           minLength: 1
           maxLength: 2000
+    RollbackRequest:
+      title: RollbackRequest
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    Rollout:
+      title: Rollout
+      description: 'One model switch of an alias (PRD section 5): its audit record.'
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - alias
+      - from
+      - to
+      - strategy
+      - evaluation
+      - status
+      - createdBy
+      - createdAt
+      - reason
+      properties:
+        id:
+          type: string
+          format: uuid
+        alias:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+        strategy:
+          description: immediate in release 1; canary is release 2 (FR-604).
+          type: string
+          enum:
+          - immediate
+        evaluation:
+          title: RolloutEvaluation
+          type: object
+          additionalProperties: false
+          required:
+          - status
+          - reason
+          properties:
+            status:
+              type: string
+              enum:
+              - not-run
+            reason:
+              type: string
+        status:
+          type: string
+          enum:
+          - completed
+          - rolled-back
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        rolledBackBy:
+          type: string
+        rolledBackAt:
+          type: string
+          format: date-time
+        rollbackReason:
+          type: string
+    RolloutPage:
+      title: RolloutPage
+      description: Rollouts, newest first.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Rollout'
+    RolloutRequest:
+      title: RolloutRequest
+      description: Switch an alias to another approved model. The evaluation gate
+        (FR-603) needs the gateway, which does not exist yet, so the switch is unevaluated
+        and must be acknowledged as such.
+      type: object
+      additionalProperties: false
+      required:
+      - to
+      - reason
+      - acknowledgeUnevaluated
+      properties:
+        to:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        acknowledgeUnevaluated:
+          description: 'Must be true: the switch is made without an evaluation report.'
+          type: boolean
+          const: true
     SyncResult:
       title: SyncResult
       description: What a sync changed in the index.
