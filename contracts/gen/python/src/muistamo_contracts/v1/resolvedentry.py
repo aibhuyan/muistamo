@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 from enum import StrEnum
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated
 from . import knowledgeentry
 
 
@@ -14,6 +15,14 @@ class Layer(StrEnum):
     company = "company"
 
 
+class ResolvedOverride(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    layer: Layer
+    pack: str | None = None
+
+
 class ResolvedEntry(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -22,3 +31,15 @@ class ResolvedEntry(BaseModel):
     layer: Layer
     pack: str | None = None
     version: str | None = None
+    mandatory: Annotated[
+        bool | None,
+        Field(
+            description="The entry comes from a mandatory pack, so no other layer can replace it."
+        ),
+    ] = None
+    overrides: Annotated[
+        list[ResolvedOverride] | None,
+        Field(
+            description="Entries with the same key that this mandatory entry overrides, for example the caller's own personal entry."
+        ),
+    ] = None

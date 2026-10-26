@@ -27,6 +27,36 @@
     },
     "version": {
       "type": "string"
+    },
+    "mandatory": {
+      "description": "The entry comes from a mandatory pack, so no other layer can replace it.",
+      "type": "boolean"
+    },
+    "overrides": {
+      "description": "Entries with the same key that this mandatory entry overrides, for example the caller's own personal entry.",
+      "type": "array",
+      "items": {
+        "title": "ResolvedOverride",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "layer"
+        ],
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "team",
+              "role",
+              "company"
+            ]
+          },
+          "pack": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }
