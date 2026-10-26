@@ -7,6 +7,11 @@
 // The rules, each pinned by a test:
 //   - Deny by default: a request no policy permits is denied.
 //   - Links are one-way: a link from A to B permits calls from A to B only.
+//   - Clones: a clone is a child entity of its template, so template links and rules cover it
+//     (principal in template); clone links and rules name it alone (principal == clone). A
+//     clone's own policy only narrows: deny rules, and monitor rules that flag an allowed action
+//     but sit outside the decision set, so they can never allow. A request naming a clone must
+//     name its real template, or a caller could borrow another clone's links.
 //   - Deny overrides allow: Cedar denies whenever any forbid matches, so rule order never matters.
 //   - Calls and tool actions cannot be confused: link permits name a Template resource, action
 //     rules a Tool resource, so no action rule (or default: allow) can permit an agent call.
@@ -37,6 +42,7 @@ var ErrInvalid = errors.New("invalid policy")
 
 const (
 	templateType types.EntityType = "Muistamo::Template"
+	cloneType    types.EntityType = "Muistamo::Clone"
 	toolType     types.EntityType = "Muistamo::Tool"
 	actionType   types.EntityType = "Muistamo::Action"
 	callAction   types.String     = "call"
@@ -45,21 +51,36 @@ const (
 // Set is a compiled policy set.
 type Set struct {
 	cedar *cedar.PolicySet
-	refs  map[cedar.PolicyID]muistamov1.PolicyRuleRef
-	// modes and policies are keyed by template: at most one ActionPolicy applies to each.
-	modes    map[string]muistamov1.ActionPolicySpecMode
+	// flags holds clone policies' monitor rules. It is consulted only after cedar allows, to
+	// flag the action; it can never allow anything (a clone policy only narrows).
+	flags    *cedar.PolicySet
+	refs     map[cedar.PolicyID]muistamov1.PolicyRuleRef
+	entities types.EntityMap
+	clones   map[string]string // clone -> its template
+	// modes is keyed by template: a clone runs under its template policy's mode.
+	modes map[string]muistamov1.ActionPolicySpecMode
+	// policies is keyed by target ("template:x" or "clone:y"): at most one policy per target.
 	policies map[string]string
-	links    map[[2]string][]string // (from, to) -> link names, for explanations only
+	links    map[[2]string][]string // (from target, to target) -> link names, for explanations only
 }
 
-// Compile turns links and action policies into one Cedar policy set.
-func Compile(links []muistamov1.AgentLink, policies []muistamov1.ActionPolicy) (*Set, error) {
+// Compile turns links and action policies into one Cedar policy set. clones maps each clone to
+// its template; clone entities are children of their template, so template rules cover them.
+func Compile(links []muistamov1.AgentLink, policies []muistamov1.ActionPolicy, clones map[string]string) (*Set, error) {
 	s := &Set{
 		cedar:    cedar.NewPolicySet(),
+		flags:    cedar.NewPolicySet(),
 		refs:     map[cedar.PolicyID]muistamov1.PolicyRuleRef{},
+		entities: types.EntityMap{},
+		clones:   map[string]string{},
 		modes:    map[string]muistamov1.ActionPolicySpecMode{},
 		policies: map[string]string{},
 		links:    map[[2]string][]string{},
+	}
+	for clone, template := range clones {
+		s.clones[clone] = template
+		uid := cloneUID(clone)
+		s.entities[uid] = types.Entity{UID: uid, Parents: types.NewEntityUIDSet(templateUID(template))}
 	}
 	for _, link := range links {
 		if err := s.addLink(link); err != nil {
@@ -74,31 +95,73 @@ func Compile(links []muistamov1.AgentLink, policies []muistamov1.ActionPolicy) (
 	return s, nil
 }
 
-func (s *Set) add(id string, p *ast.Policy, ref muistamov1.PolicyRuleRef) error {
+func (s *Set) add(set *cedar.PolicySet, id string, p *ast.Policy, ref muistamov1.PolicyRuleRef) error {
 	pid := cedar.PolicyID(id)
-	if s.cedar.Get(pid) != nil {
+	if _, taken := s.refs[pid]; taken {
 		return fmt.Errorf("two rules compile to policy id %q: %w", id, ErrInvalid)
 	}
 	ref.Id = id
-	s.cedar.Add(pid, cedar.NewPolicyFromAST(p.Annotate("id", types.String(id))))
+	set.Add(pid, cedar.NewPolicyFromAST(p.Annotate("id", types.String(id))))
 	s.refs[pid] = ref
 	return nil
 }
 
-// addLink: permit (principal == from, action == call, resource == to) when the skill is allowed,
-// every data class carried is allowed, the delegation depth is within the limit and the act-for
-// mode matches.
+// target is one end of a link, or what a policy applies to: exactly one template or clone.
+type target struct {
+	uid      types.EntityUID
+	template bool
+	key      string // "template:x" or "clone:y"
+}
+
+func targetOf(template, clone *string, what string) (target, error) {
+	switch {
+	case template != nil && *template != "" && clone == nil:
+		return target{uid: templateUID(*template), template: true, key: "template:" + *template}, nil
+	case clone != nil && *clone != "" && template == nil:
+		return target{uid: cloneUID(*clone), key: "clone:" + *clone}, nil
+	}
+	return target{}, fmt.Errorf("%s must name exactly one template or clone: %w", what, ErrInvalid)
+}
+
+// principal scopes a policy to a target: a template covers itself and its clones (in), a clone
+// only itself (==).
+func (t target) principal(p *ast.Policy) *ast.Policy {
+	if t.template {
+		return p.PrincipalIn(t.uid)
+	}
+	return p.PrincipalEq(t.uid)
+}
+
+func (t target) resource(p *ast.Policy) *ast.Policy {
+	if t.template {
+		return p.ResourceIn(t.uid)
+	}
+	return p.ResourceEq(t.uid)
+}
+
+// addLink: permit (principal in/== from, action == call, resource in/== to) when the skill is
+// allowed, every data class carried is allowed, the delegation depth is within the limit and the
+// act-for mode matches.
 func (s *Set) addLink(link muistamov1.AgentLink) error {
 	spec := link.Spec
+	name := link.Metadata.Name
 	if len(spec.AllowedSkills) == 0 {
-		return fmt.Errorf("link %q allows no skills: %w", link.Metadata.Name, ErrInvalid)
+		return fmt.Errorf("link %q allows no skills: %w", name, ErrInvalid)
+	}
+	from, err := targetOf(spec.From.Template, spec.From.Clone, "link "+name+" from")
+	if err != nil {
+		return err
+	}
+	to, err := targetOf(spec.To.Template, spec.To.Clone, "link "+name+" to")
+	if err != nil {
+		return err
 	}
 	depth := 1
 	if spec.MaxDelegationDepth != nil {
 		depth = *spec.MaxDelegationDepth
 	}
 	if depth < 1 {
-		return fmt.Errorf("link %q: maxDelegationDepth must be at least 1: %w", link.Metadata.Name, ErrInvalid)
+		return fmt.Errorf("link %q: maxDelegationDepth must be at least 1: %w", name, ErrInvalid)
 	}
 	actFor := string(muistamov1.AgentLinkSpecActForSameUser)
 	if spec.ActFor != nil {
@@ -109,42 +172,49 @@ func (s *Set) addLink(link muistamov1.AgentLink) error {
 		And(setOf(spec.DataClasses).ContainsAll(ctx.Access("dataClasses"))).
 		And(ctx.Access("depth").LessThanOrEqual(ast.Long(depth))).
 		And(ctx.Access("actFor").Equal(ast.String(actFor)))
-	p := ast.Permit().
-		PrincipalEq(templateUID(spec.From.Template)).
-		ActionEq(types.NewEntityUID(actionType, callAction)).
-		ResourceEq(templateUID(spec.To.Template)).
-		When(cond)
-	key := [2]string{spec.From.Template, spec.To.Template}
-	s.links[key] = append(s.links[key], link.Metadata.Name)
-	return s.add("link/"+link.Metadata.Name, p, muistamov1.PolicyRuleRef{
-		Kind: muistamov1.PolicyRuleRefKindAgentLink, Name: link.Metadata.Name, Effect: muistamov1.PolicyRuleRefEffectAllow,
+	p := to.resource(from.principal(ast.Permit()).ActionEq(types.NewEntityUID(actionType, callAction))).When(cond)
+	key := [2]string{from.key, to.key}
+	s.links[key] = append(s.links[key], name)
+	return s.add(s.cedar, "link/"+name, p, muistamov1.PolicyRuleRef{
+		Kind: muistamov1.PolicyRuleRefKindAgentLink, Name: name, Effect: muistamov1.PolicyRuleRefEffectAllow,
+		Target: ptr(from.key + " -> " + to.key),
 	})
 }
 
 func (s *Set) addActionPolicy(p muistamov1.ActionPolicy) error {
-	name, template := p.Metadata.Name, p.Spec.AppliesTo.Template
-	if other, ok := s.policies[template]; ok {
-		return fmt.Errorf("action policies %q and %q both apply to template %q; at most one may: %w", other, name, template, ErrInvalid)
+	name := p.Metadata.Name
+	t, err := targetOf(p.Spec.AppliesTo.Template, p.Spec.AppliesTo.Clone, "action policy "+name)
+	if err != nil {
+		return err
 	}
-	s.policies[template] = name
-	s.modes[template] = muistamov1.ActionPolicySpecModeEnforce
-	if p.Spec.Mode != nil {
-		if !p.Spec.Mode.Valid() {
-			return fmt.Errorf("action policy %q: unknown mode %q: %w", name, *p.Spec.Mode, ErrInvalid)
-		}
-		s.modes[template] = *p.Spec.Mode
+	if other, ok := s.policies[t.key]; ok {
+		return fmt.Errorf("action policies %q and %q both apply to %s; at most one may: %w", other, name, t.key, ErrInvalid)
 	}
-	principal := templateUID(template)
+	s.policies[t.key] = name
 	prefix := "action-policy/" + name
+
+	if t.template {
+		template := *p.Spec.AppliesTo.Template
+		s.modes[template] = muistamov1.ActionPolicySpecModeEnforce
+		if p.Spec.Mode != nil {
+			if !p.Spec.Mode.Valid() {
+				return fmt.Errorf("action policy %q: unknown mode %q: %w", name, *p.Spec.Mode, ErrInvalid)
+			}
+			s.modes[template] = *p.Spec.Mode
+		}
+	} else if p.Spec.Default != nil || p.Spec.Mode != nil {
+		// A clone's policy only narrows its template's: it has no default and no mode of its own.
+		return fmt.Errorf("action policy %q applies to a clone, so it cannot set default or mode: %w", name, ErrInvalid)
+	}
 
 	if p.Spec.Default != nil {
 		switch *p.Spec.Default {
 		case muistamov1.ActionPolicySpecDefaultAllow:
-			// Every tool action of this template; forbids still override it. Never calls: the
-			// resource must be a Tool.
-			rule := ast.Permit().PrincipalEq(principal).ResourceIs(toolType)
-			if err := s.add(prefix+"/default", rule, muistamov1.PolicyRuleRef{
-				Kind: muistamov1.PolicyRuleRefKindActionPolicy, Name: name, Effect: muistamov1.PolicyRuleRefEffectAllow,
+			// Every tool action of this template and its clones; forbids still override it. Never
+			// calls: the resource must be a Tool.
+			rule := t.principal(ast.Permit()).ResourceIs(toolType)
+			if err := s.add(s.cedar, prefix+"/default", rule, muistamov1.PolicyRuleRef{
+				Kind: muistamov1.PolicyRuleRefKindActionPolicy, Name: name, Effect: muistamov1.PolicyRuleRefEffectAllow, Target: &t.key,
 			}); err != nil {
 				return err
 			}
@@ -165,8 +235,11 @@ func (s *Set) addActionPolicy(p muistamov1.ActionPolicy) error {
 		}
 		var policy *ast.Policy
 		var effect muistamov1.PolicyRuleRefEffect
-		switch rule.Effect {
-		case muistamov1.ActionPolicySpecRulesEffectAllow, muistamov1.ActionPolicySpecRulesEffectMonitor:
+		set := s.cedar
+		switch {
+		case rule.Effect == muistamov1.ActionPolicySpecRulesEffectAllow && !t.template:
+			return fmt.Errorf("action policy %q rule %d: a clone's policy may only deny or monitor, never allow: %w", name, i+1, ErrInvalid)
+		case rule.Effect == muistamov1.ActionPolicySpecRulesEffectAllow, rule.Effect == muistamov1.ActionPolicySpecRulesEffectMonitor:
 			effect = muistamov1.PolicyRuleRefEffect(rule.Effect)
 			policy = ast.Permit()
 			if len(when) > 0 {
@@ -175,7 +248,11 @@ func (s *Set) addActionPolicy(p muistamov1.ActionPolicy) error {
 			if len(unless) > 0 {
 				policy = policy.Unless(anyOf(unless, notDisproven))
 			}
-		case muistamov1.ActionPolicySpecRulesEffectDeny:
+			if !t.template {
+				// A clone's monitor rule flags what its template already allows; it never grants.
+				set = s.flags
+			}
+		case rule.Effect == muistamov1.ActionPolicySpecRulesEffectDeny:
 			effect = muistamov1.PolicyRuleRefEffectDeny
 			policy = ast.Forbid()
 			if len(when) > 0 {
@@ -188,12 +265,12 @@ func (s *Set) addActionPolicy(p muistamov1.ActionPolicy) error {
 			// requireApproval is release 2; the contract refuses it, and so does the compiler.
 			return fmt.Errorf("action policy %q rule %d: effect %q is not supported in release 1: %w", name, i+1, rule.Effect, ErrInvalid)
 		}
-		policy = policy.PrincipalEq(principal).
+		policy = t.principal(policy).
 			ActionEq(types.NewEntityUID(actionType, types.String(rule.Action))).
 			ResourceIs(toolType)
 		n := i + 1
-		if err := s.add(prefix+"/rule/"+strconv.Itoa(n), policy, muistamov1.PolicyRuleRef{
-			Kind: muistamov1.PolicyRuleRefKindActionPolicy, Name: name, Rule: &n, Effect: effect,
+		if err := s.add(set, prefix+"/rule/"+strconv.Itoa(n), policy, muistamov1.PolicyRuleRef{
+			Kind: muistamov1.PolicyRuleRefKindActionPolicy, Name: name, Rule: &n, Effect: effect, Target: &t.key,
 		}); err != nil {
 			return err
 		}
@@ -241,8 +318,19 @@ func templateUID(name string) types.EntityUID {
 	return types.NewEntityUID(templateType, types.String(name))
 }
 
-// Cedar returns the policy set as Cedar text, ordered by policy id.
-func (s *Set) Cedar() string { return string(s.cedar.MarshalCedar()) }
+func cloneUID(name string) types.EntityUID {
+	return types.NewEntityUID(cloneType, types.String(name))
+}
+
+// Cedar returns the policy set as Cedar text, ordered by policy id: the decision set, then the
+// clone monitor rules that only flag.
+func (s *Set) Cedar() string {
+	text := string(s.cedar.MarshalCedar())
+	if flags := string(s.flags.MarshalCedar()); flags != "" {
+		text += "\n\n// Clone monitor rules: evaluated only after an allow, to flag it. They never allow.\n" + flags
+	}
+	return text
+}
 
 // Rules returns every compiled rule, ordered by policy id.
 func (s *Set) Rules() []muistamov1.PolicyRuleRef {
@@ -252,6 +340,21 @@ func (s *Set) Rules() []muistamov1.PolicyRuleRef {
 	}
 	slices.SortFunc(out, func(a, b muistamov1.PolicyRuleRef) int { return strings.Compare(a.Id, b.Id) })
 	return out
+}
+
+// agentUID is the entity a request names: the clone when one is given, which must be a clone of
+// the given template, else the template. A request naming only the template is judged as the
+// template, so a clone's narrowing rules do not apply to it. Requests are self-asserted only while
+// decisions are observe-only; whatever enforces them (the gateway, D28) must take the clone from
+// the calling instance's cloneRef, never from the caller.
+func (s *Set) agentUID(template string, clone *string, what string) (types.EntityUID, error) {
+	if clone == nil {
+		return templateUID(template), nil
+	}
+	if s.clones[*clone] != template {
+		return types.EntityUID{}, fmt.Errorf("%s clone %q is not a clone of %s: %w", what, *clone, template, ErrInvalid)
+	}
+	return cloneUID(*clone), nil
 }
 
 // Decide answers a request. Release 1 is observe mode: the answer is never enforced.
@@ -269,6 +372,14 @@ func (s *Set) Decide(req muistamov1.PolicyDecisionRequest) (muistamov1.PolicyDec
 		if from == "" || to == "" || skill == "" {
 			return out, fmt.Errorf("a call needs from, to and skill: %w", ErrInvalid)
 		}
+		principal, err := s.agentUID(from, req.FromClone, "the caller's")
+		if err != nil {
+			return out, err
+		}
+		resource, err := s.agentUID(to, req.ToClone, "the callee's")
+		if err != nil {
+			return out, err
+		}
 		depth := 1
 		if req.Depth != nil {
 			depth = *req.Depth
@@ -284,9 +395,9 @@ func (s *Set) Decide(req muistamov1.PolicyDecisionRequest) (muistamov1.PolicyDec
 			}
 		}
 		creq = cedar.Request{
-			Principal: templateUID(from),
+			Principal: principal,
 			Action:    types.NewEntityUID(actionType, callAction),
-			Resource:  templateUID(to),
+			Resource:  resource,
 			Context: types.NewRecord(types.RecordMap{
 				"skill":       types.String(skill),
 				"dataClasses": types.NewSet(classes...),
@@ -301,6 +412,10 @@ func (s *Set) Decide(req muistamov1.PolicyDecisionRequest) (muistamov1.PolicyDec
 		if agent == "" || action == "" {
 			return out, fmt.Errorf("an action needs agent and action: %w", ErrInvalid)
 		}
+		principal, err := s.agentUID(agent, req.AgentClone, "the agent's")
+		if err != nil {
+			return out, err
+		}
 		attrs := types.RecordMap{}
 		if req.Attributes != nil {
 			for k, v := range *req.Attributes {
@@ -308,7 +423,7 @@ func (s *Set) Decide(req muistamov1.PolicyDecisionRequest) (muistamov1.PolicyDec
 			}
 		}
 		creq = cedar.Request{
-			Principal: templateUID(agent),
+			Principal: principal,
 			Action:    types.NewEntityUID(actionType, types.String(action)),
 			Resource:  types.NewEntityUID(toolType, types.String(action)),
 			Context:   types.NewRecord(types.RecordMap{"attributes": types.NewRecord(attrs)}),
@@ -324,7 +439,7 @@ func (s *Set) Decide(req muistamov1.PolicyDecisionRequest) (muistamov1.PolicyDec
 		return out, fmt.Errorf("unknown request kind %q: %w", req.Kind, ErrInvalid)
 	}
 
-	decision, diag := cedar.Authorize(s.cedar, types.EntityMap{}, creq)
+	decision, diag := cedar.Authorize(s.cedar, s.entities, creq)
 	switch {
 	case len(diag.Errors) > 0:
 		// A forbid that fails to evaluate is skipped by Cedar; never let that become an allow.
@@ -340,14 +455,9 @@ func (s *Set) Decide(req muistamov1.PolicyDecisionRequest) (muistamov1.PolicyDec
 		out.Decision = muistamov1.PolicyDecisionDecisionDeny
 	}
 	if len(diag.Errors) == 0 {
-		for _, r := range diag.Reasons {
-			ref, ok := s.refs[r.PolicyID]
-			if !ok {
-				return out, fmt.Errorf("cedar matched unknown policy %q", r.PolicyID)
-			}
-			out.MatchedRules = append(out.MatchedRules, ref)
+		if err := s.appendMatched(&out, diag.Reasons); err != nil {
+			return out, err
 		}
-		slices.SortFunc(out.MatchedRules, func(a, b muistamov1.PolicyRuleRef) int { return strings.Compare(a.Id, b.Id) })
 	}
 
 	deny := out.Decision == muistamov1.PolicyDecisionDecisionDeny
@@ -359,10 +469,42 @@ func (s *Set) Decide(req muistamov1.PolicyDecisionRequest) (muistamov1.PolicyDec
 			out.Monitored = true
 		}
 	}
+	// Clone monitor rules: only an allowed request is flagged, and the decision never changes.
+	if !deny {
+		flagged, flagDiag := cedar.Authorize(s.flags, s.entities, creq)
+		if len(flagDiag.Errors) > 0 {
+			out.Monitored = true // cannot tell whether a flag applies: flag it rather than miss one
+		} else if flagged == cedar.Allow {
+			out.Monitored = true
+			if err := s.appendMatched(&out, flagDiag.Reasons); err != nil {
+				return out, err
+			}
+		}
+	}
+	slices.SortFunc(out.MatchedRules, func(a, b muistamov1.PolicyRuleRef) int { return strings.Compare(a.Id, b.Id) })
 	if out.Reason == "" {
 		out.Reason = s.explain(req, out)
 	}
 	return out, nil
+}
+
+func (s *Set) appendMatched(out *muistamov1.PolicyDecision, reasons []cedar.DiagnosticReason) error {
+	for _, r := range reasons {
+		ref, ok := s.refs[r.PolicyID]
+		if !ok {
+			return fmt.Errorf("cedar matched unknown policy %q", r.PolicyID)
+		}
+		out.MatchedRules = append(out.MatchedRules, ref)
+	}
+	return nil
+}
+
+// keys lists a request end's targets, most specific first: its clone, then its template.
+func keys(template string, clone *string) []string {
+	if clone != nil {
+		return []string{"clone:" + *clone, "template:" + template}
+	}
+	return []string{"template:" + template}
 }
 
 func (s *Set) explain(req muistamov1.PolicyDecisionRequest, d muistamov1.PolicyDecision) string {
@@ -381,18 +523,30 @@ func (s *Set) explain(req muistamov1.PolicyDecisionRequest, d muistamov1.PolicyD
 		text = "denied by " + matched + " (deny overrides allow)"
 	case req.Kind == muistamov1.PolicyDecisionRequestKindCall:
 		from, to := deref(req.From), deref(req.To)
-		if names := s.links[[2]string{from, to}]; len(names) > 0 {
+		var names []string
+		for _, f := range keys(from, req.FromClone) {
+			for _, t := range keys(to, req.ToClone) {
+				names = append(names, s.links[[2]string{f, t}]...)
+			}
+		}
+		if len(names) > 0 {
 			text = fmt.Sprintf("denied: link %s does not allow this call (skill, data classes, delegation depth or act-for mode)",
 				strings.Join(names, ", "))
 		} else {
-			text = fmt.Sprintf("denied by default: no link lets %s call %s", from, to)
+			text = fmt.Sprintf("denied by default: no link lets %s call %s", describe(from, req.FromClone), describe(to, req.ToClone))
 		}
 	default:
 		agent := deref(req.Agent)
-		if name, ok := s.policies[agent]; ok {
-			text = fmt.Sprintf("denied by default: no rule in action policy %s allows %s", name, deref(req.Action))
+		var names []string
+		for _, k := range keys(agent, req.AgentClone) {
+			if name, ok := s.policies[k]; ok {
+				names = append(names, name)
+			}
+		}
+		if len(names) > 0 {
+			text = fmt.Sprintf("denied by default: no rule in action policy %s allows %s", strings.Join(names, ", "), deref(req.Action))
 		} else {
-			text = fmt.Sprintf("denied by default: no action policy applies to %s", agent)
+			text = fmt.Sprintf("denied by default: no action policy applies to %s", describe(agent, req.AgentClone))
 		}
 	}
 	if d.Monitored && d.Decision == muistamov1.PolicyDecisionDecisionDeny {
@@ -401,9 +555,18 @@ func (s *Set) explain(req muistamov1.PolicyDecisionRequest, d muistamov1.PolicyD
 	return text
 }
 
+func describe(template string, clone *string) string {
+	if clone != nil {
+		return "clone " + *clone + " of " + template
+	}
+	return template
+}
+
 func deref(s *string) string {
 	if s == nil {
 		return ""
 	}
 	return *s
 }
+
+func ptr[T any](v T) *T { return &v }

@@ -171,6 +171,284 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/clones:
+    get:
+      operationId: listClones
+      summary: List every clone and how it resolves
+      responses:
+        "200":
+          description: Clones, by name.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/agentclonepage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/clones/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getClone
+      responses:
+        "200":
+          $ref: "#/components/responses/CloneRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: applyClone
+      summary: Create or change a clone; its template cannot change
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/agentclone.json"
+      responses:
+        "200":
+          $ref: "#/components/responses/CloneRecord"
+        "201":
+          $ref: "#/components/responses/CloneRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/clones/{name}/sync:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    post:
+      operationId: syncClone
+      summary: Move a manual clone to its template's published version
+      responses:
+        "200":
+          $ref: "#/components/responses/CloneRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/templates/{name}/clones:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: listTemplateClones
+      summary: The clones of one template
+      responses:
+        "200":
+          description: Clones, by name.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/agentclonepage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/models:
+    get:
+      operationId: listModels
+      summary: The model catalogue and each model's approval
+      responses:
+        "200":
+          description: Models, by name.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/modelcatalogueitempage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/models/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getModel
+      responses:
+        "200":
+          description: A model.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/modelcatalogueitemrecord.json"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: applyModel
+      summary: Add or change a catalogue model; any change needs approval again
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/modelcatalogueitem.json"
+      responses:
+        "200":
+          description: Changed (or unchanged).
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/modelcatalogueitemrecord.json"
+        "201":
+          description: Added.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/modelcatalogueitemrecord.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/models/{name}/approval:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    post:
+      operationId: decideModel
+      summary: Approve, reject or revoke a model (privacy officers; never its last editor)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/modelapprovaldecision.json"
+      responses:
+        "200":
+          description: The model after the decision.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/modelcatalogueitemrecord.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/model-aliases:
+    get:
+      operationId: listModelAliases
+      responses:
+        "200":
+          description: Aliases, by name.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/modelaliaspage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/model-aliases/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getModelAlias
+      responses:
+        "200":
+          description: An alias.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/modelaliasrecord.json"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: applyModelAlias
+      summary: Create an alias on an approved model, or change its description; retargeting is a rollout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/modelalias.json"
+      responses:
+        "200":
+          description: Changed (or unchanged).
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/modelaliasrecord.json"
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/modelaliasrecord.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/model-aliases/{name}/rollouts:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    post:
+      operationId: startRollout
+      summary: Switch the alias to another approved model (unevaluated until the gateway exists)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/rolloutrequest.json"
+      responses:
+        "201":
+          description: The rollout.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/rollout.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/rollouts:
+    get:
+      operationId: listRollouts
+      responses:
+        "200":
+          description: Rollouts, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/rolloutpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/rollouts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getRollout
+      responses:
+        "200":
+          description: A rollout.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/rollout.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/rollouts/{id}/rollback:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: rollbackRollout
+      summary: Return the alias to the model it had before this rollout, if that model is still approved
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/rollbackrequest.json"
+      responses:
+        "200":
+          description: The rolled-back rollout.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/rollout.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/instances:
     get:
       operationId: listInstances
@@ -218,6 +496,23 @@ paths:
           $ref: "#/components/responses/InstanceRecord"
         "201":
           $ref: "#/components/responses/InstanceRecord"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/instances/{name}/effective:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+    get:
+      operationId: getEffectiveSpec
+      summary: The spec the instance runs with, through its clone if it has one
+      description: Refused with 409 when the instance's clone cannot resolve to a template version.
+      responses:
+        "200":
+          description: The effective spec.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/effectiveagentspec.json"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -575,6 +870,15 @@ components:
         application/json:
           schema:
             $ref: "../schemas/agentinstancerecord.json"
+    CloneRecord:
+      description: A clone.
+      headers:
+        ETag:
+          $ref: "#/components/headers/ETag"
+      content:
+        application/json:
+          schema:
+            $ref: "../schemas/agentclonerecord.json"
     LinkRecord:
       description: An agent link.
       headers:

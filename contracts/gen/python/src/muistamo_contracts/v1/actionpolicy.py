@@ -12,7 +12,8 @@ class ActionPolicyTarget(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    template: Annotated[str, Field(pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")]
+    template: Annotated[str | None, Field(pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")] = None
+    clone: Annotated[str | None, Field(pattern="^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")] = None
 
 
 class Default(StrEnum):
@@ -78,7 +79,13 @@ class ActionPolicySpec(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    appliesTo: Annotated[ActionPolicyTarget, Field(title="ActionPolicyTarget")]
+    appliesTo: Annotated[
+        ActionPolicyTarget,
+        Field(
+            description="A template (covering its clones) or one clone. A clone also keeps its template's policy; its own may only narrow it.",
+            title="ActionPolicyTarget",
+        ),
+    ]
     default: Annotated[
         Default | None,
         Field(

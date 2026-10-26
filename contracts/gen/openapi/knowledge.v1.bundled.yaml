@@ -705,7 +705,9 @@ components:
         section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the
         action is denied whatever else allows it, so rule order does not matter. Release
         1 effects are allow, deny and monitor; requireApproval is release 2. At most
-        one ActionPolicy applies to a template.'
+        one ActionPolicy applies to a template. A clone keeps its template''s policy;
+        a policy for a clone may only add deny and monitor rules, never allow, default
+        or mode, so it can restrict a clone but never widen it.'
       type: object
       additionalProperties: false
       required:
@@ -732,12 +734,17 @@ components:
           properties:
             appliesTo:
               title: ActionPolicyTarget
+              description: A template (covering its clones) or one clone. A clone
+                also keeps its template's policy; its own may only narrow it.
               type: object
               additionalProperties: false
-              required:
-              - template
+              minProperties: 1
+              maxProperties: 1
               properties:
                 template:
+                  type: string
+                  pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+                clone:
                   type: string
                   pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
             default:
@@ -795,6 +802,26 @@ components:
                     items:
                       type: string
                       pattern: ^[A-Za-z][A-Za-z0-9_]{0,63}(\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$
+          if:
+            properties:
+              appliesTo:
+                required:
+                - clone
+          then:
+            not:
+              anyOf:
+              - required:
+                - default
+              - required:
+                - mode
+            properties:
+              rules:
+                items:
+                  properties:
+                    effect:
+                      enum:
+                      - deny
+                      - monitor
     ActionPolicyPage:
       title: ActionPolicyPage
       description: Every ActionPolicy in the tenant, by name.
@@ -832,6 +859,150 @@ components:
           type: string
         document:
           $ref: '#/components/schemas/ActionPolicy'
+    AgentClone:
+      title: AgentClone
+      description: A variant of a template with its own instances (PRD section 5,
+        FR-103). The overlay can add knowledge packs and set its own budget and HR
+        assignment; nothing else of the template can change. Because the overlay changes
+        who gets an agent and with what knowledge, only catalogue approvers create,
+        change or sync clones, and a clone cannot take a template's name.
+      type: object
+      additionalProperties: false
+      required:
+      - apiVersion
+      - kind
+      - metadata
+      - spec
+      properties:
+        apiVersion:
+          type: string
+          const: muistamo.dev/v1
+        kind:
+          type: string
+          const: AgentClone
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          title: AgentCloneSpec
+          type: object
+          additionalProperties: false
+          required:
+          - template
+          - sync
+          properties:
+            template:
+              description: The source template's name.
+              type: string
+              pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+            sync:
+              description: 'follow: always the template''s catalogue-published version.
+                pin: the version below. manual: stays on its version and reports a
+                newer published one until synced.'
+              type: string
+              enum:
+              - follow
+              - pin
+              - manual
+            version:
+              description: 'pin only: the template version to use.'
+              type: integer
+              minimum: 1
+            overlay:
+              title: AgentCloneOverlay
+              type: object
+              additionalProperties: false
+              properties:
+                knowledgePacks:
+                  description: Packs added to the template's. For a pack the template
+                    already uses, this version constraint wins.
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/KnowledgePackRef'
+                budget:
+                  title: AgentCloneBudget
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    perInstanceMonthlyEUR:
+                      type: number
+                      minimum: 0
+                assignment:
+                  title: AgentCloneAssignment
+                  description: Joiners whose job code is listed get this clone instead
+                    of the plain template.
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    hrJobCodes:
+                      type: array
+                      items:
+                        type: string
+          if:
+            properties:
+              sync:
+                const: pin
+          then:
+            required:
+            - version
+          else:
+            not:
+              required:
+              - version
+    AgentClonePage:
+      title: AgentClonePage
+      description: Clones, by name.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentCloneRecord'
+    AgentCloneRecord:
+      title: AgentCloneRecord
+      description: A clone and how it currently resolves. Revision increments on every
+        change to the document or the synced version.
+      type: object
+      additionalProperties: false
+      required:
+      - revision
+      - createdAt
+      - updatedAt
+      - updatedBy
+      - document
+      - assignable
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        document:
+          $ref: '#/components/schemas/AgentClone'
+        resolvedVersion:
+          description: The template version the clone uses now; absent when it cannot
+            resolve.
+          type: integer
+          minimum: 1
+        upstreamVersion:
+          description: The template's published version, when it differs from resolvedVersion.
+          type: integer
+          minimum: 1
+        assignable:
+          description: 'Whether joiners can get this clone: its resolved version is
+            the published one.'
+          type: boolean
+        reason:
+          description: Why the clone is not assignable, or is behind upstream.
+          type: string
     AgentInstance:
       title: AgentInstance
       description: An agent bound to a user, team or service, with its own identity
@@ -876,6 +1047,11 @@ components:
                     example "3".
                   type: string
                   pattern: ^[1-9][0-9]*$
+            cloneRef:
+              description: Set when the instance belongs to a clone of templateRef's
+                template. Its effective spec then comes through the clone.
+              type: string
+              pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
             binding:
               title: InstanceBinding
               type: object
@@ -1020,14 +1196,17 @@ components:
               pattern: ^[1-9][0-9]{0,6}/(s|min|h|day)$
     AgentLinkEndpoint:
       title: AgentLinkEndpoint
-      description: One end of an AgentLink. Release 1 selects agents by template;
-        clones, instances and labels come later.
+      description: 'One end of an AgentLink: a template (covering its clones too)
+        or one clone. Instances, labels and external agents come later.'
       type: object
       additionalProperties: false
-      required:
-      - template
+      minProperties: 1
+      maxProperties: 1
       properties:
         template:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        clone:
           type: string
           pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
     AgentLinkPage:
@@ -1087,68 +1266,7 @@ components:
         metadata:
           $ref: '#/components/schemas/ObjectMeta'
         spec:
-          title: AgentTemplateSpec
-          type: object
-          additionalProperties: false
-          required:
-          - purpose
-          - modelAlias
-          properties:
-            purpose:
-              type: string
-            riskTier:
-              type: string
-              enum:
-              - low
-              - medium
-              - high
-            modelAlias:
-              description: Name of a ModelAlias, never a concrete provider model.
-              type: string
-            knowledgePacks:
-              type: array
-              items:
-                title: KnowledgePackRef
-                type: object
-                additionalProperties: false
-                required:
-                - name
-                properties:
-                  name:
-                    type: string
-                  version:
-                    description: Version constraint, for example 3.x to follow minor
-                      updates.
-                    type: string
-            tools:
-              type: array
-              items:
-                type: string
-            dataClasses:
-              type: array
-              items:
-                type: string
-            autonomy:
-              type: string
-            assignment:
-              title: AgentTemplateAssignment
-              type: object
-              additionalProperties: false
-              properties:
-                hrJobCodes:
-                  type: array
-                  items:
-                    type: string
-            budget:
-              title: AgentTemplateBudget
-              type: object
-              additionalProperties: false
-              properties:
-                perInstanceMonthlyEUR:
-                  type: number
-                  minimum: 0
-            evaluationSet:
-              type: string
+          $ref: '#/components/schemas/AgentTemplateSpec'
     AgentTemplatePage:
       title: AgentTemplatePage
       description: A page of latest template versions, ordered by name.
@@ -1185,6 +1303,59 @@ components:
           type: string
         document:
           $ref: '#/components/schemas/AgentTemplate'
+    AgentTemplateSpec:
+      title: AgentTemplateSpec
+      description: What an agent template defines (PRD section 5).
+      type: object
+      additionalProperties: false
+      required:
+      - purpose
+      - modelAlias
+      properties:
+        purpose:
+          type: string
+        riskTier:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+        modelAlias:
+          description: Name of a ModelAlias, never a concrete provider model.
+          type: string
+        knowledgePacks:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgePackRef'
+        tools:
+          type: array
+          items:
+            type: string
+        dataClasses:
+          type: array
+          items:
+            type: string
+        autonomy:
+          type: string
+        assignment:
+          title: AgentTemplateAssignment
+          type: object
+          additionalProperties: false
+          properties:
+            hrJobCodes:
+              type: array
+              items:
+                type: string
+        budget:
+          title: AgentTemplateBudget
+          type: object
+          additionalProperties: false
+          properties:
+            perInstanceMonthlyEUR:
+              type: number
+              minimum: 0
+        evaluationSet:
+          type: string
     CatalogueApproval:
       description: One approver's decision on a catalogue request.
       title: CatalogueApproval
@@ -1407,6 +1578,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PolicyRuleRef'
+    EffectiveAgentSpec:
+      title: EffectiveAgentSpec
+      description: 'What an instance actually runs with: its template version''s spec,
+        with its clone''s overlay applied if it belongs to a clone.'
+      type: object
+      additionalProperties: false
+      required:
+      - instance
+      - template
+      - version
+      - spec
+      properties:
+        instance:
+          type: string
+        template:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        clone:
+          type: string
+        spec:
+          $ref: '#/components/schemas/AgentTemplateSpec'
     ErasureProof:
       title: ErasureProof
       description: 'What one service erased for a request, and what it kept and why.
@@ -1818,7 +2012,10 @@ components:
               - team
               description: Personal layers are per person and are not packs.
             mandatory:
-              description: Users and agents cannot switch a mandatory pack off.
+              description: 'Company packs only. Users and agents cannot switch a mandatory
+                pack off or shadow its entries: for its keys it wins over every other
+                layer. Only privacy officers can set or clear it, or change a mandatory
+                pack in any other way.'
               type: boolean
             reviewers:
               type: array
@@ -1842,6 +2039,16 @@ components:
             storageLocation:
               description: Customer-bound object storage location for pack content.
               type: string
+          if:
+            properties:
+              mandatory:
+                const: true
+            required:
+            - mandatory
+          then:
+            properties:
+              layer:
+                const: company
     KnowledgePackPage:
       title: KnowledgePackPage
       description: The tenant's packs.
@@ -1875,6 +2082,20 @@ components:
         updatedAt:
           type: string
           format: date-time
+    KnowledgePackRef:
+      title: KnowledgePackRef
+      description: A knowledge pack an agent uses, optionally constrained to a version
+        range.
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      properties:
+        name:
+          type: string
+        version:
+          description: Version constraint, for example 3.x to follow minor updates.
+          type: string
     KnowledgeRead:
       title: KnowledgeRead
       description: 'One retrieval a person made: what they were shown, never the query
@@ -2255,6 +2476,248 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LeaverReview'
+    ModelAlias:
+      title: ModelAlias
+      description: A name templates use for a model, for example reasoning-default
+        (PRD section 5, FR-602). It can target only an approved catalogue model, and
+        changing its target is a rollout, never an edit.
+      type: object
+      additionalProperties: false
+      required:
+      - apiVersion
+      - kind
+      - metadata
+      - spec
+      properties:
+        apiVersion:
+          type: string
+          const: muistamo.dev/v1
+        kind:
+          type: string
+          const: ModelAlias
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          title: ModelAliasSpec
+          type: object
+          additionalProperties: false
+          required:
+          - target
+          properties:
+            target:
+              description: The catalogue model's name. Set on create; change it with
+                a rollout.
+              type: string
+              pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+            description:
+              type: string
+    ModelAliasPage:
+      title: ModelAliasPage
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelAliasRecord'
+    ModelAliasRecord:
+      title: ModelAliasRecord
+      type: object
+      additionalProperties: false
+      required:
+      - revision
+      - createdAt
+      - updatedAt
+      - updatedBy
+      - document
+      - compliant
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        document:
+          $ref: '#/components/schemas/ModelAlias'
+        compliant:
+          description: 'The target exists and is approved: templates using the alias
+            can be published and assigned.'
+          type: boolean
+        reason:
+          type: string
+    ModelApproval:
+      title: ModelApproval
+      description: Where a catalogue model's approval stands. A change to the model's
+        document resets it to pending.
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+          - revoked
+        decidedBy:
+          type: string
+        reason:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+    ModelApprovalDecision:
+      title: ModelApprovalDecision
+      description: A privacy officer's decision on a catalogue model; never the person
+        who last changed it.
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      - reason
+      properties:
+        decision:
+          type: string
+          enum:
+          - approve
+          - reject
+          - revoke
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    ModelCatalogueItem:
+      title: ModelCatalogueItem
+      description: A provider model the company may use (PRD section 5, FR-601). Aliases
+        can target it only once a privacy officer approves it, and any change to it
+        needs approval again.
+      type: object
+      additionalProperties: false
+      required:
+      - apiVersion
+      - kind
+      - metadata
+      - spec
+      properties:
+        apiVersion:
+          type: string
+          const: muistamo.dev/v1
+        kind:
+          type: string
+          const: ModelCatalogueItem
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          title: ModelCatalogueItemSpec
+          type: object
+          additionalProperties: false
+          required:
+          - provider
+          - model
+          - region
+          - termsRef
+          - priceSheet
+          properties:
+            provider:
+              description: For example anthropic, google, openai, mistral.
+              type: string
+              minLength: 1
+            model:
+              description: The provider's model id.
+              type: string
+              minLength: 1
+            version:
+              type: string
+            region:
+              description: Where the provider processes requests, for example eu-west-1.
+              type: string
+              minLength: 1
+            termsRef:
+              description: Reference to the reviewed provider terms.
+              type: string
+              minLength: 1
+            dpaRef:
+              description: Reference to the data processing agreement (GDPR Art 28).
+              type: string
+            subProcessors:
+              type: array
+              items:
+                type: string
+            aiActProviderStatus:
+              description: The provider's status under the EU AI Act, for example
+                gpai-provider.
+              type: string
+            priceSheet:
+              title: ModelPriceSheet
+              description: Provider list prices, passed through at cost (invariant
+                7).
+              type: object
+              additionalProperties: false
+              required:
+              - currency
+              - inputPerMTok
+              - outputPerMTok
+              properties:
+                currency:
+                  type: string
+                  const: EUR
+                inputPerMTok:
+                  type: number
+                  minimum: 0
+                outputPerMTok:
+                  type: number
+                  minimum: 0
+                cachedInputPerMTok:
+                  type: number
+                  minimum: 0
+    ModelCatalogueItemPage:
+      title: ModelCatalogueItemPage
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelCatalogueItemRecord'
+    ModelCatalogueItemRecord:
+      title: ModelCatalogueItemRecord
+      type: object
+      additionalProperties: false
+      required:
+      - revision
+      - createdAt
+      - updatedAt
+      - updatedBy
+      - document
+      - approval
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        document:
+          $ref: '#/components/schemas/ModelCatalogueItem'
+        approval:
+          $ref: '#/components/schemas/ModelApproval'
     ObjectMeta:
       title: ObjectMeta
       description: Metadata shared by every Muistamo YAML kind.
@@ -2419,10 +2882,20 @@ components:
           description: 'call: the calling template.'
           type: string
           pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        fromClone:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+          description: 'call: the caller''s clone, if it is one; it must be a clone
+            of from.'
         to:
           description: 'call: the called template.'
           type: string
           pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        toClone:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+          description: 'call: the callee''s clone, if it is one; it must be a clone
+            of to.'
         skill:
           description: 'call: the skill of the called agent being used.'
           type: string
@@ -2450,6 +2923,11 @@ components:
           description: 'action: the template taking the action.'
           type: string
           pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        agentClone:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+          description: 'action: the agent''s clone, if it is one; it must be a clone
+            of agent.'
         action:
           description: 'action: the tool action, for example email.send.'
           type: string
@@ -2480,6 +2958,8 @@ components:
               - action
             - required:
               - attributes
+            - required:
+              - agentClone
       - if:
           properties:
             kind:
@@ -2502,6 +2982,10 @@ components:
               - depth
             - required:
               - actFor
+            - required:
+              - fromClone
+            - required:
+              - toClone
     PolicyRuleRef:
       title: PolicyRuleRef
       description: One compiled Cedar policy and the document it came from.
@@ -2536,6 +3020,10 @@ components:
           - allow
           - deny
           - monitor
+        target:
+          description: 'Whom the rule names: template:<name> (covering its clones)
+            or clone:<name>.'
+          type: string
     PolicySimulation:
       title: PolicySimulation
       description: The same request decided under the current and the proposed rules.
@@ -2788,6 +3276,30 @@ components:
           type: string
         version:
           type: string
+        mandatory:
+          description: The entry comes from a mandatory pack, so no other layer can
+            replace it.
+          type: boolean
+        overrides:
+          description: Entries with the same key that this mandatory entry overrides,
+            for example the caller's own personal entry.
+          type: array
+          items:
+            title: ResolvedOverride
+            type: object
+            additionalProperties: false
+            required:
+            - layer
+            properties:
+              layer:
+                type: string
+                enum:
+                - personal
+                - team
+                - role
+                - company
+              pack:
+                type: string
     ResolvedEntryPage:
       title: ResolvedEntryPage
       description: The caller's effective knowledge.
@@ -2873,6 +3385,116 @@ components:
           type: string
           minLength: 1
           maxLength: 2000
+    RollbackRequest:
+      title: RollbackRequest
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    Rollout:
+      title: Rollout
+      description: 'One model switch of an alias (PRD section 5): its audit record.'
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - alias
+      - from
+      - to
+      - strategy
+      - evaluation
+      - status
+      - createdBy
+      - createdAt
+      - reason
+      properties:
+        id:
+          type: string
+          format: uuid
+        alias:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+        strategy:
+          description: immediate in release 1; canary is release 2 (FR-604).
+          type: string
+          enum:
+          - immediate
+        evaluation:
+          title: RolloutEvaluation
+          type: object
+          additionalProperties: false
+          required:
+          - status
+          - reason
+          properties:
+            status:
+              type: string
+              enum:
+              - not-run
+            reason:
+              type: string
+        status:
+          type: string
+          enum:
+          - completed
+          - rolled-back
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        rolledBackBy:
+          type: string
+        rolledBackAt:
+          type: string
+          format: date-time
+        rollbackReason:
+          type: string
+    RolloutPage:
+      title: RolloutPage
+      description: Rollouts, newest first.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Rollout'
+    RolloutRequest:
+      title: RolloutRequest
+      description: Switch an alias to another approved model. The evaluation gate
+        (FR-603) needs the gateway, which does not exist yet, so the switch is unevaluated
+        and must be acknowledged as such.
+      type: object
+      additionalProperties: false
+      required:
+      - to
+      - reason
+      - acknowledgeUnevaluated
+      properties:
+        to:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        acknowledgeUnevaluated:
+          description: 'Must be true: the switch is made without an evaluation report.'
+          type: boolean
+          const: true
     SyncResult:
       title: SyncResult
       description: What a sync changed in the index.

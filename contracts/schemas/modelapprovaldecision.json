@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/modelapprovaldecision.json",
+  "title": "ModelApprovalDecision",
+  "description": "A privacy officer's decision on a catalogue model; never the person who last changed it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision",
+    "reason"
+  ],
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "reject",
+        "revoke"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    }
+  }
+}

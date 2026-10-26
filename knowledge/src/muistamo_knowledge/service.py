@@ -110,13 +110,41 @@ class Knowledge:
         spec = document["spec"]
         requires_eval = "evaluation" in (spec.get("mergePolicy") or {}).get("requires", [])
         with self.db.in_tenant(actor.tenant) as cur:
-            cur.execute("SELECT document FROM knowledge.packs WHERE name = %s FOR UPDATE", (name,))
+            cur.execute(
+                "SELECT document, mandatory FROM knowledge.packs WHERE name = %s FOR UPDATE",
+                (name,),
+            )
             row = cur.fetchone()
             if row is not None and row[0] == document:
                 return self._pack_record(cur, name), False
+            mandatory = spec.get("mandatory", False)
+            # The contract says so too, but the generated models do not enforce if/then, and the
+            # database refuses it as a last resort: a mandatory pack must be a company pack.
+            if mandatory and spec["layer"] != "company":
+                raise Invalid("only company packs can be mandatory")
+            was = bool(row[1]) if row is not None else False
+            if mandatory or was:
+                # A mandatory pack decides what everyone's agents are told: a compliance
+                # decision, so privacy officers only (FR-1708, E20.3). That covers every change
+                # to one, not only the flag: whoever sets its reviewers controls its content and
+                # can roll it back to empty.
+                from muistamo_knowledge.privacy import is_officer
+
+                if not is_officer(cur, actor.name):
+                    raise Forbidden("only privacy officers can create or change a mandatory pack")
+            if mandatory != was:
+                self._evidence(
+                    cur,
+                    actor,
+                    "knowledge.pack.mandatory.changed",
+                    "KnowledgePack",
+                    name,
+                    before={"mandatory": was},
+                    after={"mandatory": mandatory},
+                )
             values = (
                 spec["layer"],
-                spec.get("mandatory", False),
+                mandatory,
                 spec["reviewers"],
                 requires_eval,
                 Jsonb(document),
@@ -704,29 +732,41 @@ class Knowledge:
         unknown = sorted(set(packs) - set(names))
         if unknown:
             raise NotFound(f"packs {', '.join(unknown)}")
-        candidates: list[tuple[int, str, dict[str, Any]]] = []
+        # (mandatory first, layer precedence, pack name): a mandatory pack's entry wins its key over
+        # every other layer, the caller's own personal entry included, so nobody can shadow it
+        # (FR-1708). Everything else keeps personal > team > role > company.
+        candidates: list[tuple[int, int, str, dict[str, Any]]] = []
         for entry in self._personal(cur, actor):
             candidates.append(
-                (LAYER_PRECEDENCE["personal"], "", {"entry": entry, "layer": "personal"})
+                (1, LAYER_PRECEDENCE["personal"], "", {"entry": entry, "layer": "personal"})
             )
         for name in names:
             info = self._pack(cur, name)
             for e in self._version_entries(cur, name, info["latest"]):
+                item = {
+                    "entry": e["entry"],
+                    "layer": info["layer"],
+                    "pack": name,
+                    "version": info["latest"],
+                }
+                if info["mandatory"]:
+                    item["mandatory"] = True
                 candidates.append(
-                    (
-                        LAYER_PRECEDENCE[info["layer"]],
-                        name,
-                        {
-                            "entry": e["entry"],
-                            "layer": info["layer"],
-                            "pack": name,
-                            "version": info["latest"],
-                        },
-                    )
+                    (0 if info["mandatory"] else 1, LAYER_PRECEDENCE[info["layer"]], name, item)
                 )
         effective: dict[str, dict[str, Any]] = {}
-        for _, _, item in sorted(candidates, key=lambda c: (c[0], c[1])):
-            effective.setdefault(item["entry"]["key"], item)
+        for *_, item in sorted(candidates, key=lambda c: (c[0], c[1], c[2])):
+            key = item["entry"]["key"]
+            winner = effective.get(key)
+            if winner is None:
+                effective[key] = item
+            elif winner.get("mandatory"):
+                # Say so when a mandatory entry overrides something, so nobody is misled about
+                # which entry is in force.
+                shadowed = {"layer": item["layer"]}
+                if "pack" in item:
+                    shadowed["pack"] = item["pack"]
+                winner.setdefault("overrides", []).append(shadowed)
         return names, [effective[k] for k in sorted(effective)]
 
     # Evidence -------------------------------------------------------------------------------

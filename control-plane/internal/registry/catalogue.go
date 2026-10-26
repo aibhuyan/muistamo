@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 )
@@ -53,6 +54,10 @@ func (s *Service) RequestPublication(ctx context.Context, actor Actor, template 
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
 		rec, _, err := templateVersion(ctx, tx, template, version)
 		if err != nil {
+			return err
+		}
+		// Refuse up front a version that could never be published (E5.4).
+		if err := requireCompliantAlias(ctx, tx, template, version); err != nil {
 			return err
 		}
 		var open int
@@ -173,8 +178,13 @@ func (s *Service) Withdraw(ctx context.Context, actor Actor, template string) er
 		if _, err := tx.Exec(ctx, `UPDATE catalogue_requests SET state = 'withdrawn', closed_at = now() WHERE id = $1`, requestID); err != nil {
 			return fmt.Errorf("close request: %w", err)
 		}
+		following, err := followClones(ctx, tx, template)
+		if err != nil {
+			return err
+		}
+		// Follow clones resolve to nothing now, so joiners stop getting them too.
 		return recordEvidence(ctx, tx, s.signer, actor, "catalogue.withdrawn", "AgentTemplate", template,
-			map[string]any{"version": version}, nil)
+			map[string]any{"version": version}, map[string]any{"unassignableClones": following})
 	})
 }
 
@@ -235,6 +245,10 @@ func (s *Service) ListCatalogueRequests(ctx context.Context, actor Actor, state 
 }
 
 func publish(ctx context.Context, tx pgx.Tx, s *Service, actor Actor, id uuid.UUID, template string, version int) error {
+	// Checked again here: the model may have been revoked while the request awaited approval.
+	if err := requireCompliantAlias(ctx, tx, template, version); err != nil {
+		return err
+	}
 	var previous uuid.UUID
 	var previousVersion int
 	err := tx.QueryRow(ctx, `SELECT request_id, version FROM catalogue_published WHERE template = $1 FOR UPDATE`, template).Scan(&previous, &previousVersion)
@@ -262,8 +276,50 @@ func publish(ctx context.Context, tx pgx.Tx, s *Service, actor Actor, id uuid.UU
 	if previousVersion != 0 {
 		before = map[string]any{"version": previousVersion}
 	}
+	following, err := followClones(ctx, tx, template)
+	if err != nil {
+		return err
+	}
 	return recordEvidence(ctx, tx, s.signer, actor, "catalogue.published", "AgentTemplate", template, before,
-		map[string]any{"version": version, "request": id})
+		map[string]any{"version": version, "request": id, "followClones": following})
+}
+
+// followClones names the clones that follow template's published version: a publication or a
+// withdrawal moves them.
+func followClones(ctx context.Context, tx pgx.Tx, template string) ([]string, error) {
+	rows, err := tx.Query(ctx, `SELECT name FROM agent_clones WHERE template = $1 AND sync = 'follow' ORDER BY name`, template)
+	if err != nil {
+		return nil, fmt.Errorf("list follow clones of %q: %w", template, err)
+	}
+	defer rows.Close()
+	names := []string{}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	return names, rows.Err()
+}
+
+// requireApprover refuses unless the actor is one of the tenant's catalogue approvers.
+func requireApprover(ctx context.Context, tx pgx.Tx, actor Actor, what string) error {
+	ok, err := isApprover(ctx, tx, actor.Name)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("only catalogue approvers can %s: %w", what, ErrForbidden)
+	}
+	return nil
+}
+
+// isUniqueViolation reports whether err is a unique constraint violation, which a concurrent
+// first create of the same name produces: FOR UPDATE on a missing row locks nothing.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func isApprover(ctx context.Context, tx pgx.Tx, name string) (bool, error) {

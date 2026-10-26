@@ -32,7 +32,10 @@ class KnowledgePackSpec(BaseModel):
     )
     layer: Annotated[Layer, Field(description="Personal layers are per person and are not packs.")]
     mandatory: Annotated[
-        bool | None, Field(description="Users and agents cannot switch a mandatory pack off.")
+        bool | None,
+        Field(
+            description="Company packs only. Users and agents cannot switch a mandatory pack off or shadow its entries: for its keys it wins over every other layer. Only privacy officers can set or clear it, or change a mandatory pack in any other way."
+        ),
     ] = None
     reviewers: Annotated[
         list[str] | None,

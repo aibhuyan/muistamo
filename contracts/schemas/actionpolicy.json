@@ -2,38 +2,69 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://muistamo.dev/schemas/v1/actionpolicy.json",
   "title": "ActionPolicy",
-  "description": "The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template.",
+  "description": "The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template. A clone keeps its template's policy; a policy for a clone may only add deny and monitor rules, never allow, default or mode, so it can restrict a clone but never widen it.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
   "properties": {
-    "apiVersion": { "type": "string", "const": "muistamo.dev/v1" },
-    "kind": { "type": "string", "const": "ActionPolicy" },
-    "metadata": { "$ref": "common/objectmeta.json" },
+    "apiVersion": {
+      "type": "string",
+      "const": "muistamo.dev/v1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "ActionPolicy"
+    },
+    "metadata": {
+      "$ref": "common/objectmeta.json"
+    },
     "spec": {
       "title": "ActionPolicySpec",
       "type": "object",
       "additionalProperties": false,
-      "required": ["appliesTo", "rules"],
+      "required": [
+        "appliesTo",
+        "rules"
+      ],
       "properties": {
         "appliesTo": {
           "title": "ActionPolicyTarget",
+          "description": "A template (covering its clones) or one clone. A clone also keeps its template's policy; its own may only narrow it.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["template"],
+          "minProperties": 1,
+          "maxProperties": 1,
           "properties": {
-            "template": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" }
+            "template": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+            },
+            "clone": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+            }
           }
         },
         "default": {
           "description": "What happens to actions no rule allows: deny (the default) or allow. allow still yields to every deny rule.",
           "type": "string",
-          "enum": ["deny", "allow"]
+          "enum": [
+            "deny",
+            "allow"
+          ]
         },
         "mode": {
           "description": "enforce (the default): once the gateway enforces, denied actions are blocked. monitor: they are only reported.",
           "type": "string",
-          "enum": ["enforce", "monitor"]
+          "enum": [
+            "enforce",
+            "monitor"
+          ]
         },
         "rules": {
           "type": "array",
@@ -41,7 +72,10 @@
             "title": "ActionRule",
             "type": "object",
             "additionalProperties": false,
-            "required": ["action", "effect"],
+            "required": [
+              "action",
+              "effect"
+            ],
             "properties": {
               "action": {
                 "description": "A tool action, for example email.send.",
@@ -51,19 +85,68 @@
               "effect": {
                 "description": "allow, deny, or monitor (allow, and flag for review). requireApproval is release 2.",
                 "type": "string",
-                "enum": ["allow", "deny", "monitor"]
+                "enum": [
+                  "allow",
+                  "deny",
+                  "monitor"
+                ]
               },
               "when": {
                 "description": "Request attributes that must all be true for the rule to apply. An attribute the request does not supply counts against the caller: it stops an allow or monitor rule applying, and lets a deny rule apply.",
                 "type": "array",
                 "uniqueItems": true,
-                "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}(\\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$" }
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}(\\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$"
+                }
               },
               "unless": {
                 "description": "Request attributes any one of which, when true, stops the rule applying. A missing attribute counts against the caller, as for when.",
                 "type": "array",
                 "uniqueItems": true,
-                "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}(\\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$" }
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}(\\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$"
+                }
+              }
+            }
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "appliesTo": {
+            "required": [
+              "clone"
+            ]
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "default"
+              ]
+            },
+            {
+              "required": [
+                "mode"
+              ]
+            }
+          ]
+        },
+        "properties": {
+          "rules": {
+            "items": {
+              "properties": {
+                "effect": {
+                  "enum": [
+                    "deny",
+                    "monitor"
+                  ]
+                }
               }
             }
           }

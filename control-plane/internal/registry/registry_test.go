@@ -31,6 +31,7 @@ func setup(t *testing.T) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testdb.ApprovedModelAlias(t, db.OwnerURL, tenant, "reasoning-default")
 	conn, err := store.Open(ctx, db.AppURL)
 	if err != nil {
 		t.Fatal(err)
@@ -233,4 +234,14 @@ func TestUnknownTenantIsRefused(t *testing.T) {
 
 func execAsApp(f fixture, stmt string) error {
 	return testdb.ExecErr(f.db.AppURL, f.actor.Tenant, stmt)
+}
+
+// The contract refuses an unacknowledged rollout at the API; the service refuses it too.
+func TestRolloutRequiresAcknowledgementInTheService(t *testing.T) {
+	f := setup(t)
+	_, err := f.svc.StartRollout(context.Background(), f.actor, "reasoning-default",
+		muistamov1.RolloutRequest{To: "reasoning-default-model", Reason: "x", AcknowledgeUnevaluated: false})
+	if !errors.Is(err, registry.ErrInvalid) {
+		t.Errorf("unacknowledged rollout: err = %v, want ErrInvalid", err)
+	}
 }

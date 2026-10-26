@@ -2,61 +2,10 @@
 #   filename:  agenttemplate.json
 
 from __future__ import annotations
-from enum import StrEnum
-from typing import Annotated, Literal
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
+from pydantic import BaseModel, ConfigDict
 from .common import objectmeta
-
-
-class RiskTier(StrEnum):
-    low = "low"
-    medium = "medium"
-    high = "high"
-
-
-class KnowledgePackRef(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    name: str
-    version: Annotated[
-        str | None,
-        Field(description="Version constraint, for example 3.x to follow minor updates."),
-    ] = None
-
-
-class AgentTemplateAssignment(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    hrJobCodes: list[str] | None = None
-
-
-class AgentTemplateBudget(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    perInstanceMonthlyEUR: Annotated[float | None, Field(ge=0.0)] = None
-
-
-class AgentTemplateSpec(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    purpose: str
-    riskTier: RiskTier | None = None
-    modelAlias: Annotated[
-        str, Field(description="Name of a ModelAlias, never a concrete provider model.")
-    ]
-    knowledgePacks: list[KnowledgePackRef] | None = None
-    tools: list[str] | None = None
-    dataClasses: list[str] | None = None
-    autonomy: str | None = None
-    assignment: Annotated[
-        AgentTemplateAssignment | None, Field(title="AgentTemplateAssignment")
-    ] = None
-    budget: Annotated[AgentTemplateBudget | None, Field(title="AgentTemplateBudget")] = None
-    evaluationSet: str | None = None
+from . import agenttemplatespec
 
 
 class AgentTemplate(BaseModel):
@@ -66,4 +15,4 @@ class AgentTemplate(BaseModel):
     apiVersion: Literal["muistamo.dev/v1"]
     kind: Literal["AgentTemplate"]
     metadata: objectmeta.ObjectMeta
-    spec: Annotated[AgentTemplateSpec, Field(title="AgentTemplateSpec")]
+    spec: agenttemplatespec.AgentTemplateSpec
