@@ -135,10 +135,12 @@ def test_only_privacy_officers_change_the_flag(world) -> None:
     assert (
         a.put("/v1/knowledge/packs/rules", json=pack("rules", "company", False)).status_code == 403
     )
-    # Other changes stay open to the pack's maintainers.
+    # Any other change to a mandatory pack is the officers' too: otherwise anyone could make
+    # themselves its reviewer and roll it back to empty.
     other = pack("rules", "company", True)
     other["metadata"]["owner"] = "team-compliance"
-    assert a.put("/v1/knowledge/packs/rules", json=other).status_code == 200
+    assert a.put("/v1/knowledge/packs/rules", json=other).status_code == 403
+    assert dpo.put("/v1/knowledge/packs/rules", json=other).status_code == 200
     assert (
         dpo.put("/v1/knowledge/packs/rules", json=pack("rules", "company", False)).status_code
         == 200
@@ -165,3 +167,42 @@ def test_only_company_packs_can_be_mandatory(world) -> None:
     # And the database refuses it whatever the service does.
     with psycopg.connect(world.db.owner_url) as conn, pytest.raises(psycopg.errors.CheckViolation):
         conn.execute("UPDATE knowledge.packs SET layer = 'team' WHERE name = 'c'")
+
+
+def test_a_mandatory_pack_cannot_be_emptied_by_taking_it_over(mandatory) -> None:
+    world = mandatory
+    a = world.client(A)
+    takeover = pack("company-rules", "company", True)
+    takeover["spec"]["reviewers"] = ["dev:" + A]
+    r = a.put("/v1/knowledge/packs/company-rules", json=takeover)
+    assert r.status_code == 403, r.text
+    # So A is not a reviewer and cannot roll it back to the empty pack.
+    r = a.post(
+        "/v1/knowledge/packs/company-rules/rollback",
+        json={"toVersion": "0.0.0", "reason": "gone"},
+    )
+    assert r.status_code == 403, r.text
+    got = resolved(world)["data-handling"]
+    assert got["entry"]["body"] == "Client data stays in the EU vault, always."
+    # Nothing was recorded as applied by A.
+    applied = [
+        e
+        for e in world.knowledge.events(world.actor(DPO), 0, 1000)
+        if e.action == "knowledge.pack.applied" and e.actor == "dev:" + A
+    ]
+    assert applied == []
+
+
+def test_two_mandatory_packs_with_one_key_resolve_by_pack_name(world) -> None:
+    replace_officers(world.db.owner_url, world.tenant, ["dev:" + DPO])
+    dpo = world.client(DPO)
+    for name in ("b-rules", "a-rules"):
+        assert (
+            dpo.put(f"/v1/knowledge/packs/{name}", json=pack(name, "company", True)).status_code
+            == 201
+        )
+    merge(world, "b-rules", "k", "b says")
+    merge(world, "a-rules", "k", "a says")
+    got = resolved(world)["k"]
+    assert got["pack"] == "a-rules" and got["entry"]["body"] == "a says"
+    assert got["overrides"] == [{"layer": "company", "pack": "b-rules"}]

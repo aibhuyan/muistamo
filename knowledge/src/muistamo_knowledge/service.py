@@ -110,7 +110,10 @@ class Knowledge:
         spec = document["spec"]
         requires_eval = "evaluation" in (spec.get("mergePolicy") or {}).get("requires", [])
         with self.db.in_tenant(actor.tenant) as cur:
-            cur.execute("SELECT document FROM knowledge.packs WHERE name = %s FOR UPDATE", (name,))
+            cur.execute(
+                "SELECT document, mandatory FROM knowledge.packs WHERE name = %s FOR UPDATE",
+                (name,),
+            )
             row = cur.fetchone()
             if row is not None and row[0] == document:
                 return self._pack_record(cur, name), False
@@ -119,18 +122,17 @@ class Knowledge:
             # database refuses it as a last resort: a mandatory pack must be a company pack.
             if mandatory and spec["layer"] != "company":
                 raise Invalid("only company packs can be mandatory")
-            was = False
-            if row is not None:
-                was = bool((row[0].get("spec") or {}).get("mandatory", False))
-            if mandatory != was:
-                # Setting or clearing mandatory decides what everyone's agents are told: a
-                # compliance decision, so privacy officers only (FR-1708, E20.3).
+            was = bool(row[1]) if row is not None else False
+            if mandatory or was:
+                # A mandatory pack decides what everyone's agents are told: a compliance
+                # decision, so privacy officers only (FR-1708, E20.3). That covers every change
+                # to one, not only the flag: whoever sets its reviewers controls its content and
+                # can roll it back to empty.
                 from muistamo_knowledge.privacy import is_officer
 
                 if not is_officer(cur, actor.name):
-                    raise Forbidden(
-                        "only privacy officers can make a pack mandatory or stop it being mandatory"
-                    )
+                    raise Forbidden("only privacy officers can create or change a mandatory pack")
+            if mandatory != was:
                 self._evidence(
                     cur,
                     actor,

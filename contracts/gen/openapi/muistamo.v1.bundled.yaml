@@ -1748,7 +1748,8 @@ components:
             mandatory:
               description: 'Company packs only. Users and agents cannot switch a mandatory
                 pack off or shadow its entries: for its keys it wins over every other
-                layer. Only privacy officers can set or clear it.'
+                layer. Only privacy officers can set or clear it, or change a mandatory
+                pack in any other way.'
               type: boolean
             reviewers:
               type: array

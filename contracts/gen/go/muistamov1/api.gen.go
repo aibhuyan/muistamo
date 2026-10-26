@@ -1652,7 +1652,7 @@ type KnowledgePack struct {
 		// Layer Personal layers are per person and are not packs.
 		Layer KnowledgePackSpecLayer `json:"layer"`
 
-		// Mandatory Company packs only. Users and agents cannot switch a mandatory pack off or shadow its entries: for its keys it wins over every other layer. Only privacy officers can set or clear it.
+		// Mandatory Company packs only. Users and agents cannot switch a mandatory pack off or shadow its entries: for its keys it wins over every other layer. Only privacy officers can set or clear it, or change a mandatory pack in any other way.
 		Mandatory   *bool `json:"mandatory,omitempty"`
 		MergePolicy *struct {
 			Requires *[]KnowledgePackSpecMergePolicyRequires `json:"requires,omitempty"`
