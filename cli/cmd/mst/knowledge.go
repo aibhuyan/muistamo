@@ -139,6 +139,95 @@ func knowledgeCmd(opts *options) *cobra.Command {
 	export.Flags().StringVarP(&out, "output", "o", "", "zip file to write")
 	_ = export.MarkFlagRequired("pack")
 	_ = export.MarkFlagRequired("output")
-	cmd.AddCommand(export)
+	cmd.AddCommand(export, verificationsCmd(opts), verifyEntryCmd(opts))
+	return cmd
+}
+
+// entryVerification is the part of an EntryVerification the commands print.
+type entryVerification struct {
+	Pack      string `json:"pack"`
+	Mandatory bool   `json:"mandatory"`
+	Entry     struct {
+		Key string `json:"key"`
+	} `json:"entry"`
+	Decay struct {
+		Status     string `json:"status"`
+		VerifiedBy string `json:"verifiedBy"`
+		DueAt      string `json:"dueAt"`
+		ExpiresAt  string `json:"expiresAt"`
+	} `json:"decay"`
+	Provenance struct {
+		Score int `json:"score"`
+	} `json:"provenance"`
+}
+
+func (v entryVerification) line() string {
+	expires := v.Decay.ExpiresAt
+	if v.Mandatory {
+		expires = "never (mandatory)"
+	}
+	return fmt.Sprintf("%s/%s\t%s\tdue %s\texpires %s\tlast verified by %s\tprovenance %d",
+		v.Pack, v.Entry.Key, v.Decay.Status, v.Decay.DueAt, expires, v.Decay.VerifiedBy, v.Provenance.Score)
+}
+
+func verificationsCmd(opts *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "verifications",
+		Short: "Entries due or expired in packs you may confirm (FR-307)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			status, body, err := opts.knowledgeCall(cmd.Context(), http.MethodGet, "/v1/knowledge/verifications", nil)
+			if err != nil {
+				return err
+			}
+			if status != http.StatusOK {
+				return problem(status, body)
+			}
+			var page struct {
+				Items []entryVerification `json:"items"`
+			}
+			if err := json.Unmarshal(body, &page); err != nil {
+				return fmt.Errorf("decode verifications: %w", err)
+			}
+			if len(page.Items) == 0 {
+				cmd.Println("nothing to confirm")
+			}
+			for _, v := range page.Items {
+				cmd.Println(v.line())
+			}
+			return nil
+		},
+	}
+}
+
+func verifyEntryCmd(opts *options) *cobra.Command {
+	var reason string
+	cmd := &cobra.Command{
+		Use:   "verify PACK KEY --reason TEXT",
+		Short: "Confirm a pack entry is still right, restarting its decay clock",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			payload, err := json.Marshal(map[string]string{"reason": reason})
+			if err != nil {
+				return err
+			}
+			path := "/v1/knowledge/packs/" + url.PathEscape(args[0]) + "/entries/" + url.PathEscape(args[1]) + "/verification"
+			status, body, err := opts.knowledgeCall(cmd.Context(), http.MethodPost, path, payload)
+			if err != nil {
+				return err
+			}
+			if status != http.StatusOK {
+				return problem(status, body)
+			}
+			var v entryVerification
+			if err := json.Unmarshal(body, &v); err != nil {
+				return fmt.Errorf("decode verification: %w", err)
+			}
+			cmd.Println(v.line())
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&reason, "reason", "", "why the entry is still right")
+	_ = cmd.MarkFlagRequired("reason")
 	return cmd
 }

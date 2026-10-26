@@ -38,6 +38,14 @@
           },
           "citation": {
             "$ref": "citation.json"
+          },
+          "decay": {
+            "description": "Pack entries only.",
+            "$ref": "entrydecay.json"
+          },
+          "provenance": {
+            "description": "Knowledge entries only; documents carry their source's own metadata.",
+            "$ref": "provenance.json"
           }
         }
       }

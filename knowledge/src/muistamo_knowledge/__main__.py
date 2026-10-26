@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -52,6 +53,35 @@ def serve(_: argparse.Namespace) -> None:
     host, _, port = os.environ.get("KNOWLEDGE_ADDR", "127.0.0.1:8001").rpartition(":")
     knowledge = Knowledge(db, key, default_factories(enable_test))
     uvicorn.run(create_app(knowledge, resolver), host=host, port=int(port))
+
+
+def sweep_decay(args: argparse.Namespace) -> None:
+    """Remove expired pack entries (FR-307). Run it on a schedule; expired entries are withheld
+    from agents whether or not it has run, so a late sweep never serves them."""
+    from muistamo_knowledge.db import Database
+    from muistamo_knowledge.service import Knowledge
+
+    logging.basicConfig(level=logging.INFO)
+    db = Database(require("MUISTAMO_KNOWLEDGE_DATABASE_URL"))
+    key = evidence.LocalKey.load(Path(require("MUISTAMO_KNOWLEDGE_EVIDENCE_KEY_FILE")))
+    if not db.key_registered(key.key_id):
+        sys.exit(
+            f"knowledge: evidence signing key {key.key_id} is not registered; run evidence keygen"
+        )
+    knowledge = Knowledge(db, key)
+    # Tenants are named, never discovered: row-level security deliberately stops the server role
+    # from listing other tenants, so the scheduler passes the tenants it sweeps.
+    failed = 0
+    for tenant in args.tenant:
+        try:
+            removed = knowledge.sweep_decay(tenant)
+        except Exception:
+            failed += 1
+            logging.exception("decay sweep failed", extra={"tenant": str(tenant)})
+            continue
+        print(json.dumps({"tenant": str(tenant), "removed": removed}, sort_keys=True))
+    if failed:
+        sys.exit(f"knowledge: decay sweep failed for {failed} tenant(s)")
 
 
 def run_migrate(_: argparse.Namespace) -> None:
@@ -120,6 +150,12 @@ def main() -> None:
     po.add_argument("tenant")
     po.add_argument("officers", nargs="+")
     po.set_defaults(fn=set_privacy_officers)
+    dc = sub.add_parser("decay", help="knowledge decay (FR-307)").add_subparsers(required=True)
+    sw = dc.add_parser("sweep", help="remove expired pack entries (server URL and signing key)")
+    sw.add_argument(
+        "--tenant", type=uuid.UUID, action="append", required=True, help="a tenant to sweep; repeat"
+    )
+    sw.set_defaults(fn=sweep_decay)
     ev = sub.add_parser("evidence", help="evidence signing keys").add_subparsers(required=True)
     kg = ev.add_parser("keygen", help="create and register a signing key (owner URL)")
     kg.add_argument("--out", required=True)

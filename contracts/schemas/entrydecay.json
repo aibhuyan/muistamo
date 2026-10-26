@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/entrydecay.json",
+  "title": "EntryDecay",
+  "description": "How recently a reviewer vouched for a pack entry (FR-307). current until dueAt; then due (still served, flagged and queued for the pack's reviewers) until expiresAt; then expired, which is never served and is removed by the next decay sweep. Mandatory packs never expire: their entries stay due and are flagged to privacy officers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status"],
+  "properties": {
+    "status": { "type": "string", "enum": ["current", "due", "expired"] },
+    "verifiedAt": { "description": "Absent only if no reviewer ever confirmed the entry, which is then treated as unconfirmed (expired, or due in a mandatory pack).", "type": "string", "format": "date-time" },
+    "verifiedBy": { "type": "string" },
+    "dueAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "description": "Absent for mandatory packs, which never expire.", "type": "string", "format": "date-time" }
+  }
+}

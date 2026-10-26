@@ -33,8 +33,8 @@ check-generated:
 	@tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
 	cp -r contracts/gen "$$tmp/before"; \
 	bash contracts/generate.sh; \
-	diff -r "$$tmp/before" contracts/gen >/dev/null || { \
-		diff -r "$$tmp/before" contracts/gen || true; \
+	diff -r -x __pycache__ "$$tmp/before" contracts/gen >/dev/null || { \
+		diff -r -x __pycache__ "$$tmp/before" contracts/gen || true; \
 		echo "contracts/gen is stale: run make generate and commit the result" >&2; exit 1; }
 
 lint: check-generated

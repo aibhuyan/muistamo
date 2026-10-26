@@ -313,14 +313,17 @@ class Sources:
             }
             if "pack" in item:
                 citation |= {"pack": item["pack"], "version": item["version"]}
-            hits.append(
-                {
-                    "title": entry["title"],
-                    "snippet": snippet,
-                    "score": float(score),
-                    "citation": citation,
-                }
-            )
+            hit = {
+                "title": entry["title"],
+                "snippet": snippet,
+                "score": float(score),
+                "citation": citation,
+            }
+            # Decay and provenance travel with the hit; they never change its rank (FR-307).
+            for extra in ("decay", "provenance"):
+                if extra in item:
+                    hit[extra] = item[extra]
+            hits.append(hit)
         return hits
 
     @staticmethod

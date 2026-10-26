@@ -32,6 +32,13 @@
       "description": "The entry comes from a mandatory pack, so no other layer can replace it.",
       "type": "boolean"
     },
+    "decay": {
+      "description": "Pack entries only: when a reviewer last vouched for it. Expired entries are never resolved.",
+      "$ref": "entrydecay.json"
+    },
+    "provenance": {
+      "$ref": "provenance.json"
+    },
     "overrides": {
       "description": "Entries with the same key that this mandatory entry overrides, for example the caller's own personal entry.",
       "type": "array",

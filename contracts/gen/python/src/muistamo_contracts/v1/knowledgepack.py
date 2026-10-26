@@ -26,6 +26,14 @@ class MergePolicy(BaseModel):
     requires: list[Require] | None = None
 
 
+class DecayPolicy(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    reviewEveryDays: Annotated[int | None, Field(ge=1, le=3650)] = 365
+    graceDays: Annotated[int | None, Field(ge=0, le=365)] = 30
+
+
 class KnowledgePackSpec(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -45,6 +53,13 @@ class KnowledgePackSpec(BaseModel):
         ),
     ] = None
     mergePolicy: Annotated[MergePolicy | None, Field(title="MergePolicy")] = None
+    decay: Annotated[
+        DecayPolicy | None,
+        Field(
+            description="How long a reviewer's confirmation of an entry lasts (FR-307). After reviewEveryDays the entry is due: still served, flagged and queued for the reviewers. After graceDays more it expires: never served, and removed from the pack by the next decay sweep. Mandatory packs never expire.",
+            title="DecayPolicy",
+        ),
+    ] = None
     storageLocation: Annotated[
         str | None, Field(description="Customer-bound object storage location for pack content.")
     ] = None

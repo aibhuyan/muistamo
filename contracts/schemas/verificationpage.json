@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/verificationpage.json",
+  "title": "VerificationPage",
+  "description": "Entries due or expired in packs the caller may confirm, soonest to expire first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": { "type": "array", "items": { "$ref": "entryverification.json" } }
+  }
+}

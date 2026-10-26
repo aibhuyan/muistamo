@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Annotated
-from . import knowledgeentry
+from . import entrydecay, knowledgeentry, provenance as provenance_1
 
 
 class Layer(StrEnum):
@@ -37,6 +37,13 @@ class ResolvedEntry(BaseModel):
             description="The entry comes from a mandatory pack, so no other layer can replace it."
         ),
     ] = None
+    decay: Annotated[
+        entrydecay.EntryDecay | None,
+        Field(
+            description="Pack entries only: when a reviewer last vouched for it. Expired entries are never resolved."
+        ),
+    ] = None
+    provenance: provenance_1.Provenance | None = None
     overrides: Annotated[
         list[ResolvedOverride] | None,
         Field(

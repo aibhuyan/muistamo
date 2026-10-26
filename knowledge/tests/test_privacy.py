@@ -97,6 +97,7 @@ def test_erasure_leaves_only_retained_evidence(world) -> None:
         "pack_version_entries",
         "packs",
         "reads",
+        "verifications",
         "evidence_events",
     ):
         assert before.get(table), f"seed left {table} without the person; the test proves nothing"
@@ -114,6 +115,7 @@ def test_erasure_leaves_only_retained_evidence(world) -> None:
         "proposals.contributor",
         "proposals.reviewer",
         "pack_version_entries.reviewer",
+        "verifications.verified_by",
         "packs",
     ):
         assert proof["counts"][key] >= 1, key

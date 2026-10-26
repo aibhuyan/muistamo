@@ -16,14 +16,14 @@ import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from psycopg import Cursor
 from psycopg.types.json import Jsonb
 
-from muistamo_knowledge import checks, evidence, skills
+from muistamo_knowledge import checks, decay, evidence, skills
 from muistamo_knowledge.connectors import ConnectorFactory
 from muistamo_knowledge.db import Database
 
@@ -66,8 +66,11 @@ class Knowledge:
         db: Database,
         signer: evidence.LocalKey,
         connectors: dict[str, ConnectorFactory] | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.db = db
+        # Decay is judged against this clock; tests move it instead of waiting.
+        self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
         self.signer = signer
         self.connectors = connectors or {}
         # Called after a new pack version commits, with (actor, pack, version). Delivery targets
@@ -199,12 +202,14 @@ class Knowledge:
     def _pack(self, cur: Cursor, name: str, lock: bool = False) -> dict[str, Any]:
         if lock:
             cur.execute(
-                "SELECT layer, mandatory, reviewers, requires_eval, latest_version FROM knowledge.packs WHERE name = %s FOR UPDATE",
+                "SELECT layer, mandatory, reviewers, requires_eval, latest_version, document -> 'spec' -> 'decay'"
+                " FROM knowledge.packs WHERE name = %s FOR UPDATE",
                 (name,),
             )
         else:
             cur.execute(
-                "SELECT layer, mandatory, reviewers, requires_eval, latest_version FROM knowledge.packs WHERE name = %s",
+                "SELECT layer, mandatory, reviewers, requires_eval, latest_version, document -> 'spec' -> 'decay'"
+                " FROM knowledge.packs WHERE name = %s",
                 (name,),
             )
         row = cur.fetchone()
@@ -216,6 +221,7 @@ class Knowledge:
             "reviewers": row[2],
             "requires_eval": row[3],
             "latest": row[4],
+            "decay": decay.policy(row[5]),
         }
 
     def list_versions(self, actor: Actor, name: str) -> list[dict[str, Any]]:
@@ -562,6 +568,12 @@ class Knowledge:
         for key, entry in proposed.items():
             lineage[key] = (entry["id"], proposal_id, actor.name)
         self._publish(cur, actor, pack, version, latest, f"merged proposal {proposal_id}", lineage)
+        # Approving is vouching: the reviewer verified each merged entry now (FR-307).
+        now = self.clock()
+        for entry in proposed.values():
+            decay.record(
+                cur, actor.tenant, pack, entry["id"], now, actor.name, f"merged {proposal_id}"
+            )
         return version
 
     def rollback(self, actor: Actor, pack: str, to_version: str, reason: str) -> dict[str, Any]:
@@ -575,6 +587,7 @@ class Knowledge:
             lineage = {
                 e["entry"]["key"]: (e["entry"]["id"], e["proposal"], e["reviewer"]) for e in target
             }
+            current = {e["entry"]["id"] for e in self._version_entries(cur, pack, info["latest"])}
             self._publish(
                 cur,
                 actor,
@@ -584,6 +597,20 @@ class Knowledge:
                 f"rollback to {to_version}: {reason}",
                 lineage,
             )
+            # Bringing an entry back is vouching for it, so a restored entry (an expired one,
+            # for example) starts a fresh decay clock. Entries already in the pack keep theirs.
+            now = self.clock()
+            for e in target:
+                if e["entry"]["id"] not in current:
+                    decay.record(
+                        cur,
+                        actor.tenant,
+                        pack,
+                        e["entry"]["id"],
+                        now,
+                        actor.name,
+                        f"restored by rollback to {to_version}",
+                    )
             result = self._version(cur, pack, version)
         self._published(actor, pack, version)
         return result
@@ -737,17 +764,33 @@ class Knowledge:
         # (FR-1708). Everything else keeps personal > team > role > company.
         candidates: list[tuple[int, int, str, dict[str, Any]]] = []
         for entry in self._personal(cur, actor):
-            candidates.append(
-                (1, LAYER_PRECEDENCE["personal"], "", {"entry": entry, "layer": "personal"})
-            )
+            # Personal entries are the person's own and nobody reviewed them: no decay (not in
+            # this slice), and provenance from their source alone.
+            item = {
+                "entry": entry,
+                "layer": "personal",
+                "provenance": decay.provenance(
+                    reviewed=False,
+                    has_source="source" in entry,
+                    reviewer_edited=False,
+                    status=None,
+                ),
+            }
+            candidates.append((1, LAYER_PRECEDENCE["personal"], "", item))
         for name in names:
             info = self._pack(cur, name)
-            for e in self._version_entries(cur, name, info["latest"]):
+            for e in self._decayed(cur, name, info):
+                if e["decay"]["status"] == "expired":
+                    # Fail closed (FR-307): nobody vouches for it any more, so no agent is told
+                    # it, whether or not the sweep has removed it from the pack yet.
+                    continue
                 item = {
                     "entry": e["entry"],
                     "layer": info["layer"],
                     "pack": name,
                     "version": info["latest"],
+                    "decay": e["decay"],
+                    "provenance": e["provenance"],
                 }
                 if info["mandatory"]:
                     item["mandatory"] = True
@@ -768,6 +811,170 @@ class Knowledge:
                     shadowed["pack"] = item["pack"]
                 winner.setdefault("overrides", []).append(shadowed)
         return names, [effective[k] for k in sorted(effective)]
+
+    # Decay (FR-307) -------------------------------------------------------------------------
+
+    def _decayed(self, cur: Cursor, pack: str, info: dict[str, Any]) -> list[dict[str, Any]]:
+        """The latest version's entries, each with its decay state and provenance."""
+        entries = self._version_entries(cur, pack, info["latest"])
+        ids = [e["entry"]["id"] for e in entries]
+        verified = decay.latest(cur, pack, ids)
+        edited = decay.edited(cur, [(e["entry"]["id"], e["proposal"]) for e in entries])
+        every, grace = info["decay"]
+        now = self.clock()
+        out = []
+        for e in entries:
+            at, by = verified.get(e["entry"]["id"], (None, None))
+            state = decay.state(at, by, every, grace, info["mandatory"], now)
+            out.append(
+                {
+                    **e,
+                    "decay": state,
+                    "provenance": decay.provenance(
+                        reviewed=True,
+                        has_source="source" in e["entry"],
+                        reviewer_edited=e["entry"]["id"] in edited,
+                        status=state["status"],
+                    ),
+                }
+            )
+        return out
+
+    def _may_confirm(self, cur: Cursor, actor: Actor, info: dict[str, Any]) -> bool:
+        if actor.name in info["reviewers"]:
+            return True
+        # Mandatory packs answer to compliance as well as to their reviewers (FR-1708).
+        if info["mandatory"]:
+            from muistamo_knowledge.privacy import is_officer
+
+            return is_officer(cur, actor.name)
+        return False
+
+    def _verification(self, pack: str, info: dict[str, Any], e: dict[str, Any]) -> dict[str, Any]:
+        out = {
+            "pack": pack,
+            "version": info["latest"],
+            "entry": e["entry"],
+            "decay": e["decay"],
+            "provenance": e["provenance"],
+        }
+        if info["mandatory"]:
+            out["mandatory"] = True
+        return out
+
+    def verify_entry(self, actor: Actor, pack: str, key: str, reason: str) -> dict[str, Any]:
+        """A reviewer confirms an entry is still right, restarting its decay clock."""
+        with self.db.in_tenant(actor.tenant) as cur:
+            info = self._pack(cur, pack, lock=True)
+            if not self._may_confirm(cur, actor, info):
+                raise Forbidden("only the pack's reviewers can confirm its entries")
+            current = {e["entry"]["key"]: e for e in self._decayed(cur, pack, info)}
+            if key not in current:
+                raise NotFound(f"entry {key!r} in pack {pack!r}")
+            entry = current[key]["entry"]
+            # Vouching for one's own knowledge is no check at all, as with approving it.
+            if entry["contributor"] == actor.name:
+                raise Forbidden("nobody can confirm their own entry")
+            before = current[key]["decay"]
+            now = self.clock()
+            decay.record(cur, actor.tenant, pack, entry["id"], now, actor.name, reason)
+            self._evidence(
+                cur,
+                actor,
+                "knowledge.entry.verified",
+                "KnowledgePack",
+                pack,
+                before={"status": before["status"], "verifiedAt": _iso(before.get("verifiedAt"))},
+                after={
+                    "key": key,
+                    "entryId": str(entry["id"]),
+                    "version": info["latest"],
+                    "reason": reason,
+                    "verifiedAt": _iso(now),
+                },
+            )
+            renewed = {e["entry"]["key"]: e for e in self._decayed(cur, pack, info)}[key]
+            return self._verification(pack, info, renewed)
+
+    def verification_queue(self, actor: Actor) -> list[dict[str, Any]]:
+        """Entries due or expired (not yet swept) in packs the caller may confirm."""
+        with self.db.in_tenant(actor.tenant) as cur:
+            cur.execute("SELECT name FROM knowledge.packs ORDER BY name")
+            out = []
+            for (name,) in cur.fetchall():
+                info = self._pack(cur, name)
+                if not self._may_confirm(cur, actor, info):
+                    continue
+                for e in self._decayed(cur, name, info):
+                    if e["decay"]["status"] != "current":
+                        out.append(self._verification(name, info, e))
+        far = datetime.max.replace(tzinfo=UTC)
+        out.sort(
+            key=lambda v: (
+                v["decay"].get("expiresAt", far),
+                v["decay"].get("dueAt", far),
+                v["pack"],
+                v["entry"]["key"],
+            )
+        )
+        return out
+
+    def sweep_decay(self, tenant: UUID) -> dict[str, list[str]]:
+        """Remove expired entries from every pack but mandatory ones, as new pack versions.
+
+        Expired entries are already withheld from agents; this makes the removal permanent and
+        visible in the pack's history. Restoring is a rollback or a new proposal. Safe to run
+        repeatedly and concurrently: each pack is locked, and nothing expired means no version.
+        """
+        actor = Actor(tenant=tenant, name=decay.SWEEP_ACTOR, request_id=f"decay-{uuid.uuid4()}")
+        with self.db.in_tenant(tenant) as cur:
+            cur.execute("SELECT name FROM knowledge.packs WHERE NOT mandatory ORDER BY name")
+            names = [r[0] for r in cur.fetchall()]
+        removed: dict[str, list[str]] = {}
+        for name in names:
+            with self.db.in_tenant(tenant) as cur:
+                info = self._pack(cur, name, lock=True)
+                if info["mandatory"]:
+                    continue
+                entries = self._decayed(cur, name, info)
+                expired = [e for e in entries if e["decay"]["status"] == "expired"]
+                if not expired:
+                    continue
+                version = bump_minor(info["latest"])
+                for e in expired:
+                    self._evidence(
+                        cur,
+                        actor,
+                        "knowledge.entry.expired",
+                        "KnowledgePack",
+                        name,
+                        before={
+                            "key": e["entry"]["key"],
+                            "entryId": str(e["entry"]["id"]),
+                            "version": info["latest"],
+                            "verifiedAt": _iso(e["decay"].get("verifiedAt")),
+                            "expiresAt": _iso(e["decay"].get("expiresAt")),
+                        },
+                        after={"removedIn": version},
+                    )
+                keys = sorted(e["entry"]["key"] for e in expired)
+                lineage = {
+                    e["entry"]["key"]: (e["entry"]["id"], e["proposal"], e["reviewer"])
+                    for e in entries
+                    if e["decay"]["status"] != "expired"
+                }
+                self._publish(
+                    cur,
+                    actor,
+                    name,
+                    version,
+                    info["latest"],
+                    f"decay: expired unconfirmed ({', '.join(keys)})",
+                    lineage,
+                )
+            removed[name] = keys
+            self._published(actor, name, version)
+        return removed
 
     # Evidence -------------------------------------------------------------------------------
 
@@ -816,6 +1023,11 @@ _ENTRY_SELECT = (  # constant column list, no caller input
     + ", ".join("e." + c for c in _ENTRY_COLUMNS.split(", "))
     + " FROM knowledge.entries e"
 )
+
+
+def _iso(value: datetime | None) -> str | None:
+    """Timestamps in evidence payloads as RFC 3339, not str()'s space-separated form."""
+    return None if value is None else value.isoformat()
 
 
 def _entry(row: tuple) -> dict[str, Any]:
