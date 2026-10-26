@@ -573,7 +573,7 @@ export interface components {
         };
         /**
          * ActionPolicy
-         * @description The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template.
+         * @description The actions agents of one template may take with their tools (PRD section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it, so rule order does not matter. Release 1 effects are allow, deny and monitor; requireApproval is release 2. At most one ActionPolicy applies to a template. A clone keeps its template's policy; a policy for a clone may only add deny and monitor rules, never allow, default or mode, so it can restrict a clone but never widen it.
          */
         ActionPolicy: {
             /** @constant */
@@ -583,9 +583,13 @@ export interface components {
             metadata: components["schemas"]["ObjectMeta"];
             /** ActionPolicySpec */
             spec: {
-                /** ActionPolicyTarget */
+                /**
+                 * ActionPolicyTarget
+                 * @description A template (covering its clones) or one clone. A clone also keeps its template's policy; its own may only narrow it.
+                 */
                 appliesTo: {
-                    template: string;
+                    template?: string;
+                    clone?: string;
                 };
                 /**
                  * @description What happens to actions no rule allows: deny (the default) or allow. allow still yields to every deny rule.
@@ -633,6 +637,73 @@ export interface components {
             document: components["schemas"]["ActionPolicy"];
         };
         /**
+         * AgentClone
+         * @description A variant of a template with its own instances (PRD section 5, FR-103). The overlay can add knowledge packs and set its own budget and HR assignment; nothing else of the template can change. Because the overlay changes who gets an agent and with what knowledge, only catalogue approvers create, change or sync clones, and a clone cannot take a template's name.
+         */
+        AgentClone: {
+            /** @constant */
+            apiVersion: "muistamo.dev/v1";
+            /** @constant */
+            kind: "AgentClone";
+            metadata: components["schemas"]["ObjectMeta"];
+            /** AgentCloneSpec */
+            spec: {
+                /** @description The source template's name. */
+                template: string;
+                /**
+                 * @description follow: always the template's catalogue-published version. pin: the version below. manual: stays on its version and reports a newer published one until synced.
+                 * @enum {string}
+                 */
+                sync: "follow" | "pin" | "manual";
+                /** @description pin only: the template version to use. */
+                version?: number;
+                /** AgentCloneOverlay */
+                overlay?: {
+                    /** @description Packs added to the template's. For a pack the template already uses, this version constraint wins. */
+                    knowledgePacks?: components["schemas"]["KnowledgePackRef"][];
+                    /** AgentCloneBudget */
+                    budget?: {
+                        perInstanceMonthlyEUR?: number;
+                    };
+                    /**
+                     * AgentCloneAssignment
+                     * @description Joiners whose job code is listed get this clone instead of the plain template.
+                     */
+                    assignment?: {
+                        hrJobCodes?: string[];
+                    };
+                };
+            };
+        };
+        /**
+         * AgentClonePage
+         * @description Clones, by name.
+         */
+        AgentClonePage: {
+            items: components["schemas"]["AgentCloneRecord"][];
+        };
+        /**
+         * AgentCloneRecord
+         * @description A clone and how it currently resolves. Revision increments on every change to the document or the synced version.
+         */
+        AgentCloneRecord: {
+            revision: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            updatedBy: string;
+            document: components["schemas"]["AgentClone"];
+            /** @description The template version the clone uses now; absent when it cannot resolve. */
+            resolvedVersion?: number;
+            /** @description The template's published version, when it differs from resolvedVersion. */
+            upstreamVersion?: number;
+            /** @description Whether joiners can get this clone: its resolved version is the published one. */
+            assignable: boolean;
+            /** @description Why the clone is not assignable, or is behind upstream. */
+            reason?: string;
+        };
+        /**
          * AgentInstance
          * @description An agent bound to a user, team or service, with its own identity (PRD section 5). Usually generated.
          */
@@ -650,6 +721,8 @@ export interface components {
                     /** @description Template version number assigned by the server, for example "3". */
                     version: string;
                 };
+                /** @description Set when the instance belongs to a clone of templateRef's template. Its effective spec then comes through the clone. */
+                cloneRef?: string;
                 /** InstanceBinding */
                 binding: {
                     /** @enum {string} */
@@ -720,10 +793,11 @@ export interface components {
         };
         /**
          * AgentLinkEndpoint
-         * @description One end of an AgentLink. Release 1 selects agents by template; clones, instances and labels come later.
+         * @description One end of an AgentLink: a template (covering its clones too) or one clone. Instances, labels and external agents come later.
          */
         AgentLinkEndpoint: {
-            template: string;
+            template?: string;
+            clone?: string;
         };
         /**
          * AgentLinkPage
@@ -755,31 +829,7 @@ export interface components {
             /** @constant */
             kind: "AgentTemplate";
             metadata: components["schemas"]["ObjectMeta"];
-            /** AgentTemplateSpec */
-            spec: {
-                purpose: string;
-                /** @enum {string} */
-                riskTier?: "low" | "medium" | "high";
-                /** @description Name of a ModelAlias, never a concrete provider model. */
-                modelAlias: string;
-                knowledgePacks?: {
-                    name: string;
-                    /** @description Version constraint, for example 3.x to follow minor updates. */
-                    version?: string;
-                }[];
-                tools?: string[];
-                dataClasses?: string[];
-                autonomy?: string;
-                /** AgentTemplateAssignment */
-                assignment?: {
-                    hrJobCodes?: string[];
-                };
-                /** AgentTemplateBudget */
-                budget?: {
-                    perInstanceMonthlyEUR?: number;
-                };
-                evaluationSet?: string;
-            };
+            spec: components["schemas"]["AgentTemplateSpec"];
         };
         /**
          * AgentTemplatePage
@@ -800,6 +850,30 @@ export interface components {
             createdAt: string;
             createdBy: string;
             document: components["schemas"]["AgentTemplate"];
+        };
+        /**
+         * AgentTemplateSpec
+         * @description What an agent template defines (PRD section 5).
+         */
+        AgentTemplateSpec: {
+            purpose: string;
+            /** @enum {string} */
+            riskTier?: "low" | "medium" | "high";
+            /** @description Name of a ModelAlias, never a concrete provider model. */
+            modelAlias: string;
+            knowledgePacks?: components["schemas"]["KnowledgePackRef"][];
+            tools?: string[];
+            dataClasses?: string[];
+            autonomy?: string;
+            /** AgentTemplateAssignment */
+            assignment?: {
+                hrJobCodes?: string[];
+            };
+            /** AgentTemplateBudget */
+            budget?: {
+                perInstanceMonthlyEUR?: number;
+            };
+            evaluationSet?: string;
         };
         /**
          * CatalogueApproval
@@ -910,6 +984,17 @@ export interface components {
             /** @description Cedar policy text, ordered by policy id. */
             cedar: string;
             rules: components["schemas"]["PolicyRuleRef"][];
+        };
+        /**
+         * EffectiveAgentSpec
+         * @description What an instance actually runs with: its template version's spec, with its clone's overlay applied if it belongs to a clone.
+         */
+        EffectiveAgentSpec: {
+            instance: string;
+            template: string;
+            version: number;
+            clone?: string;
+            spec: components["schemas"]["AgentTemplateSpec"];
         };
         /**
          * ErasureProof
@@ -1103,7 +1188,7 @@ export interface components {
                  * @enum {string}
                  */
                 layer: "company" | "role" | "team";
-                /** @description Users and agents cannot switch a mandatory pack off. */
+                /** @description Company packs only. Users and agents cannot switch a mandatory pack off or shadow its entries: for its keys it wins over every other layer. Only privacy officers can set or clear it, or change a mandatory pack in any other way. */
                 mandatory?: boolean;
                 /** @description People (actor names) who may approve or reject proposals and roll back versions. */
                 reviewers?: string[];
@@ -1133,6 +1218,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /**
+         * KnowledgePackRef
+         * @description A knowledge pack an agent uses, optionally constrained to a version range.
+         */
+        KnowledgePackRef: {
+            name: string;
+            /** @description Version constraint, for example 3.x to follow minor updates. */
+            version?: string;
         };
         /**
          * KnowledgeRead
@@ -1300,6 +1394,115 @@ export interface components {
             items: components["schemas"]["LeaverReview"][];
         };
         /**
+         * ModelAlias
+         * @description A name templates use for a model, for example reasoning-default (PRD section 5, FR-602). It can target only an approved catalogue model, and changing its target is a rollout, never an edit.
+         */
+        ModelAlias: {
+            /** @constant */
+            apiVersion: "muistamo.dev/v1";
+            /** @constant */
+            kind: "ModelAlias";
+            metadata: components["schemas"]["ObjectMeta"];
+            /** ModelAliasSpec */
+            spec: {
+                /** @description The catalogue model's name. Set on create; change it with a rollout. */
+                target: string;
+                description?: string;
+            };
+        };
+        /** ModelAliasPage */
+        ModelAliasPage: {
+            items: components["schemas"]["ModelAliasRecord"][];
+        };
+        /** ModelAliasRecord */
+        ModelAliasRecord: {
+            revision: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            updatedBy: string;
+            document: components["schemas"]["ModelAlias"];
+            /** @description The target exists and is approved: templates using the alias can be published and assigned. */
+            compliant: boolean;
+            reason?: string;
+        };
+        /**
+         * ModelApproval
+         * @description Where a catalogue model's approval stands. A change to the model's document resets it to pending.
+         */
+        ModelApproval: {
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected" | "revoked";
+            decidedBy?: string;
+            reason?: string;
+            /** Format: date-time */
+            decidedAt?: string;
+        };
+        /**
+         * ModelApprovalDecision
+         * @description A privacy officer's decision on a catalogue model; never the person who last changed it.
+         */
+        ModelApprovalDecision: {
+            /** @enum {string} */
+            decision: "approve" | "reject" | "revoke";
+            reason: string;
+        };
+        /**
+         * ModelCatalogueItem
+         * @description A provider model the company may use (PRD section 5, FR-601). Aliases can target it only once a privacy officer approves it, and any change to it needs approval again.
+         */
+        ModelCatalogueItem: {
+            /** @constant */
+            apiVersion: "muistamo.dev/v1";
+            /** @constant */
+            kind: "ModelCatalogueItem";
+            metadata: components["schemas"]["ObjectMeta"];
+            /** ModelCatalogueItemSpec */
+            spec: {
+                /** @description For example anthropic, google, openai, mistral. */
+                provider: string;
+                /** @description The provider's model id. */
+                model: string;
+                version?: string;
+                /** @description Where the provider processes requests, for example eu-west-1. */
+                region: string;
+                /** @description Reference to the reviewed provider terms. */
+                termsRef: string;
+                /** @description Reference to the data processing agreement (GDPR Art 28). */
+                dpaRef?: string;
+                subProcessors?: string[];
+                /** @description The provider's status under the EU AI Act, for example gpai-provider. */
+                aiActProviderStatus?: string;
+                /**
+                 * ModelPriceSheet
+                 * @description Provider list prices, passed through at cost (invariant 7).
+                 */
+                priceSheet: {
+                    /** @constant */
+                    currency: "EUR";
+                    inputPerMTok: number;
+                    outputPerMTok: number;
+                    cachedInputPerMTok?: number;
+                };
+            };
+        };
+        /** ModelCatalogueItemPage */
+        ModelCatalogueItemPage: {
+            items: components["schemas"]["ModelCatalogueItemRecord"][];
+        };
+        /** ModelCatalogueItemRecord */
+        ModelCatalogueItemRecord: {
+            revision: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            updatedBy: string;
+            document: components["schemas"]["ModelCatalogueItem"];
+            approval: components["schemas"]["ModelApproval"];
+        };
+        /**
          * ObjectMeta
          * @description Metadata shared by every Muistamo YAML kind.
          */
@@ -1387,8 +1590,12 @@ export interface components {
             kind: "call" | "action";
             /** @description call: the calling template. */
             from?: string;
+            /** @description call: the caller's clone, if it is one; it must be a clone of from. */
+            fromClone?: string;
             /** @description call: the called template. */
             to?: string;
+            /** @description call: the callee's clone, if it is one; it must be a clone of to. */
+            toClone?: string;
             /** @description call: the skill of the called agent being used. */
             skill?: string;
             /** @description call: every data class the call carries (none if omitted). */
@@ -1402,6 +1609,8 @@ export interface components {
             actFor?: "same-user" | "service";
             /** @description action: the template taking the action. */
             agent?: string;
+            /** @description action: the agent's clone, if it is one; it must be a clone of agent. */
+            agentClone?: string;
             /** @description action: the tool action, for example email.send. */
             action?: string;
             /** @description action: facts about the request that rules can test, for example recipients.allInternal. */
@@ -1424,6 +1633,8 @@ export interface components {
             rule?: number;
             /** @enum {string} */
             effect: "allow" | "deny" | "monitor";
+            /** @description Whom the rule names: template:<name> (covering its clones) or clone:<name>. */
+            target?: string;
         };
         /**
          * PolicySimulation
@@ -1539,6 +1750,14 @@ export interface components {
             layer: "personal" | "team" | "role" | "company";
             pack?: string;
             version?: string;
+            /** @description The entry comes from a mandatory pack, so no other layer can replace it. */
+            mandatory?: boolean;
+            /** @description Entries with the same key that this mandatory entry overrides, for example the caller's own personal entry. */
+            overrides?: {
+                /** @enum {string} */
+                layer: "personal" | "team" | "role" | "company";
+                pack?: string;
+            }[];
         };
         /**
          * ResolvedEntryPage
@@ -1575,6 +1794,62 @@ export interface components {
         RollbackInput: {
             toVersion: string;
             reason: string;
+        };
+        /** RollbackRequest */
+        RollbackRequest: {
+            reason: string;
+        };
+        /**
+         * Rollout
+         * @description One model switch of an alias (PRD section 5): its audit record.
+         */
+        Rollout: {
+            /** Format: uuid */
+            id: string;
+            alias: string;
+            from: string;
+            to: string;
+            /**
+             * @description immediate in release 1; canary is release 2 (FR-604).
+             * @enum {string}
+             */
+            strategy: "immediate";
+            /** RolloutEvaluation */
+            evaluation: {
+                /** @enum {string} */
+                status: "not-run";
+                reason: string;
+            };
+            /** @enum {string} */
+            status: "completed" | "rolled-back";
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            reason: string;
+            rolledBackBy?: string;
+            /** Format: date-time */
+            rolledBackAt?: string;
+            rollbackReason?: string;
+        };
+        /**
+         * RolloutPage
+         * @description Rollouts, newest first.
+         */
+        RolloutPage: {
+            items: components["schemas"]["Rollout"][];
+        };
+        /**
+         * RolloutRequest
+         * @description Switch an alias to another approved model. The evaluation gate (FR-603) needs the gateway, which does not exist yet, so the switch is unevaluated and must be acknowledged as such.
+         */
+        RolloutRequest: {
+            to: string;
+            reason: string;
+            /**
+             * @description Must be true: the switch is made without an evaluation report.
+             * @constant
+             */
+            acknowledgeUnevaluated: true;
         };
         /**
          * SyncResult
