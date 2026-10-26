@@ -15,10 +15,21 @@ export const SESSION_COOKIE = "muistamo_dev_session";
 export type Session = { tenant: string; person: string };
 
 const TENANT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const PERSON = /^[^\s@<>"]+@[^\s@<>"]+$/;
+// Printable ASCII only: the person travels in an HTTP header, which cannot carry anything else.
+const PERSON = /^[!#-;=?A-~]+@[!#-;=?A-~]+$/;
+
+let warned = false;
 
 export function devLoginEnabled(): boolean {
-  return process.env.MUISTAMO_CONSOLE_INSECURE_DEV_LOGIN === "true";
+  const enabled = process.env.MUISTAMO_CONSOLE_INSECURE_DEV_LOGIN === "true";
+  if (enabled && !warned) {
+    warned = true;
+    // The services warn when they trust development headers; so does the console.
+    console.warn(
+      JSON.stringify({ level: "WARN", msg: "INSECURE: development sign-in is enabled; anyone can claim any tenant and person" }),
+    );
+  }
+  return enabled;
 }
 
 // Strict: anything but exactly {tenant, person} in the expected shapes is no session.

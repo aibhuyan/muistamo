@@ -28,6 +28,7 @@ describe("parseSession", () => {
     ["a non-UUID tenant", JSON.stringify({ tenant: "acme", person: "r@example.invalid" })],
     ["a person without @", JSON.stringify({ tenant: TENANT, person: "root" })],
     ["a person with spaces", JSON.stringify({ tenant: TENANT, person: "a b@example.invalid" })],
+    ["a person that cannot travel in a header", JSON.stringify({ tenant: TENANT, person: "名@example.invalid" })],
     ["a non-string person", JSON.stringify({ tenant: TENANT, person: 7 })],
     ["an extra key", JSON.stringify({ tenant: TENANT, person: "r@example.invalid", admin: true })],
     ["a missing key", JSON.stringify({ tenant: TENANT })],

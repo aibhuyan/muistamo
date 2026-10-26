@@ -23,7 +23,30 @@ test("calls the service as the session's person, and only that", async () => {
     headers: { "X-Muistamo-Tenant": TENANT, "X-Muistamo-Actor": "r@example.invalid", Accept: "application/json" },
     body: undefined,
     cache: "no-store",
+    redirect: "manual",
   });
+});
+
+test("a redirect is not followed, so identity headers never reach another origin", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 302, statusText: "Found", headers: { location: "http://elsewhere.test/" } })));
+
+  expect(await api.leaverReviews(session)).toEqual({ ok: false, problem: { title: "Found", status: 302 } });
+});
+
+test("a failed call is logged with its cause and who made it", async () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    }),
+  );
+
+  await api.leaverReviews(session);
+  const logged = JSON.parse(error.mock.calls[0][0] as string);
+  expect(logged).toMatchObject({ level: "ERROR", service: "knowledge", tenant: TENANT, person: "r@example.invalid" });
+  expect(logged.error).toContain("fetch failed");
+  error.mockRestore();
 });
 
 test("sends a decision body to the control plane", async () => {

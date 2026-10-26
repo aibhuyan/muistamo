@@ -49,8 +49,22 @@ async function call<T>(
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
+      // Never follow a redirect: it would carry the person's identity headers to another origin.
+      redirect: "manual",
     });
-  } catch {
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "ERROR",
+        msg: "service call failed",
+        service,
+        method,
+        path,
+        tenant: session.tenant,
+        person: session.person,
+        error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      }),
+    );
     return { ok: false, problem: { title: `The ${service} service is unreachable`, status: 503 } };
   }
   if (response.ok) return { ok: true, data: (await response.json()) as T };

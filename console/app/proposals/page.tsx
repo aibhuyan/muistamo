@@ -32,7 +32,7 @@ export default async function ProposalsPage() {
             {items.map((p) => (
               <tr key={p.id}>
                 <td>
-                  <Link href={`/proposals/${p.id}`}>{p.summary}</Link>
+                  <Link href={`/proposals/${encodeURIComponent(p.id)}`}>{p.summary}</Link>
                 </td>
                 <td>{p.pack}</td>
                 <td>
