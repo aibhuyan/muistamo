@@ -42,6 +42,7 @@ PERSONAL_DATA_TABLES = (
     "privacy_officers",
     "erasure_requests",
     "leaver_reviews",
+    "verifications",
     "evidence_events",
 )
 

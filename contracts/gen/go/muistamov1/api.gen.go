@@ -471,6 +471,27 @@ func (e CitationType) Valid() bool {
 	}
 }
 
+// Defines values for EntryDecayStatus.
+const (
+	EntryDecayStatusCurrent EntryDecayStatus = "current"
+	EntryDecayStatusDue     EntryDecayStatus = "due"
+	EntryDecayStatusExpired EntryDecayStatus = "expired"
+)
+
+// Valid indicates whether the value is a known member of the EntryDecayStatus enum.
+func (e EntryDecayStatus) Valid() bool {
+	switch e {
+	case EntryDecayStatusCurrent:
+		return true
+	case EntryDecayStatusDue:
+		return true
+	case EntryDecayStatusExpired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErasureProofService.
 const (
 	ErasureProofServiceControlPlane ErasureProofService = "control-plane"
@@ -1215,6 +1236,30 @@ func (e ProposalDecisionRecordDecision) Valid() bool {
 	}
 }
 
+// Defines values for ProvenanceFactorsFactor.
+const (
+	ProvenanceFactorsFactorFreshness      ProvenanceFactorsFactor = "freshness"
+	ProvenanceFactorsFactorReviewed       ProvenanceFactorsFactor = "reviewed"
+	ProvenanceFactorsFactorReviewerEdited ProvenanceFactorsFactor = "reviewer-edited"
+	ProvenanceFactorsFactorSource         ProvenanceFactorsFactor = "source"
+)
+
+// Valid indicates whether the value is a known member of the ProvenanceFactorsFactor enum.
+func (e ProvenanceFactorsFactor) Valid() bool {
+	switch e {
+	case ProvenanceFactorsFactorFreshness:
+		return true
+	case ProvenanceFactorsFactorReviewed:
+		return true
+	case ProvenanceFactorsFactorReviewerEdited:
+		return true
+	case ProvenanceFactorsFactorSource:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ResolvedEntryLayer.
 const (
 	ResolvedEntryLayerCompany  ResolvedEntryLayer = "company"
@@ -1794,6 +1839,37 @@ type EffectiveAgentSpec struct {
 	Version  int               `json:"version"`
 }
 
+// EntryDecay How recently a reviewer vouched for a pack entry (FR-307). current until dueAt; then due (still served, flagged and queued for the pack's reviewers) until expiresAt; then expired, which is never served and is removed by the next decay sweep. Mandatory packs never expire: their entries stay due and are flagged to privacy officers.
+type EntryDecay struct {
+	DueAt *time.Time `json:"dueAt,omitempty"`
+
+	// ExpiresAt Absent for mandatory packs, which never expire.
+	ExpiresAt *time.Time       `json:"expiresAt,omitempty"`
+	Status    EntryDecayStatus `json:"status"`
+
+	// VerifiedAt Absent only if no reviewer ever confirmed the entry, which is then treated as unconfirmed (expired, or due in a mandatory pack).
+	VerifiedAt *time.Time `json:"verifiedAt,omitempty"`
+	VerifiedBy *string    `json:"verifiedBy,omitempty"`
+}
+
+// EntryDecayStatus defines model for EntryDecay.Status.
+type EntryDecayStatus string
+
+// EntryVerification A pack entry and its decay state: an item in a reviewer's re-verification queue, or the result of confirming an entry.
+type EntryVerification struct {
+	// Decay How recently a reviewer vouched for a pack entry (FR-307). current until dueAt; then due (still served, flagged and queued for the pack's reviewers) until expiresAt; then expired, which is never served and is removed by the next decay sweep. Mandatory packs never expire: their entries stay due and are flagged to privacy officers.
+	Decay EntryDecay `json:"decay"`
+
+	// Entry An immutable entry revision.
+	Entry     KnowledgeEntry `json:"entry"`
+	Mandatory *bool          `json:"mandatory,omitempty"`
+	Pack      string         `json:"pack"`
+
+	// Provenance How much to trust an entry, as a 0-100 score and the factors that make it up (FR-307). Informational: it does not change ranking. reviewed +40 (merged through a reviewed proposal), source +20 (names where it comes from), reviewer-edited +10 (the reviewer corrected it at merge), freshness +30 current, +10 due, 0 expired.
+	Provenance Provenance `json:"provenance"`
+	Version    string     `json:"version"`
+}
+
 // ErasureProof What one service erased for a request, and what it kept and why. It holds no identifier of the person: subjectDigest lets someone who already knows the identifiers confirm which person it was.
 type ErasureProof struct {
 	CompletedAt time.Time `json:"completedAt"`
@@ -1968,6 +2044,12 @@ type KnowledgePack struct {
 	// Metadata Metadata shared by every Muistamo YAML kind.
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     struct {
+		// Decay How long a reviewer's confirmation of an entry lasts (FR-307). After reviewEveryDays the entry is due: still served, flagged and queued for the reviewers. After graceDays more it expires: never served, and removed from the pack by the next decay sweep. Mandatory packs never expire.
+		Decay *struct {
+			GraceDays       *int `json:"graceDays,omitempty"`
+			ReviewEveryDays *int `json:"reviewEveryDays,omitempty"`
+		} `json:"decay,omitempty"`
+
 		// Layer Personal layers are per person and are not packs.
 		Layer KnowledgePackSpecLayer `json:"layer"`
 
@@ -2559,8 +2641,23 @@ type ProposalPage struct {
 	Items []Proposal `json:"items"`
 }
 
+// Provenance How much to trust an entry, as a 0-100 score and the factors that make it up (FR-307). Informational: it does not change ranking. reviewed +40 (merged through a reviewed proposal), source +20 (names where it comes from), reviewer-edited +10 (the reviewer corrected it at merge), freshness +30 current, +10 due, 0 expired.
+type Provenance struct {
+	Factors []struct {
+		Factor ProvenanceFactorsFactor `json:"factor"`
+		Points int                     `json:"points"`
+	} `json:"factors"`
+	Score int `json:"score"`
+}
+
+// ProvenanceFactorsFactor defines model for Provenance.Factors.Factor.
+type ProvenanceFactorsFactor string
+
 // ResolvedEntry An effective entry for the caller, and where it came from.
 type ResolvedEntry struct {
+	// Decay Pack entries only: when a reviewer last vouched for it. Expired entries are never resolved.
+	Decay *EntryDecay `json:"decay,omitempty"`
+
 	// Entry An immutable entry revision.
 	Entry KnowledgeEntry     `json:"entry"`
 	Layer ResolvedEntryLayer `json:"layer"`
@@ -2573,8 +2670,11 @@ type ResolvedEntry struct {
 		Layer ResolvedEntryOverridesLayer `json:"layer"`
 		Pack  *string                     `json:"pack,omitempty"`
 	} `json:"overrides,omitempty"`
-	Pack    *string `json:"pack,omitempty"`
-	Version *string `json:"version,omitempty"`
+	Pack *string `json:"pack,omitempty"`
+
+	// Provenance How much to trust an entry, as a 0-100 score and the factors that make it up (FR-307). Informational: it does not change ranking. reviewed +40 (merged through a reviewed proposal), source +20 (names where it comes from), reviewer-edited +10 (the reviewer corrected it at merge), freshness +30 current, +10 due, 0 expired.
+	Provenance *Provenance `json:"provenance,omitempty"`
+	Version    *string     `json:"version,omitempty"`
 }
 
 // ResolvedEntryLayer defines model for ResolvedEntry.Layer.
@@ -2602,9 +2702,15 @@ type RetrievalResult struct {
 	Items []struct {
 		// Citation Where a retrieval result came from.
 		Citation Citation `json:"citation"`
-		Score    float32  `json:"score"`
-		Snippet  string   `json:"snippet"`
-		Title    string   `json:"title"`
+
+		// Decay Pack entries only.
+		Decay *EntryDecay `json:"decay,omitempty"`
+
+		// Provenance Knowledge entries only; documents carry their source's own metadata.
+		Provenance *Provenance `json:"provenance,omitempty"`
+		Score      float32     `json:"score"`
+		Snippet    string      `json:"snippet"`
+		Title      string      `json:"title"`
 	} `json:"items"`
 	Query string `json:"query"`
 }
@@ -2673,6 +2779,18 @@ type SyncResult struct {
 	Removed int    `json:"removed"`
 	Source  string `json:"source"`
 	Total   int    `json:"total"`
+}
+
+// VerificationInput A reviewer confirms the immutable entry revision they inspected, restarting its decay clock. A replaced revision is refused with 409.
+type VerificationInput struct {
+	// EntryId The immutable entry ID shown to the reviewer; never silently confirm a replacement with the same key.
+	EntryId openapi_types.UUID `json:"entryId"`
+	Reason  string             `json:"reason"`
+}
+
+// VerificationPage Entries due or expired in packs the caller may confirm, soonest to expire first.
+type VerificationPage struct {
+	Items []EntryVerification `json:"items"`
 }
 
 // Cursor defines model for Cursor.

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/verificationinput.json",
+  "title": "VerificationInput",
+  "description": "A reviewer confirms the immutable entry revision they inspected, restarting its decay clock. A replaced revision is refused with 409.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "entryId",
+    "reason"
+  ],
+  "properties": {
+    "entryId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The immutable entry ID shown to the reviewer; never silently confirm a replacement with the same key."
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    }
+  }
+}

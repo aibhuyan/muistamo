@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/provenance.json",
+  "title": "Provenance",
+  "description": "How much to trust an entry, as a 0-100 score and the factors that make it up (FR-307). Informational: it does not change ranking. reviewed +40 (merged through a reviewed proposal), source +20 (names where it comes from), reviewer-edited +10 (the reviewer corrected it at merge), freshness +30 current, +10 due, 0 expired.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["score", "factors"],
+  "properties": {
+    "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "factors": {
+      "type": "array",
+      "items": {
+        "title": "ProvenanceFactor",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["factor", "points"],
+        "properties": {
+          "factor": { "type": "string", "enum": ["reviewed", "source", "reviewer-edited", "freshness"] },
+          "points": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

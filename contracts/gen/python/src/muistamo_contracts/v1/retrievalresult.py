@@ -2,9 +2,9 @@
 #   filename:  retrievalresult.json
 
 from __future__ import annotations
-from pydantic import BaseModel, ConfigDict, Field
-from . import citation as citation_1
 from typing import Annotated
+from pydantic import BaseModel, ConfigDict, Field
+from . import citation as citation_1, entrydecay, provenance as provenance_1
 
 
 class RetrievalItem(BaseModel):
@@ -15,6 +15,11 @@ class RetrievalItem(BaseModel):
     snippet: str
     score: float
     citation: citation_1.Citation
+    decay: Annotated[entrydecay.EntryDecay | None, Field(description="Pack entries only.")] = None
+    provenance: Annotated[
+        provenance_1.Provenance | None,
+        Field(description="Knowledge entries only; documents carry their source's own metadata."),
+    ] = None
 
 
 class RetrievalCoverage(BaseModel):

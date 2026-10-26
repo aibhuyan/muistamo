@@ -69,6 +69,16 @@
             }
           }
         },
+        "decay": {
+          "title": "DecayPolicy",
+          "description": "How long a reviewer's confirmation of an entry lasts (FR-307). After reviewEveryDays the entry is due: still served, flagged and queued for the reviewers. After graceDays more it expires: never served, and removed from the pack by the next decay sweep. Mandatory packs never expire.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reviewEveryDays": { "type": "integer", "minimum": 1, "maximum": 3650, "default": 365 },
+            "graceDays": { "type": "integer", "minimum": 0, "maximum": 365, "default": 30 }
+          }
+        },
         "storageLocation": {
           "description": "Customer-bound object storage location for pack content.",
           "type": "string"

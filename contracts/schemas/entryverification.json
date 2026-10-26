@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/entryverification.json",
+  "title": "EntryVerification",
+  "description": "A pack entry and its decay state: an item in a reviewer's re-verification queue, or the result of confirming an entry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pack", "version", "entry", "decay", "provenance"],
+  "properties": {
+    "pack": { "type": "string" },
+    "version": { "type": "string" },
+    "mandatory": { "type": "boolean" },
+    "entry": { "$ref": "knowledgeentry.json" },
+    "decay": { "$ref": "entrydecay.json" },
+    "provenance": { "$ref": "provenance.json" }
+  }
+}

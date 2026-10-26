@@ -24,6 +24,7 @@ from muistamo_contracts.v1.leaverreviewopen import LeaverReviewOpen
 from muistamo_contracts.v1.proposaldecision import ProposalDecision
 from muistamo_contracts.v1.proposalinput import ProposalInput
 from muistamo_contracts.v1.rollbackinput import RollbackInput
+from muistamo_contracts.v1.verificationinput import VerificationInput
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
@@ -158,6 +159,14 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     @app.post("/v1/knowledge/packs/{name}/rollback")
     def rollback(name: str, body: RollbackInput, who: Who) -> JSONResponse:
         return ok(svc().rollback(who, name, body.toVersion, body.reason), 201)
+
+    @app.post("/v1/knowledge/packs/{name}/entries/{key}/verification")
+    def verify_entry(name: str, key: str, body: VerificationInput, who: Who) -> JSONResponse:
+        return ok(svc().verify_entry(who, name, key, body.entryId, body.reason))
+
+    @app.get("/v1/knowledge/verifications")
+    def list_verifications(who: Who) -> JSONResponse:
+        return ok({"items": svc().verification_queue(who)})
 
     @app.get("/v1/knowledge/personal/entries")
     def list_personal(who: Who) -> JSONResponse:

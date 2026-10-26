@@ -137,6 +137,47 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/knowledge/packs/{name}/entries/{key}/verification:
+    parameters:
+      - $ref: "#/components/parameters/Name"
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: verifyEntry
+      summary: Confirm a pack entry is still right, restarting its decay clock (reviewers, never its contributor)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/verificationinput.json"
+      responses:
+        "200":
+          description: The entry with its renewed decay state.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/entryverification.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/knowledge/verifications:
+    get:
+      operationId: listVerifications
+      summary: Entries due or expired in packs the caller may confirm (FR-307)
+      responses:
+        "200":
+          description: Soonest to expire first.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/verificationpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/knowledge/personal/entries:
     get:
       operationId: listPersonalEntries

@@ -1824,6 +1824,63 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/AgentTemplateSpec'
+    EntryDecay:
+      title: EntryDecay
+      description: 'How recently a reviewer vouched for a pack entry (FR-307). current
+        until dueAt; then due (still served, flagged and queued for the pack''s reviewers)
+        until expiresAt; then expired, which is never served and is removed by the
+        next decay sweep. Mandatory packs never expire: their entries stay due and
+        are flagged to privacy officers.'
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - current
+          - due
+          - expired
+        verifiedAt:
+          description: Absent only if no reviewer ever confirmed the entry, which
+            is then treated as unconfirmed (expired, or due in a mandatory pack).
+          type: string
+          format: date-time
+        verifiedBy:
+          type: string
+        dueAt:
+          type: string
+          format: date-time
+        expiresAt:
+          description: Absent for mandatory packs, which never expire.
+          type: string
+          format: date-time
+    EntryVerification:
+      title: EntryVerification
+      description: 'A pack entry and its decay state: an item in a reviewer''s re-verification
+        queue, or the result of confirming an entry.'
+      type: object
+      additionalProperties: false
+      required:
+      - pack
+      - version
+      - entry
+      - decay
+      - provenance
+      properties:
+        pack:
+          type: string
+        version:
+          type: string
+        mandatory:
+          type: boolean
+        entry:
+          $ref: '#/components/schemas/KnowledgeEntry'
+        decay:
+          $ref: '#/components/schemas/EntryDecay'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
     ErasureProof:
       title: ErasureProof
       description: 'What one service erased for a request, and what it kept and why.
@@ -2259,6 +2316,26 @@ components:
                     enum:
                     - review
                     - evaluation
+            decay:
+              title: DecayPolicy
+              description: 'How long a reviewer''s confirmation of an entry lasts
+                (FR-307). After reviewEveryDays the entry is due: still served, flagged
+                and queued for the reviewers. After graceDays more it expires: never
+                served, and removed from the pack by the next decay sweep. Mandatory
+                packs never expire.'
+              type: object
+              additionalProperties: false
+              properties:
+                reviewEveryDays:
+                  type: integer
+                  minimum: 1
+                  maximum: 3650
+                  default: 365
+                graceDays:
+                  type: integer
+                  minimum: 0
+                  maximum: 365
+                  default: 30
             storageLocation:
               description: Customer-bound object storage location for pack content.
               type: string
@@ -3477,6 +3554,43 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Proposal'
+    Provenance:
+      title: Provenance
+      description: 'How much to trust an entry, as a 0-100 score and the factors that
+        make it up (FR-307). Informational: it does not change ranking. reviewed +40
+        (merged through a reviewed proposal), source +20 (names where it comes from),
+        reviewer-edited +10 (the reviewer corrected it at merge), freshness +30 current,
+        +10 due, 0 expired.'
+      type: object
+      additionalProperties: false
+      required:
+      - score
+      - factors
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        factors:
+          type: array
+          items:
+            title: ProvenanceFactor
+            type: object
+            additionalProperties: false
+            required:
+            - factor
+            - points
+            properties:
+              factor:
+                type: string
+                enum:
+                - reviewed
+                - source
+                - reviewer-edited
+                - freshness
+              points:
+                type: integer
+                minimum: 0
     ResolvedEntry:
       title: ResolvedEntry
       description: An effective entry for the caller, and where it came from.
@@ -3503,6 +3617,12 @@ components:
           description: The entry comes from a mandatory pack, so no other layer can
             replace it.
           type: boolean
+        decay:
+          description: 'Pack entries only: when a reviewer last vouched for it. Expired
+            entries are never resolved.'
+          $ref: '#/components/schemas/EntryDecay'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
         overrides:
           description: Entries with the same key that this mandatory entry overrides,
             for example the caller's own personal entry.
@@ -3568,6 +3688,13 @@ components:
                 type: number
               citation:
                 $ref: '#/components/schemas/Citation'
+              decay:
+                description: Pack entries only.
+                $ref: '#/components/schemas/EntryDecay'
+              provenance:
+                description: Knowledge entries only; documents carry their source's
+                  own metadata.
+                $ref: '#/components/schemas/Provenance'
         coverage:
           title: RetrievalCoverage
           type: object
@@ -3737,3 +3864,35 @@ components:
           type: integer
         total:
           type: integer
+    VerificationInput:
+      title: VerificationInput
+      description: A reviewer confirms the immutable entry revision they inspected,
+        restarting its decay clock. A replaced revision is refused with 409.
+      type: object
+      additionalProperties: false
+      required:
+      - entryId
+      - reason
+      properties:
+        entryId:
+          type: string
+          format: uuid
+          description: The immutable entry ID shown to the reviewer; never silently
+            confirm a replacement with the same key.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    VerificationPage:
+      title: VerificationPage
+      description: Entries due or expired in packs the caller may confirm, soonest
+        to expire first.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntryVerification'

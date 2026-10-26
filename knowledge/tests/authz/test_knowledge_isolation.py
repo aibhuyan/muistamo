@@ -5,6 +5,7 @@ API and through direct SQL as the knowledge service's own role.
 """
 
 import uuid
+from datetime import timedelta
 
 import psycopg
 import pytest
@@ -46,6 +47,7 @@ TABLES = [
     "erasure_requests",
     "service_secrets",
     "leaver_reviews",
+    "verifications",
 ]
 
 
@@ -244,6 +246,11 @@ def test_app_role_cannot_reach_another_tenant_by_sql(world) -> None:
         "plant an entry in A": (
             "INSERT INTO knowledge.entries (tenant_id, id, key, type, title, body, data_class, contributor)"
             " VALUES (%s, gen_random_uuid(), 'k', 'fact', 't', 'b', 'internal', 'x')",
+            a,
+        ),
+        "vouch for A's entries": (
+            "INSERT INTO knowledge.verifications (tenant_id, id, pack, entry_id, verified_at, verified_by, reason)"
+            " SELECT %s, gen_random_uuid(), 'equity-research-basics', gen_random_uuid(), now() + interval '10 years', 'x', 'x'",
             a,
         ),
         "advance A's chain head": (
@@ -460,3 +467,49 @@ def test_mandatory_packs_are_tenant_scoped(world) -> None:
         )
         == 1
     )
+
+
+def test_decay_is_tenant_scoped(world) -> None:
+    """Tenant 2's reviewer of the same name cannot see, confirm or sweep tenant 1's entries."""
+    seed(world)
+    clock = world.knowledge.clock
+    real = clock()
+
+    # Everything in tenant 1 is now long expired (default policy: 365 + 30 days).
+    world.knowledge.clock = lambda: real + timedelta(days=1000)
+    try:
+        assert [
+            v["entry"]["key"]
+            for v in world.client(R).get("/v1/knowledge/verifications").json()["items"]
+        ] == ["report-deadline"]
+        r2 = world.client(R, world.other_tenant)
+        assert r2.get("/v1/knowledge/verifications").json()["items"] == []
+        res = r2.post(
+            "/v1/knowledge/packs/equity-research-basics/entries/report-deadline/verification",
+            json={
+                "entryId": world.client(R)
+                .get("/v1/knowledge/verifications")
+                .json()["items"][0]["entry"]["id"],
+                "reason": "from tenant 2",
+            },
+        )
+        assert res.status_code == 404, res.text
+        # Sweeping tenant 2 leaves tenant 1's expired entry in its pack.
+        assert world.knowledge.sweep_decay(world.other_tenant) == {}
+        latest = (
+            world.client(R)
+            .get("/v1/knowledge/packs/equity-research-basics")
+            .json()["latestVersion"]
+        )
+        version = (
+            world.client(R)
+            .get(f"/v1/knowledge/packs/equity-research-basics/versions/{latest}")
+            .json()
+        )
+        assert [e["entry"]["key"] for e in version["entries"]] == ["report-deadline"]
+        # And tenant 1's own sweep removes only its own.
+        assert world.knowledge.sweep_decay(world.tenant) == {
+            "equity-research-basics": ["report-deadline"]
+        }
+    finally:
+        world.knowledge.clock = clock

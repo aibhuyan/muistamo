@@ -135,6 +135,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/knowledge/packs/{name}/entries/{key}/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: components["parameters"]["Name"];
+                key: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a pack entry is still right, restarting its decay clock (reviewers, never its contributor) */
+        post: operations["verifyEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/knowledge/verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entries due or expired in packs the caller may confirm (FR-307) */
+        get: operations["listVerifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/knowledge/personal/entries": {
         parameters: {
             query?: never;
@@ -997,6 +1034,39 @@ export interface components {
             spec: components["schemas"]["AgentTemplateSpec"];
         };
         /**
+         * EntryDecay
+         * @description How recently a reviewer vouched for a pack entry (FR-307). current until dueAt; then due (still served, flagged and queued for the pack's reviewers) until expiresAt; then expired, which is never served and is removed by the next decay sweep. Mandatory packs never expire: their entries stay due and are flagged to privacy officers.
+         */
+        EntryDecay: {
+            /** @enum {string} */
+            status: "current" | "due" | "expired";
+            /**
+             * Format: date-time
+             * @description Absent only if no reviewer ever confirmed the entry, which is then treated as unconfirmed (expired, or due in a mandatory pack).
+             */
+            verifiedAt?: string;
+            verifiedBy?: string;
+            /** Format: date-time */
+            dueAt?: string;
+            /**
+             * Format: date-time
+             * @description Absent for mandatory packs, which never expire.
+             */
+            expiresAt?: string;
+        };
+        /**
+         * EntryVerification
+         * @description A pack entry and its decay state: an item in a reviewer's re-verification queue, or the result of confirming an entry.
+         */
+        EntryVerification: {
+            pack: string;
+            version: string;
+            mandatory?: boolean;
+            entry: components["schemas"]["KnowledgeEntry"];
+            decay: components["schemas"]["EntryDecay"];
+            provenance: components["schemas"]["Provenance"];
+        };
+        /**
          * ErasureProof
          * @description What one service erased for a request, and what it kept and why. It holds no identifier of the person: subjectDigest lets someone who already knows the identifiers confirm which person it was.
          */
@@ -1195,6 +1265,16 @@ export interface components {
                 /** MergePolicy */
                 mergePolicy?: {
                     requires?: ("review" | "evaluation")[];
+                };
+                /**
+                 * DecayPolicy
+                 * @description How long a reviewer's confirmation of an entry lasts (FR-307). After reviewEveryDays the entry is due: still served, flagged and queued for the reviewers. After graceDays more it expires: never served, and removed from the pack by the next decay sweep. Mandatory packs never expire.
+                 */
+                decay?: {
+                    /** @default 365 */
+                    reviewEveryDays: number;
+                    /** @default 30 */
+                    graceDays: number;
                 };
                 /** @description Customer-bound object storage location for pack content. */
                 storageLocation?: string;
@@ -1741,6 +1821,18 @@ export interface components {
             items: components["schemas"]["Proposal"][];
         };
         /**
+         * Provenance
+         * @description How much to trust an entry, as a 0-100 score and the factors that make it up (FR-307). Informational: it does not change ranking. reviewed +40 (merged through a reviewed proposal), source +20 (names where it comes from), reviewer-edited +10 (the reviewer corrected it at merge), freshness +30 current, +10 due, 0 expired.
+         */
+        Provenance: {
+            score: number;
+            factors: {
+                /** @enum {string} */
+                factor: "reviewed" | "source" | "reviewer-edited" | "freshness";
+                points: number;
+            }[];
+        };
+        /**
          * ResolvedEntry
          * @description An effective entry for the caller, and where it came from.
          */
@@ -1752,6 +1844,9 @@ export interface components {
             version?: string;
             /** @description The entry comes from a mandatory pack, so no other layer can replace it. */
             mandatory?: boolean;
+            /** @description Pack entries only: when a reviewer last vouched for it. Expired entries are never resolved. */
+            decay?: components["schemas"]["EntryDecay"];
+            provenance?: components["schemas"]["Provenance"];
             /** @description Entries with the same key that this mandatory entry overrides, for example the caller's own personal entry. */
             overrides?: {
                 /** @enum {string} */
@@ -1777,6 +1872,10 @@ export interface components {
                 snippet: string;
                 score: number;
                 citation: components["schemas"]["Citation"];
+                /** @description Pack entries only. */
+                decay?: components["schemas"]["EntryDecay"];
+                /** @description Knowledge entries only; documents carry their source's own metadata. */
+                provenance?: components["schemas"]["Provenance"];
             }[];
             /** RetrievalCoverage */
             coverage: {
@@ -1860,6 +1959,25 @@ export interface components {
             indexed: number;
             removed: number;
             total: number;
+        };
+        /**
+         * VerificationInput
+         * @description A reviewer confirms the immutable entry revision they inspected, restarting its decay clock. A replaced revision is refused with 409.
+         */
+        VerificationInput: {
+            /**
+             * Format: uuid
+             * @description The immutable entry ID shown to the reviewer; never silently confirm a replacement with the same key.
+             */
+            entryId: string;
+            reason: string;
+        };
+        /**
+         * VerificationPage
+         * @description Entries due or expired in packs the caller may confirm, soonest to expire first.
+         */
+        VerificationPage: {
+            items: components["schemas"]["EntryVerification"][];
         };
     };
     responses: {
@@ -2075,6 +2193,55 @@ export interface operations {
         };
         responses: {
             201: components["responses"]["PackVersion"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    verifyEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: components["parameters"]["Name"];
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerificationInput"];
+            };
+        };
+        responses: {
+            /** @description The entry with its renewed decay state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryVerification"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listVerifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Soonest to expire first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationPage"];
+                };
+            };
             default: components["responses"]["Problem"];
         };
     };
