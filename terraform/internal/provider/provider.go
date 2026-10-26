@@ -38,7 +38,7 @@ func (p *muistamo) Metadata(_ context.Context, _ provider.MetadataRequest, resp 
 
 func (p *muistamo) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manage Muistamo templates, knowledge packs and sources as code. " +
+		Description: "Manage Muistamo agents, knowledge, models and policies as code. " +
 			"INSECURE DEVELOPMENT AUTHENTICATION: tenant and actor are sent as development headers that the " +
 			"services accept only when explicitly enabled; real authentication replaces them.",
 		Attributes: map[string]schema.Attribute{
@@ -82,6 +82,8 @@ func (p *muistamo) Resources(context.Context) []func() resource.Resource {
 		func() resource.Resource { return newDocumentResource(packKind, "knowledge_pack", packDocs) },
 		func() resource.Resource { return newDocumentResource(sourceKind, "knowledge_source", sourceDocs) },
 		func() resource.Resource { return newDocumentResource(cloneKind, "agent_clone", cloneDocs) },
+		func() resource.Resource { return newDocumentResource(modelKind, "model", modelDocs) },
+		func() resource.Resource { return newDocumentResource(modelAliasKind, "model_binding", modelAliasDocs) },
 		func() resource.Resource { return newDocumentResource(linkKind, "agent_link", linkDocs) },
 		func() resource.Resource {
 			return newDocumentResource(actionPolicyKind, "action_policy", actionPolicyDocs)
@@ -101,6 +103,10 @@ const (
 	sourceDocs = "A knowledge source attached to a pack. Destroy only removes it from state."
 	cloneDocs  = "A clone of a template: an overlay of knowledge packs, budget and HR assignment, with a sync policy. version is the revision. " +
 		"Destroy only removes it from state: its instances depend on it."
+	modelDocs = "A catalogue model definition. Each change needs independent privacy-officer approval (mst models approve); this resource never approves a model. " +
+		"version is the revision. Destroy only removes it from state: the model remains in Muistamo."
+	modelAliasDocs = "An alias targeting an approved catalogue model. Description changes are ordinary edits; changing target requires an explicit rollout (mst rollout start), which Terraform never starts implicitly. " +
+		"version is the revision. Destroy only removes it from state: the alias remains in Muistamo."
 	linkDocs = "A one-way agent link: agents of spec.from.template may call agents of spec.to.template with the listed skills and data classes. " +
 		"version is the revision. Destroy deletes the link, so the calls it allowed are denied again; its history stays in the evidence log."
 	actionPolicyDocs = "The action policy for one template (at most one per template). version is the revision. " +

@@ -219,6 +219,12 @@ func (r *documentResource) Delete(ctx context.Context, req resource.DeleteReques
 	}
 	detail := fmt.Sprintf("%s %q was removed from Terraform state but still exists in Muistamo: its history is retained.",
 		r.kind.name, m.Name.ValueString())
+	if r.kind.name == "ModelCatalogueItem" {
+		detail += " The model's approval is unchanged."
+	}
+	if r.kind.name == "ModelAlias" {
+		detail += " The alias still targets its existing model."
+	}
 	if r.kind.name == "AgentTemplate" {
 		detail += " To stop new joiners receiving it, run: mst catalogue withdraw " + m.Name.ValueString()
 	}
