@@ -179,6 +179,20 @@ var (
 		document:   recordDocument,
 		version:    revision,
 	}
+	modelKind = kind{
+		name:       "ModelCatalogueItem",
+		service:    func(c *client) string { return c.controlPlane },
+		collection: "/v1/models/",
+		document:   recordDocument,
+		version:    revision,
+	}
+	modelAliasKind = kind{
+		name:       "ModelAlias",
+		service:    func(c *client) string { return c.controlPlane },
+		collection: "/v1/model-aliases/",
+		document:   recordDocument,
+		version:    revision,
+	}
 	linkKind = kind{
 		name:       "AgentLink",
 		service:    func(c *client) string { return c.controlPlane },
