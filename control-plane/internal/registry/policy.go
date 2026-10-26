@@ -65,8 +65,11 @@ func (s *Service) ApplyActionPolicy(ctx context.Context, actor Actor, doc muista
 	if doc.Kind != kindPolicy {
 		return muistamov1.ActionPolicyRecord{}, false, fmt.Errorf("kind %q is not ActionPolicy: %w", doc.Kind, ErrInvalid)
 	}
-	template := doc.Spec.AppliesTo.Template
-	d, created, err := s.applyPolicyDocument(ctx, actor, kindPolicy, doc.Metadata.Name, &template, doc)
+	target := policyTarget{template: doc.Spec.AppliesTo.Template, clone: doc.Spec.AppliesTo.Clone}
+	if (target.template == nil) == (target.clone == nil) {
+		return muistamov1.ActionPolicyRecord{}, false, fmt.Errorf("appliesTo must name exactly one template or clone: %w", ErrInvalid)
+	}
+	d, created, err := s.applyPolicyDocument(ctx, actor, kindPolicy, doc.Metadata.Name, &target, doc)
 	if err != nil {
 		return muistamov1.ActionPolicyRecord{}, false, err
 	}
@@ -74,7 +77,17 @@ func (s *Service) ApplyActionPolicy(ctx context.Context, actor Actor, doc muista
 	return rec, created, err
 }
 
-func (s *Service) applyPolicyDocument(ctx context.Context, actor Actor, kind, name string, template *string, doc any) (storedDoc, bool, error) {
+// policyTarget is what an ActionPolicy applies to: exactly one template or clone.
+type policyTarget struct{ template, clone *string }
+
+func (t policyTarget) column() (string, string) {
+	if t.template != nil {
+		return "template", *t.template
+	}
+	return "clone", *t.clone
+}
+
+func (s *Service) applyPolicyDocument(ctx context.Context, actor Actor, kind, name string, target *policyTarget, doc any) (storedDoc, bool, error) {
 	body, err := json.Marshal(doc)
 	if err != nil {
 		return storedDoc{}, false, fmt.Errorf("encode %s: %w", kind, err)
@@ -94,15 +107,28 @@ func (s *Service) applyPolicyDocument(ctx context.Context, actor Actor, kind, na
 			out = current
 			return nil
 		}
-		if template != nil {
+		var template, clone *string
+		if target != nil {
+			template, clone = target.template, target.clone
+			column, value := target.column()
 			var other string
-			err := tx.QueryRow(ctx, `SELECT name FROM policy_documents WHERE kind = 'ActionPolicy' AND template = $1 AND name <> $2`,
-				*template, name).Scan(&other)
+			// column is one of two constants, never input.
+			err := tx.QueryRow(ctx, `SELECT name FROM policy_documents WHERE kind = 'ActionPolicy' AND `+column+` = $1 AND name <> $2`,
+				value, name).Scan(&other)
 			if err == nil {
-				return fmt.Errorf("action policy %q already applies to template %q; change that policy instead: %w", other, *template, ErrConflict)
+				return fmt.Errorf("action policy %q already applies to %s %q; change that policy instead: %w", other, column, value, ErrConflict)
 			}
 			if !errors.Is(err, pgx.ErrNoRows) {
-				return fmt.Errorf("check action policies for %q: %w", *template, err)
+				return fmt.Errorf("check action policies for %s %q: %w", column, value, err)
+			}
+			if clone != nil {
+				var exists bool
+				if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM agent_clones WHERE name = $1)`, *clone).Scan(&exists); err != nil {
+					return fmt.Errorf("check clone %q: %w", *clone, err)
+				}
+				if !exists {
+					return fmt.Errorf("clone %q does not exist: %w", *clone, ErrInvalid)
+				}
 			}
 		}
 
@@ -112,23 +138,23 @@ func (s *Service) applyPolicyDocument(ctx context.Context, actor Actor, kind, na
 			before = json.RawMessage(current.body)
 			action = evidencePrefix[kind] + ".updated"
 			err = tx.QueryRow(ctx, `
-				UPDATE policy_documents SET template = $3, revision = revision + 1, digest = $4, document = $5,
+				UPDATE policy_documents SET template = $3, clone = $7, revision = revision + 1, digest = $4, document = $5,
 				  updated_at = now(), updated_by = $6
 				WHERE kind = $1 AND name = $2
 				RETURNING revision, created_at, updated_at, updated_by, document`,
-				kind, name, template, digest, body, actor.Name).Scan(&out.revision, &out.createdAt, &out.updatedAt, &out.updatedBy, &out.body)
+				kind, name, template, digest, body, actor.Name, clone).Scan(&out.revision, &out.createdAt, &out.updatedAt, &out.updatedBy, &out.body)
 		} else {
 			err = tx.QueryRow(ctx, `
-				INSERT INTO policy_documents (tenant_id, kind, name, template, revision, digest, document, updated_by)
-				VALUES ($1, $2, $3, $4, 1, $5, $6, $7)
+				INSERT INTO policy_documents (tenant_id, kind, name, template, clone, revision, digest, document, updated_by)
+				VALUES ($1, $2, $3, $4, $8, 1, $5, $6, $7)
 				RETURNING revision, created_at, updated_at, updated_by, document`,
-				actor.Tenant, kind, name, template, digest, body, actor.Name).Scan(&out.revision, &out.createdAt, &out.updatedAt, &out.updatedBy, &out.body)
+				actor.Tenant, kind, name, template, digest, body, actor.Name, clone).Scan(&out.revision, &out.createdAt, &out.updatedAt, &out.updatedBy, &out.body)
 			created = true
 		}
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-				return fmt.Errorf("another action policy already applies to this template: %w", ErrConflict)
+				return fmt.Errorf("another action policy already applies to this template or clone: %w", ErrConflict)
 			}
 			return fmt.Errorf("store %s %q: %w", kind, name, err)
 		}
@@ -272,7 +298,11 @@ func (s *Service) Simulate(ctx context.Context, actor Actor, in muistamov1.Polic
 		if err != nil {
 			return err
 		}
-		current, err := policy.Compile(links, policies)
+		clones, err := cloneTemplates(ctx, tx)
+		if err != nil {
+			return err
+		}
+		current, err := policy.Compile(links, policies, clones)
 		if err != nil {
 			return fmt.Errorf("stored policies do not compile: %w", err)
 		}
@@ -282,7 +312,7 @@ func (s *Service) Simulate(ctx context.Context, actor Actor, in muistamov1.Polic
 		if in.Policies != nil {
 			policies = replaceByName(policies, *in.Policies, func(p muistamov1.ActionPolicy) string { return p.Metadata.Name })
 		}
-		proposed, err := policy.Compile(links, policies)
+		proposed, err := policy.Compile(links, policies, clones)
 		if err != nil {
 			return fmt.Errorf("proposed rules: %v: %w", err, ErrInvalid)
 		}
@@ -402,9 +432,31 @@ func compileStored(ctx context.Context, tx pgx.Tx) (*policy.Set, error) {
 	if err != nil {
 		return nil, err
 	}
-	set, err := policy.Compile(links, policies)
+	clones, err := cloneTemplates(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	set, err := policy.Compile(links, policies, clones)
 	if err != nil {
 		return nil, fmt.Errorf("%v: %w", err, ErrInvalid)
 	}
 	return set, nil
+}
+
+// cloneTemplates maps each of the tenant's clones to its template, for the policy compiler.
+func cloneTemplates(ctx context.Context, tx pgx.Tx) (map[string]string, error) {
+	rows, err := tx.Query(ctx, `SELECT name, template FROM agent_clones`)
+	if err != nil {
+		return nil, fmt.Errorf("load clones: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var name, template string
+		if err := rows.Scan(&name, &template); err != nil {
+			return nil, err
+		}
+		out[name] = template
+	}
+	return out, rows.Err()
 }

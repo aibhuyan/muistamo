@@ -38,3 +38,9 @@ class PolicyRuleRef(BaseModel):
         ),
     ] = None
     effect: Effect
+    target: Annotated[
+        str | None,
+        Field(
+            description="Whom the rule names: template:<name> (covering its clones) or clone:<name>."
+        ),
+    ] = None

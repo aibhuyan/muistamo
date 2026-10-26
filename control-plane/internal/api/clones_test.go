@@ -246,3 +246,73 @@ func testdbAfter(t *testing.T, h harness, tenant uuid.UUID, action string) strin
 	}
 	return after
 }
+
+func TestPolicyWithClones(t *testing.T) {
+	h := newHarness(t, api.InsecureDevHeaders{})
+	a := h.tenant(t, "tenant-a")
+	publishVersion(t, h, a, "analyst", 1, "Support analysts")
+	for _, c := range []string{"analyst-fi", "analyst-se"} {
+		if got := h.call(t, a, http.MethodPut, "/v1/clones/"+c, cloneJSON(c, "follow", "")); got.status != http.StatusCreated {
+			t.Fatalf("clone %s = %d: %s", c, got.status, got.raw)
+		}
+	}
+	link := `{"apiVersion":"muistamo.dev/v1","kind":"AgentLink","metadata":{"name":"fi-to-tax"},
+	 "spec":{"from":{"clone":"analyst-fi"},"to":{"template":"finland-tax"},"allowedSkills":["get-rates"],"dataClasses":[]}}`
+	if got := h.call(t, a, http.MethodPut, "/v1/links/fi-to-tax", link); got.status != http.StatusCreated {
+		t.Fatalf("clone link = %d: %s", got.status, got.raw)
+	}
+	tmplPolicy := `{"apiVersion":"muistamo.dev/v1","kind":"ActionPolicy","metadata":{"name":"analyst-actions"},
+	 "spec":{"appliesTo":{"template":"analyst"},"rules":[{"action":"email.send","effect":"allow"}]}}`
+	sePolicy := `{"apiVersion":"muistamo.dev/v1","kind":"ActionPolicy","metadata":{"name":"se-actions"},
+	 "spec":{"appliesTo":{"clone":"analyst-se"},"rules":[{"action":"email.send","effect":"deny"}]}}`
+	for path, body := range map[string]string{"/v1/action-policies/analyst-actions": tmplPolicy, "/v1/action-policies/se-actions": sePolicy} {
+		if got := h.call(t, a, http.MethodPut, path, body); got.status != http.StatusCreated {
+			t.Fatalf("PUT %s = %d: %s", path, got.status, got.raw)
+		}
+	}
+
+	decideReq := func(body string) response { return h.call(t, a, http.MethodPost, "/v1/policy/decisions", body) }
+	for name, c := range map[string]struct {
+		body, want string
+	}{
+		"FI clone may call the tax agent":   {`{"kind":"call","from":"analyst","fromClone":"analyst-fi","to":"finland-tax","skill":"get-rates"}`, "allow"},
+		"SE clone may not":                  {`{"kind":"call","from":"analyst","fromClone":"analyst-se","to":"finland-tax","skill":"get-rates"}`, "deny"},
+		"the plain template may not":        {`{"kind":"call","from":"analyst","to":"finland-tax","skill":"get-rates"}`, "deny"},
+		"FI clone inherits the email allow": {`{"kind":"action","agent":"analyst","agentClone":"analyst-fi","action":"email.send"}`, "allow"},
+		"SE clone policy narrows it":        {`{"kind":"action","agent":"analyst","agentClone":"analyst-se","action":"email.send"}`, "deny"},
+	} {
+		if got := decisionOf(t, decideReq(c.body)); got != c.want {
+			t.Errorf("%s: %s, want %s", name, got, c.want)
+		}
+	}
+	// A request naming a clone of another template is refused, not decided.
+	if got := decideReq(`{"kind":"call","from":"other","fromClone":"analyst-fi","to":"finland-tax","skill":"get-rates"}`); got.status != http.StatusUnprocessableEntity {
+		t.Errorf("clone of another template = %d, want 422: %s", got.status, got.raw)
+	}
+	// At most one policy per clone; a policy for a missing clone is refused; a widening one too.
+	second := strings.Replace(sePolicy, "se-actions", "se-actions-2", 1)
+	if got := h.call(t, a, http.MethodPut, "/v1/action-policies/se-actions-2", second); got.status != http.StatusConflict {
+		t.Errorf("second policy for a clone = %d, want 409", got.status)
+	}
+	ghost := strings.NewReplacer("se-actions", "ghost", `"clone":"analyst-se"`, `"clone":"no-such-clone"`).Replace(sePolicy)
+	if got := h.call(t, a, http.MethodPut, "/v1/action-policies/ghost", ghost); got.status != http.StatusUnprocessableEntity {
+		t.Errorf("policy for a missing clone = %d, want 422", got.status)
+	}
+	widen := strings.NewReplacer("se-actions", "widen", `"clone":"analyst-se"`, `"clone":"analyst-fi"`, `"effect":"deny"`, `"effect":"allow"`).Replace(sePolicy)
+	if got := h.call(t, a, http.MethodPut, "/v1/action-policies/widen", widen); got.status != http.StatusUnprocessableEntity {
+		t.Errorf("clone policy with an allow = %d, want 422", got.status)
+	}
+	// Simulation sees clones too.
+	sim := h.call(t, a, http.MethodPost, "/v1/policy/simulate",
+		`{"request":{"kind":"action","agent":"analyst","agentClone":"analyst-se","action":"email.send"},"policies":[`+
+			strings.Replace(sePolicy, `"effect":"deny"`, `"effect":"monitor"`, 1)+`]}`)
+	cur, _ := sim.body["current"].(map[string]any)
+	next, _ := sim.body["proposed"].(map[string]any)
+	if cur["decision"] != "deny" || next["decision"] != "allow" || next["monitored"] != true {
+		t.Errorf("simulation = %s", sim.raw)
+	}
+	cedarText := h.call(t, a, http.MethodGet, "/v1/policy/cedar", "").body["cedar"].(string)
+	if !strings.Contains(cedarText, `principal == Muistamo::Clone::"analyst-fi"`) || !strings.Contains(cedarText, `principal in Muistamo::Template::"analyst"`) {
+		t.Errorf("compiled Cedar:\n%s", cedarText)
+	}
+}

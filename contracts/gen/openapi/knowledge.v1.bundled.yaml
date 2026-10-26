@@ -705,7 +705,9 @@ components:
         section 8.1, FR-1004). Deny overrides allow: when any deny rule applies, the
         action is denied whatever else allows it, so rule order does not matter. Release
         1 effects are allow, deny and monitor; requireApproval is release 2. At most
-        one ActionPolicy applies to a template.'
+        one ActionPolicy applies to a template. A clone keeps its template''s policy;
+        a policy for a clone may only add deny and monitor rules, never allow, default
+        or mode, so it can restrict a clone but never widen it.'
       type: object
       additionalProperties: false
       required:
@@ -732,12 +734,17 @@ components:
           properties:
             appliesTo:
               title: ActionPolicyTarget
+              description: A template (covering its clones) or one clone. A clone
+                also keeps its template's policy; its own may only narrow it.
               type: object
               additionalProperties: false
-              required:
-              - template
+              minProperties: 1
+              maxProperties: 1
               properties:
                 template:
+                  type: string
+                  pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+                clone:
                   type: string
                   pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
             default:
@@ -795,6 +802,26 @@ components:
                     items:
                       type: string
                       pattern: ^[A-Za-z][A-Za-z0-9_]{0,63}(\.[A-Za-z][A-Za-z0-9_]{0,63}){0,3}$
+          if:
+            properties:
+              appliesTo:
+                required:
+                - clone
+          then:
+            not:
+              anyOf:
+              - required:
+                - default
+              - required:
+                - mode
+            properties:
+              rules:
+                items:
+                  properties:
+                    effect:
+                      enum:
+                      - deny
+                      - monitor
     ActionPolicyPage:
       title: ActionPolicyPage
       description: Every ActionPolicy in the tenant, by name.
@@ -1168,14 +1195,17 @@ components:
               pattern: ^[1-9][0-9]{0,6}/(s|min|h|day)$
     AgentLinkEndpoint:
       title: AgentLinkEndpoint
-      description: One end of an AgentLink. Release 1 selects agents by template;
-        clones, instances and labels come later.
+      description: 'One end of an AgentLink: a template (covering its clones too)
+        or one clone. Instances, labels and external agents come later.'
       type: object
       additionalProperties: false
-      required:
-      - template
+      minProperties: 1
+      maxProperties: 1
       properties:
         template:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        clone:
           type: string
           pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
     AgentLinkPage:
@@ -2596,10 +2626,20 @@ components:
           description: 'call: the calling template.'
           type: string
           pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        fromClone:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+          description: 'call: the caller''s clone, if it is one; it must be a clone
+            of from.'
         to:
           description: 'call: the called template.'
           type: string
           pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        toClone:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+          description: 'call: the callee''s clone, if it is one; it must be a clone
+            of to.'
         skill:
           description: 'call: the skill of the called agent being used.'
           type: string
@@ -2627,6 +2667,11 @@ components:
           description: 'action: the template taking the action.'
           type: string
           pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        agentClone:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+          description: 'action: the agent''s clone, if it is one; it must be a clone
+            of agent.'
         action:
           description: 'action: the tool action, for example email.send.'
           type: string
@@ -2657,6 +2702,8 @@ components:
               - action
             - required:
               - attributes
+            - required:
+              - agentClone
       - if:
           properties:
             kind:
@@ -2679,6 +2726,10 @@ components:
               - depth
             - required:
               - actFor
+            - required:
+              - fromClone
+            - required:
+              - toClone
     PolicyRuleRef:
       title: PolicyRuleRef
       description: One compiled Cedar policy and the document it came from.
@@ -2713,6 +2764,10 @@ components:
           - allow
           - deny
           - monitor
+        target:
+          description: 'Whom the rule names: template:<name> (covering its clones)
+            or clone:<name>.'
+          type: string
     PolicySimulation:
       title: PolicySimulation
       description: The same request decided under the current and the proposed rules.
