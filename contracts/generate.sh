@@ -31,3 +31,10 @@ uv run --no-sync python contracts/bundle.py contracts/openapi/knowledge.v1.yaml 
 go tool oapi-codegen -config contracts/oapi-codegen.yaml "$bundle"
 
 gofmt -w "$go_out"
+
+# The console's TypeScript types, from the same bundled documents.
+ts_out=contracts/gen/ts
+rm -rf "$ts_out"
+mkdir -p "$ts_out"
+console/node_modules/.bin/openapi-typescript "$bundle" -o "$ts_out/muistamo.ts" >/dev/null
+console/node_modules/.bin/openapi-typescript "$(dirname "$bundle")/knowledge.v1.bundled.yaml" -o "$ts_out/knowledge.ts" >/dev/null
