@@ -33,6 +33,7 @@ var PersonalDataTables = []string{
 	"agent_template_versions", "agent_instances", "hr_events", "catalogue_approvers", "catalogue_requests",
 	"catalogue_approvals", "policy_documents", "privacy_officers", "erasure_requests", "agent_clones",
 	"model_catalogue", "model_aliases", "rollouts", "evidence_events",
+	"entra_bindings", "instance_identities", "identity_operations",
 }
 
 type retention = struct {
@@ -49,6 +50,7 @@ var controlPlaneRetained = []retention{
 	{Data: "hr_events.person_id and payload person.id", Reason: "The HR system's own key for the person, kept with the retained evidence of " +
 		"the joiner and leaver flows. Email and other fields are pseudonymised."},
 	{Data: "erasure_requests.proof.hrFenceKeys", Reason: "Tenant-scoped one-way alias/HR-key digests prevent pre-erasure HR input from restoring deleted data, including before a person's first HR event. Retained with the erasure/idempotency proof."},
+	{Data: "entra_bindings, instance_identities and identity_operations", Reason: "Binding digests and opaque receipt, instance, operation and provider IDs are retained for ownership, cleanup and idempotency proof tied to signed evidence. No employee email, sponsor list, credential or raw HR payload is stored in these rows."},
 	{Data: "backups", Reason: "Backups expire on their own schedule; data restored from one must be erased again."},
 }
 
@@ -300,6 +302,15 @@ func (s *Service) ExportPersonalData(ctx context.Context, actor Actor, subject m
 			if err != nil {
 				return err
 			}
+			personID := ""
+			if officer && subject.HrPersonId != nil {
+				personID = *subject.HrPersonId
+			}
+			related, err := identityPrivacyRows(ctx, tx, table, values, personID)
+			if err != nil {
+				return err
+			}
+			rows = mergeRows(rows, related)
 			if officer && subject.HrPersonId != nil {
 				byHR, err := rowsForHRPerson(ctx, tx, table, *subject.HrPersonId)
 				if err != nil {
@@ -318,6 +329,36 @@ func (s *Service) ExportPersonalData(ctx context.Context, actor Actor, subject m
 		return recordEvidence(ctx, tx, s.signer, actor, "privacy.access.exported", "AccessRequest", uuid.NewString(), nil, after)
 	})
 	return out, err
+}
+
+// Follow opaque journal/receipt relationships without broadening self-service identifier
+// authority: email aliases and HR IDs are included only in the officer's existing scope.
+func identityPrivacyRows(ctx context.Context, tx pgx.Tx, table string, values []string, personID string) ([]map[string]any, error) {
+	prefix := ""
+	switch table {
+	case "instance_identities":
+		prefix = `SELECT DISTINCT to_jsonb(t) FROM instance_identities t JOIN instance_identities i ON i.tenant_id=t.tenant_id AND i.id=t.id`
+	case "identity_operations":
+		prefix = `SELECT DISTINCT to_jsonb(t) FROM identity_operations t JOIN instance_identities i ON i.tenant_id=t.tenant_id AND i.id=t.instance_identity_id`
+	case "entra_bindings":
+		prefix = `SELECT DISTINCT to_jsonb(t) FROM entra_bindings t JOIN instance_identities i ON i.tenant_id=t.tenant_id AND i.binding_version=t.binding_version`
+	default:
+		return nil, nil
+	}
+	rows, err := tx.Query(ctx, prefix+` JOIN agent_instances a ON a.tenant_id=i.tenant_id AND a.name=i.instance_name LEFT JOIN hr_events h ON h.tenant_id=i.tenant_id AND h.receipt_id=i.assignment_receipt_id WHERE t.tenant_id=current_setting('muistamo.tenant_id',true)::uuid AND (a.document->'spec'->'binding'->>'ref'=ANY($1::text[]) OR a.document->'spec'->>'sponsor'=ANY($1::text[]) OR a.document->'spec'->>'delegate'=ANY($1::text[]) OR h.payload->'person'->>'email'=ANY($1::text[]) OR ($2::text<>'' AND h.person_id=$2))`, values, personID)
+	if err != nil {
+		return nil, fmt.Errorf("export related identity metadata: %w", err)
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var row map[string]any
+		if err := rows.Scan(&row); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }
 
 // RowsMentioning returns the rows of table (one of PersonalDataTables, never input) in which any

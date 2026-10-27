@@ -76,6 +76,9 @@ func (a *Activities) EnsureInstance(ctx context.Context, scope Scope, template r
 			// The name belongs to another template's or clone's instance; this one needs its own.
 			continue
 		case err == nil:
+			if err := a.Registry.AssertSimulated(ctx, actor, name); err != nil {
+				return "", err
+			}
 			return name, nil
 		case !errors.Is(err, registry.ErrNotFound):
 			return "", err
@@ -99,6 +102,9 @@ func (a *Activities) EnsureInstance(ctx context.Context, scope Scope, template r
 
 // ProvisionIdentity creates the instance's identity and records its id.
 func (a *Activities) ProvisionIdentity(ctx context.Context, scope Scope, instance string, person Person) error {
+	if err := a.Registry.AssertSimulated(ctx, scope.actor(), instance); err != nil {
+		return err
+	}
 	ref, err := a.Provisioner.Provision(ctx, scope.Tenant, instance, person.Email)
 	if err != nil {
 		return fmt.Errorf("provision identity for %s: %w", instance, err)
@@ -109,6 +115,9 @@ func (a *Activities) ProvisionIdentity(ctx context.Context, scope Scope, instanc
 
 // SetState moves an instance to a state, doing nothing if it is already there.
 func (a *Activities) SetState(ctx context.Context, scope Scope, instance string, to muistamov1.InstanceState) error {
+	if err := a.Registry.AssertSimulated(ctx, scope.actor(), instance); err != nil {
+		return err
+	}
 	_, err := a.Registry.TransitionTo(ctx, scope.actor(), instance, to)
 	if errors.Is(err, registry.ErrConflict) {
 		return temporal.NewNonRetryableApplicationError(err.Error(), "illegal-transition", err)
@@ -133,6 +142,9 @@ func (a *Activities) PersonInstances(ctx context.Context, scope Scope, personID 
 
 // RevokeCredentials revokes an instance's credentials and records that it did.
 func (a *Activities) RevokeCredentials(ctx context.Context, scope Scope, instance string) error {
+	if err := a.Registry.AssertSimulated(ctx, scope.actor(), instance); err != nil {
+		return err
+	}
 	if err := a.Revoker.Revoke(ctx, scope.Tenant, instance); err != nil {
 		return fmt.Errorf("revoke credentials of %s: %w", instance, err)
 	}
@@ -142,6 +154,9 @@ func (a *Activities) RevokeCredentials(ctx context.Context, scope Scope, instanc
 
 // SetIdentityEnabled disables or re-enables the instance's identity and records it.
 func (a *Activities) SetIdentityEnabled(ctx context.Context, scope Scope, instance string, enabled bool) error {
+	if err := a.Registry.AssertSimulated(ctx, scope.actor(), instance); err != nil {
+		return err
+	}
 	rec, err := a.Registry.GetInstance(ctx, scope.actor(), instance)
 	if err != nil {
 		return err

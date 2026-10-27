@@ -1342,6 +1342,94 @@ export interface components {
             service: string;
         };
         /**
+         * IdentityBindingStatus
+         * @description Operator-only durable binding metadata. The full config, sponsor list and credential reference/value are not stored here; configDigest pins the exact validated EntraIdentityBinding. This is not a public YAML kind or administration endpoint.
+         */
+        IdentityBindingStatus: {
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            bindingVersion: string;
+            configDigest: string;
+            /** Format: uuid */
+            entraTenantId: string;
+            /** Format: uuid */
+            blueprintAppId: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * IdentityOperationStatus
+         * @description Operator-only Entra operation journal status. Identifiers are internal opaque IDs; no employee email, raw HR event key, credential or provider response body is stored. A pending or indeterminate create never grants permission for another blind POST.
+         */
+        IdentityOperationStatus: {
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            instanceIdentityId: string;
+            /** Format: uuid */
+            bindingVersion: string;
+            /** Format: uuid */
+            hrReceiptId: string;
+            /** Format: int64 */
+            hrGeneration: number;
+            /** @enum {string} */
+            action: "create" | "enable" | "disable" | "delete";
+            /**
+             * Format: int64
+             * @description Distinct provider request attempt for this HR generation/action. Corrective disables have their own intent/result; original uncertainties are never overwritten.
+             */
+            attempt: number;
+            /** @enum {string} */
+            state: "pending" | "succeeded" | "indeterminate" | "failed";
+            /** Format: uuid */
+            creationId: string;
+            /** Format: uuid */
+            providerId?: string;
+            /** Format: uuid */
+            candidateId?: string;
+            /** @enum {string} */
+            errorCode?: "provider_refused" | "provider_unavailable" | "ownership_unproved" | "uncertain" | "generation_superseded";
+            /** Format: int64 */
+            resultEvidenceSeq?: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * InstanceIdentityStatus
+         * @description Durable provider mode and ownership for one instance. observedState is the last verified provider observation, not an authorization or a claim of immediate token revocation. Trusted HR association uses an opaque receipt UUID, separate from editable document labels.
+         */
+        InstanceIdentityStatus: {
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            id: string;
+            instanceName: string;
+            /** @enum {string} */
+            providerMode: "simulated" | "entra";
+            /** Format: uuid */
+            bindingVersion?: string;
+            configDigest?: string;
+            /** Format: uuid */
+            entraTenantId?: string;
+            /** Format: uuid */
+            assignmentReceiptId?: string;
+            /** Format: uuid */
+            providerId?: string;
+            /** Format: uuid */
+            creationId?: string;
+            /** @enum {string} */
+            observedState: "simulated" | "unprovisioned" | "disabled" | "enabled" | "deleted" | "reconciliation_required";
+            /** Format: int64 */
+            enabledGeneration?: number;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
          * InstanceState
          * @description Lifecycle state of an agent instance (PRD section 5).
          * @enum {string}

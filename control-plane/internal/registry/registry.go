@@ -269,6 +269,10 @@ func (s *Service) ListInstances(ctx context.Context, actor Actor, cursor string,
 func (s *Service) Transition(ctx context.Context, actor Actor, name string, to muistamov1.InstanceState, ifMatch string) (muistamov1.AgentInstanceRecord, error) {
 	var rec muistamov1.AgentInstanceRecord
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		person, err := identityPersonLock(ctx, tx, actor.Tenant, name)
+		if err != nil {
+			return err
+		}
 		current, err := lockInstance(ctx, tx, name)
 		if err != nil {
 			return err
@@ -282,6 +286,9 @@ func (s *Service) Transition(ctx context.Context, actor Actor, name string, to m
 		from := current.Document.Spec.State
 		if !CanTransition(from, to) {
 			return fmt.Errorf("instance %q cannot move from %s to %s: %w", name, from, to, ErrConflict)
+		}
+		if err := checkIdentityTransition(ctx, tx, current, to, person); err != nil {
+			return err
 		}
 		next := current.Document
 		next.Spec.State = to
@@ -343,6 +350,10 @@ func lockInstance(ctx context.Context, tx pgx.Tx, name string) (muistamov1.Agent
 }
 
 func createInstance(ctx context.Context, tx pgx.Tx, signer evidence.Signer, actor Actor, doc muistamov1.AgentInstance) (muistamov1.AgentInstanceRecord, error) {
+	return createInstanceWithIdentity(ctx, tx, signer, actor, doc, nil)
+}
+
+func createInstanceWithIdentity(ctx context.Context, tx pgx.Tx, signer evidence.Signer, actor Actor, doc muistamov1.AgentInstance, identity *muistamov1.InstanceIdentityStatus) (muistamov1.AgentInstanceRecord, error) {
 	name := doc.Metadata.Name
 	if doc.Spec.State != muistamov1.InstanceStateRequested {
 		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("instance %q must be created in state requested, not %s: %w", name, doc.Spec.State, ErrInvalid)
@@ -374,6 +385,14 @@ func createInstance(ctx context.Context, tx pgx.Tx, signer evidence.Signer, acto
 		actor.Tenant, name, ref.Name, version, string(doc.Spec.State), body).Scan(&rec.CreatedAt, &rec.UpdatedAt)
 	if err != nil {
 		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("insert instance %q: %w", name, err)
+	}
+	if identity == nil {
+		_, err = tx.Exec(ctx, `INSERT INTO instance_identities(tenant_id,instance_name,provider_mode,observed_state) VALUES($1,$2,'simulated','simulated')`, actor.Tenant, name)
+	} else {
+		_, err = tx.Exec(ctx, `INSERT INTO instance_identities(tenant_id,instance_name,provider_mode,binding_version,entra_tenant_id,assignment_receipt_id,observed_state) VALUES($1,$2,'entra',$3,$4,$5,'unprovisioned')`, actor.Tenant, name, identity.BindingVersion, identity.EntraTenantId, identity.AssignmentReceiptId)
+	}
+	if err != nil {
+		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("pin instance identity metadata: %w", err)
 	}
 	return rec, recordEvidence(ctx, tx, signer, actor, "instance.created", "AgentInstance", name, nil, rec)
 }

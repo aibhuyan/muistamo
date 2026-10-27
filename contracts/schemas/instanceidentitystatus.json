@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/instanceidentitystatus.json",
+  "title": "InstanceIdentityStatus",
+  "description": "Durable provider mode and ownership for one instance. observedState is the last verified provider observation, not an authorization or a claim of immediate token revocation. Trusted HR association uses an opaque receipt UUID, separate from editable document labels.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenantId",
+    "id",
+    "instanceName",
+    "providerMode",
+    "observedState",
+    "updatedAt"
+  ],
+  "properties": {
+    "tenantId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "instanceName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "providerMode": {
+      "type": "string",
+      "enum": [
+        "simulated",
+        "entra"
+      ]
+    },
+    "bindingVersion": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "configDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "entraTenantId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "assignmentReceiptId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "providerId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "creationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "observedState": {
+      "type": "string",
+      "enum": [
+        "simulated",
+        "unprovisioned",
+        "disabled",
+        "enabled",
+        "deleted",
+        "reconciliation_required"
+      ]
+    },
+    "enabledGeneration": {
+      "type": "integer",
+      "format": "int64",
+      "minimum": 1
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
