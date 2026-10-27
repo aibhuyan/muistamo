@@ -1034,6 +1034,30 @@ export interface components {
             spec: components["schemas"]["AgentTemplateSpec"];
         };
         /**
+         * EntraIdentityBinding
+         * @description Operator-controlled Entra identity management binding (FR-201). This configuration is not a public registry YAML kind or API resource. Contains no credential value; the first client-secret resolver is for local development acceptance only.
+         */
+        EntraIdentityBinding: {
+            /** @description Internal Muistamo tenant ID. This is a separate identifier from the Entra directory. */
+            tenantId: string;
+            /** @description Immutable binding version. A changed directory, blueprint, sponsors or credential reference/version requires a new binding version. */
+            bindingVersion: string;
+            /** @description Customer Entra directory ID; used in the fixed Microsoft token authority. */
+            entraTenantId: string;
+            /** @description Blueprint application ID, used for authentication and Graph agentIdentityBlueprintId. */
+            blueprintAppId: string;
+            /** @description Blueprint application object ID, retained for operator reconciliation. */
+            blueprintObjectId: string;
+            /** @description Blueprint service principal object ID, retained for operator reconciliation. */
+            blueprintPrincipalId: string;
+            /** @description Explicit sponsor user object IDs. No directory-wide user search. */
+            sponsorUserIds: string[];
+            /** @description Opaque operator credential reference; never an inline credential, URL or filesystem path. */
+            credentialRef: string;
+            /** @description Immutable version resolved with credentialRef. Token reuse is confined to this binding and credential version. */
+            credentialVersion: string;
+        };
+        /**
          * EntryDecay
          * @description How recently a reviewer vouched for a pack entry (FR-307). current until dueAt; then due (still served, flagged and queued for the pack's reviewers) until expiresAt; then expired, which is never served and is removed by the next decay sweep. Mandatory packs never expire: their entries stay due and are flagged to privacy officers.
          */

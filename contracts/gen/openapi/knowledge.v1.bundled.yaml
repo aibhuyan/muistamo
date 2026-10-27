@@ -1641,6 +1641,73 @@ components:
           type: string
         spec:
           $ref: '#/components/schemas/AgentTemplateSpec'
+    EntraIdentityBinding:
+      title: EntraIdentityBinding
+      description: Operator-controlled Entra identity management binding (FR-201).
+        This configuration is not a public registry YAML kind or API resource. Contains
+        no credential value; the first client-secret resolver is for local development
+        acceptance only.
+      type: object
+      additionalProperties: false
+      required:
+      - tenantId
+      - bindingVersion
+      - entraTenantId
+      - blueprintAppId
+      - blueprintObjectId
+      - blueprintPrincipalId
+      - sponsorUserIds
+      - credentialRef
+      - credentialVersion
+      properties:
+        tenantId:
+          type: string
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          description: Internal Muistamo tenant ID. This is a separate identifier
+            from the Entra directory.
+        bindingVersion:
+          type: string
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          description: Immutable binding version. A changed directory, blueprint,
+            sponsors or credential reference/version requires a new binding version.
+        entraTenantId:
+          type: string
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          description: Customer Entra directory ID; used in the fixed Microsoft token
+            authority.
+        blueprintAppId:
+          type: string
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          description: Blueprint application ID, used for authentication and Graph
+            agentIdentityBlueprintId.
+        blueprintObjectId:
+          type: string
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          description: Blueprint application object ID, retained for operator reconciliation.
+        blueprintPrincipalId:
+          type: string
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          description: Blueprint service principal object ID, retained for operator
+            reconciliation.
+        sponsorUserIds:
+          type: array
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          description: Explicit sponsor user object IDs. No directory-wide user search.
+        credentialRef:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9._-]{0,99}$
+          description: Opaque operator credential reference; never an inline credential,
+            URL or filesystem path.
+        credentialVersion:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9._-]{0,99}$
+          description: Immutable version resolved with credentialRef. Token reuse
+            is confined to this binding and credential version.
     EntryDecay:
       title: EntryDecay
       description: 'How recently a reviewer vouched for a pack entry (FR-307). current
