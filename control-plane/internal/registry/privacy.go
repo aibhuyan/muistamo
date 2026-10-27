@@ -24,6 +24,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
+	"muistamo.dev/muistamo/control-plane/internal/store"
 )
 
 // PersonalDataTables are the tenant tables that can hold a person's identifiers. Access exports
@@ -47,6 +48,7 @@ var controlPlaneRetained = []retention{
 		"referenced by the retained evidence. Email and other identifiers in the documents are pseudonymised."},
 	{Data: "hr_events.person_id and payload person.id", Reason: "The HR system's own key for the person, kept with the retained evidence of " +
 		"the joiner and leaver flows. Email and other fields are pseudonymised."},
+	{Data: "erasure_requests.proof.hrFenceKeys", Reason: "Tenant-scoped one-way alias/HR-key digests prevent pre-erasure HR input from restoring deleted data, including before a person's first HR event. Retained with the erasure/idempotency proof."},
 	{Data: "backups", Reason: "Backups expire on their own schedule; data restored from one must be erased again."},
 }
 
@@ -89,6 +91,9 @@ func (s *Service) Erase(ctx context.Context, actor Actor, req muistamov1.Erasure
 	values := subjectIdentifiers(req.Subject, false)
 	digest := SubjectDigest(actor.Tenant, req.Subject)
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		if err := store.LockHRPrivacy(ctx, tx, actor.Tenant, true); err != nil {
+			return err
+		}
 		officer, err := isPrivacyOfficer(ctx, tx, actor.Name)
 		if err != nil {
 			return err
@@ -96,10 +101,35 @@ func (s *Service) Erase(ctx context.Context, actor Actor, req muistamov1.Erasure
 		if !officer {
 			return fmt.Errorf("only privacy officers can erase personal data: %w", ErrForbidden)
 		}
-		if slices.Contains(values, actor.Name) {
+		// An officer's authoritative HR key also selects the employee's retained email aliases.
+		// Never infer ownership from managerEmail: that belongs to a different person.
+		if req.Subject.HrPersonId != nil {
+			rows, err := tx.Query(ctx, `SELECT DISTINCT payload->'person'->>'email' FROM hr_events WHERE person_id=$1`, *req.Subject.HrPersonId)
+			if err != nil {
+				return fmt.Errorf("resolve HR subject aliases: %w", err)
+			}
+			for rows.Next() {
+				var email *string
+				if err := rows.Scan(&email); err != nil {
+					rows.Close()
+					return err
+				}
+				if email != nil && len(*email) >= 3 && !strings.HasPrefix(*email, "erased:") {
+					values = append(values, *email)
+				}
+			}
+			err = rows.Err()
+			rows.Close()
+			if err != nil {
+				return err
+			}
+			slices.Sort(values)
+			values = slices.Compact(values)
+		}
+		if slices.Contains(values, actor.Name) || slices.Contains(values, strings.TrimPrefix(actor.Name, "dev:")) {
 			return fmt.Errorf("a privacy officer cannot erase their own data; another officer must: %w", ErrForbidden)
 		}
-		for _, v := range subjectIdentifiers(req.Subject, false) {
+		for _, v := range values {
 			if strings.Contains(strings.ToLower(req.Reason), strings.ToLower(v)) {
 				return fmt.Errorf("the reason must not contain the person's identifiers; it is stored: %w", ErrInvalid)
 			}
@@ -118,7 +148,9 @@ func (s *Service) Erase(ctx context.Context, actor Actor, req muistamov1.Erasure
 			return fmt.Errorf("read erasure %s: %w", req.Id, err)
 		}
 
-		active, err := activeInstances(ctx, tx, req.Subject)
+		resolvedSubject := req.Subject
+		resolvedSubject.Identities = append([]string(nil), values...)
+		active, err := activeInstances(ctx, tx, resolvedSubject)
 		if err != nil {
 			return err
 		}
@@ -128,6 +160,72 @@ func (s *Service) Erase(ctx context.Context, actor Actor, req muistamov1.Erasure
 		}
 
 		pseudonym := "erased:" + req.Id.String()
+		fenceKeys := []string{}
+		for _, value := range values {
+			fenceKeys = append(fenceKeys, store.HRFenceKey(actor.Tenant, "identifier", value))
+		}
+		personIDs := []string{}
+		if req.Subject.HrPersonId != nil {
+			personIDs = append(personIDs, *req.Subject.HrPersonId)
+		}
+		rows, err := tx.Query(ctx, `SELECT DISTINCT person_id FROM hr_events WHERE person_id=ANY($1::text[]) OR payload->'person'->>'email'=ANY($2::text[])`, personIDs, values)
+		if err != nil {
+			return fmt.Errorf("resolve HR erasure keys: %w", err)
+		}
+		for rows.Next() {
+			var person string
+			if err := rows.Scan(&person); err != nil {
+				rows.Close()
+				return err
+			}
+			personIDs = append(personIDs, person)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		for _, person := range personIDs {
+			fenceKeys = append(fenceKeys, store.HRFenceKey(actor.Tenant, "hr-person", person))
+		}
+		slices.Sort(fenceKeys)
+		fenceKeys = slices.Compact(fenceKeys)
+		// The HR key is authoritative for an officer request even when the person's email changed.
+		// A dispatched child can still create an instance or forward the original manager.
+		// Its setup marker is committed only after those activities have finished.
+		cancelledHR := 0
+		{
+			personID := ""
+			if req.Subject.HrPersonId != nil {
+				personID = *req.Subject.HrPersonId
+			}
+			// Legacy histories have no setup marker; absence is not evidence they finished.
+			rows, err := tx.Query(ctx, `SELECT dispatch_attempted_at IS NOT NULL OR dispatch_state='legacy' FROM hr_events WHERE (dispatch_state IN ('pending','legacy') OR (dispatch_state='dispatched' AND setup_completed_at IS NULL)) AND (($1::text<>'' AND person_id=$1) OR EXISTS(SELECT 1 FROM unnest($2::text[]) v WHERE strpos(payload::text,to_jsonb(v)::text)>0)) FOR UPDATE`, personID, values)
+			if err != nil {
+				return fmt.Errorf("lock pending HR work: %w", err)
+			}
+			for rows.Next() {
+				var attempted bool
+				if err := rows.Scan(&attempted); err != nil {
+					rows.Close()
+					return err
+				}
+				if attempted {
+					rows.Close()
+					return fmt.Errorf("reconcile the person's pending HR handoff before erasure: %w", ErrConflict)
+				}
+			}
+			err = rows.Err()
+			rows.Close()
+			if err != nil {
+				return err
+			}
+			tag, err := tx.Exec(ctx, `UPDATE hr_events SET dispatch_state='cancelled' WHERE dispatch_state='pending' AND (($1::text<>'' AND person_id=$1) OR payload->'person'->>'email'=ANY($2::text[]) OR payload->'person'->>'id'=ANY($2::text[]))`, personID, values)
+			if err != nil {
+				return fmt.Errorf("cancel erased HR work: %w", err)
+			}
+			cancelledHR = int(tag.RowsAffected())
+		}
 		var countsJSON []byte
 		if err := tx.QueryRow(ctx, `SELECT erase_subject($1, $2)`, values, pseudonym).Scan(&countsJSON); err != nil {
 			return fmt.Errorf("erase subject: %w", err)
@@ -136,9 +234,11 @@ func (s *Service) Erase(ctx context.Context, actor Actor, req muistamov1.Erasure
 			Id: req.Id, Service: muistamov1.ErasureProofServiceControlPlane, CompletedAt: time.Now().UTC().Truncate(time.Microsecond),
 			RequestedBy: actor.Name, Pseudonym: pseudonym, Retained: controlPlaneRetained, SubjectDigest: digest,
 		}
+		proof.HrFenceKeys = &fenceKeys
 		if err := json.Unmarshal(countsJSON, &proof.Counts); err != nil {
 			return fmt.Errorf("decode erasure counts: %w", err)
 		}
+		proof.Counts["hr_events.pending_dispatch"] += cancelledHR
 		body, err := json.Marshal(proof)
 		if err != nil {
 			return fmt.Errorf("encode proof: %w", err)

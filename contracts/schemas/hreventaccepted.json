@@ -2,13 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://muistamo.dev/schemas/v1/hreventaccepted.json",
   "title": "HREventAccepted",
-  "description": "Which workflow handles an HR event.",
+  "description": "The durable HR acceptance decision and workflow handoff. Ignored or cancelled events have no workflow ID. Generation is per tenant/person; legacy receipts use zero.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["eventId", "workflowId", "duplicate"],
+  "required": ["eventId", "workflowId", "duplicate", "decision", "generation", "dispatchState"],
   "properties": {
     "eventId": { "type": "string" },
-    "workflowId": { "type": "string" },
+    "workflowId": { "description": "Empty until a handoff succeeds, or when this event is ignored/cancelled.", "type": "string" },
+    "decision": { "type": "string", "enum": ["accepted", "ignored", "legacy"] },
+    "generation": { "type": "integer", "format": "int64", "minimum": 0 },
+    "dispatchState": { "type": "string", "enum": ["pending", "dispatched", "ignored", "cancelled", "legacy"] },
     "duplicate": { "description": "True when this event id was already received.", "type": "boolean" }
   }
 }

@@ -9,7 +9,37 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
+	"muistamo.dev/muistamo/control-plane/internal/store"
 )
+
+// SettleHRSetup records that a new handoff's activities no longer use its original email or
+// manager. Leaver grace-period work uses retained HR/review IDs and current instance documents.
+// This is not a claim that the whole workflow, provider cleanup or retention has completed.
+func (s *Service) SettleHRSetup(ctx context.Context, actor Actor, eventID string, generation int64) error {
+	if generation <= 0 {
+		return fmt.Errorf("HR setup requires an accepted generation: %w", ErrInvalid)
+	}
+	return s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		if err := store.LockHRPrivacy(ctx, tx, actor.Tenant, false); err != nil {
+			return err
+		}
+		var complete bool
+		err := tx.QueryRow(ctx, `SELECT setup_completed_at IS NOT NULL FROM hr_events WHERE event_id=$1 AND generation=$2 AND dispatch_attempted_at IS NOT NULL AND dispatch_state IN ('pending','dispatched') FOR UPDATE`, eventID, generation).Scan(&complete)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("HR setup does not match a committed handoff: %w", ErrConflict)
+		}
+		if err != nil {
+			return fmt.Errorf("read HR setup: %w", err)
+		}
+		if complete {
+			return nil
+		}
+		if _, err := tx.Exec(ctx, `UPDATE hr_events SET setup_completed_at=now() WHERE event_id=$1`, eventID); err != nil {
+			return fmt.Errorf("settle HR setup: %w", err)
+		}
+		return recordEvidence(ctx, tx, s.signer, actor, "hr.event.setup-completed", "HREvent", eventID, nil, map[string]any{"generation": generation})
+	})
+}
 
 // PersonLabel links an instance to the HR person it was created for.
 const PersonLabel = "muistamo.dev/hr-person-id"

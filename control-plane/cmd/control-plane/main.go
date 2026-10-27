@@ -31,7 +31,7 @@ func main() {
 	root := &cobra.Command{Use: "control-plane", SilenceUsage: true, SilenceErrors: true}
 	// cobra's Print helpers default to stderr; command output belongs on stdout.
 	root.SetOut(os.Stdout)
-	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd(), catalogueCmd(), privacyCmd())
+	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd(), catalogueCmd(), privacyCmd(), hrCmd())
 	if err := root.Execute(); err != nil {
 		log.Error("control-plane failed", "err", err)
 		os.Exit(1)
@@ -124,6 +124,7 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 			w := worker.New(temporal, lifecycle.TaskQueue, worker.Options{})
 			w.RegisterWorkflow(lifecycle.Joiner)
 			w.RegisterWorkflow(lifecycle.Leaver)
+			w.RegisterWorkflow(lifecycle.HRDispatch)
 			acts := &lifecycle.Activities{Registry: registry.New(db, key), Provisioner: simulated, Revoker: simulated}
 			if url := os.Getenv("MUISTAMO_KNOWLEDGE_URL"); url != "" {
 				acts.Knowledge = lifecycle.NewKnowledgeClient(url)

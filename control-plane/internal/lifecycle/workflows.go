@@ -93,6 +93,9 @@ func Joiner(ctx workflow.Context, in JoinerInput) ([]string, error) {
 		}
 		instances = append(instances, name)
 	}
+	if err := settleHRSetup(ctx, in.Scope); err != nil {
+		return instances, err
+	}
 	return instances, nil
 }
 
@@ -133,6 +136,9 @@ func Leaver(ctx workflow.Context, in LeaverInput) (LeaverResult, error) {
 		if review.Opened {
 			result.Review = review.ID
 		}
+	}
+	if err := settleHRSetup(ctx, in.Scope); err != nil {
+		return result, err
 	}
 	if len(instances) == 0 && !review.Opened {
 		return result, nil
@@ -192,4 +198,16 @@ func Leaver(ctx workflow.Context, in LeaverInput) (LeaverResult, error) {
 		}
 	}
 	return result, nil
+}
+
+func settleHRSetup(ctx workflow.Context, scope Scope) error {
+	// Generation zero belongs to legacy workflows; preserve their pending activity histories.
+	if scope.Generation == 0 {
+		return nil
+	}
+	if workflow.GetVersion(ctx, "hr-setup-completed", workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+		return nil
+	}
+	var a *Activities
+	return workflow.ExecuteActivity(withActivityOptions(ctx), a.SettleHRSetup, scope).Get(ctx, nil)
 }

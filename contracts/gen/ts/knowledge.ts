@@ -1092,7 +1092,7 @@ export interface components {
         };
         /**
          * ErasureProof
-         * @description What one service erased for a request, and what it kept and why. It holds no identifier of the person: subjectDigest lets someone who already knows the identifiers confirm which person it was.
+         * @description What one service erased for a request, and what it kept and why. No raw subject identifiers are stored here; digests let an authorised caller confirm a known subject and prevent stale HR data from returning.
          */
         ErasureProof: {
             /** Format: uuid */
@@ -1113,6 +1113,8 @@ export interface components {
                 reason: string;
             }[];
             warnings?: string[];
+            /** @description Control-plane erasure fence keys: tenant-scoped, namespaced one-way digests of known aliases and HR keys, retained with the erasure/idempotency proof. No raw email or HR key. */
+            hrFenceKeys?: string[];
             /** @description SHA-256 (hex) over the tenant id and the sorted identifiers. */
             subjectDigest: string;
         };
@@ -1189,11 +1191,18 @@ export interface components {
         };
         /**
          * HREventAccepted
-         * @description Which workflow handles an HR event.
+         * @description The durable HR acceptance decision and workflow handoff. Ignored or cancelled events have no workflow ID. Generation is per tenant/person; legacy receipts use zero.
          */
         HREventAccepted: {
             eventId: string;
+            /** @description Empty until a handoff succeeds, or when this event is ignored/cancelled. */
             workflowId: string;
+            /** @enum {string} */
+            decision: "accepted" | "ignored" | "legacy";
+            /** Format: int64 */
+            generation: number;
+            /** @enum {string} */
+            dispatchState: "pending" | "dispatched" | "ignored" | "cancelled" | "legacy";
             /** @description True when this event id was already received. */
             duplicate: boolean;
         };

@@ -44,6 +44,17 @@ func seedPerson(t *testing.T, h harness, tenant uuid.UUID) {
 	if got := h.postHR(t, tenant, h.hrSecret(t, tenant), time.Now(), hrEvent("ev-1", "joiner", "A-PERSON")); got.status != http.StatusAccepted {
 		t.Fatalf("HR event = %d: %s", got.status, got.raw)
 	}
+	// This fixture's dispatcher has no worker. Explicitly finish its simulated setup so
+	// privacy tests model completed work rather than an outstanding child with original PII.
+	app, err := store.Open(context.Background(), h.db.AppURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.New(app, h.key).SettleHRSetup(context.Background(), registry.Actor{Tenant: tenant, Name: "workflow:fake-ev-1", RequestID: "fixture-setup"}, "ev-1", 1); err != nil {
+		app.Close()
+		t.Fatal(err)
+	}
+	app.Close()
 	medium := strings.Replace(templateJSON, `"modelAlias":"reasoning-default"`, `"modelAlias":"reasoning-default","riskTier":"medium"`, 1)
 	for _, c := range []struct{ path, body string }{
 		{"/v1/templates/analyst-intern", medium},

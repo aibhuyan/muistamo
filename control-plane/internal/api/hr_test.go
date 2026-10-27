@@ -1,14 +1,18 @@
 package api_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 	"muistamo.dev/muistamo/control-plane/internal/api"
+	"muistamo.dev/muistamo/control-plane/internal/lifecycle"
 	"muistamo.dev/muistamo/control-plane/internal/testdb"
 )
 
@@ -85,7 +89,7 @@ func TestHREventMustMatchItsContract(t *testing.T) {
 	}
 }
 
-func TestHREventIsNotRecordedWhenDispatchFails(t *testing.T) {
+func TestHREventRemainsPendingWhenDispatchFails(t *testing.T) {
 	d := &fakeDispatcher{fail: errors.New("temporal unavailable (test)")}
 	h := newHarnessWithHR(t, api.DenyAll{}, d)
 	tenant := h.tenant(t, "acme")
@@ -95,13 +99,61 @@ func TestHREventIsNotRecordedWhenDispatchFails(t *testing.T) {
 	if got.status != http.StatusServiceUnavailable {
 		t.Fatalf("status %d, want 503 so the HR system retries: %s", got.status, got.raw)
 	}
-	if n := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM hr_events`); n != 0 {
-		t.Fatalf("hr_events = %d, want 0: a failed dispatch must not be recorded as received", n)
+	if n := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM hr_events`); n != 1 {
+		t.Fatalf("hr_events = %d, want a durable received event despite failed dispatch", n)
 	}
 
 	d.fail = nil
-	if got := h.postHR(t, tenant, secret, time.Now(), hrEvent("ev-1", "leaver", "E-1001")); got.status != http.StatusAccepted {
-		t.Fatalf("retry after recovery = %d, want 202", got.status)
+	if got := h.postHR(t, tenant, secret, time.Now(), hrEvent("ev-1", "leaver", "E-1001")); got.status != http.StatusOK || got.body["duplicate"] != true || got.body["dispatchState"] != "dispatched" {
+		t.Fatalf("retry after recovery = %d %s, want 200 duplicate with completed dispatch", got.status, got.raw)
+	}
+}
+
+func TestHRDecisionAndEvidenceCommitBeforeDispatch(t *testing.T) {
+	d := &fakeDispatcher{}
+	h := newHarnessWithHR(t, api.DenyAll{}, d)
+	tenant := h.tenant(t, "committed")
+	secret := h.hrSecret(t, tenant)
+	d.check = func(_ context.Context, _ lifecycle.Scope, event muistamov1.HREvent) {
+		if n := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM hr_events WHERE event_id=$1`, event.Id); n != 1 {
+			t.Errorf("dispatcher saw %d committed HR receipts", n)
+		}
+		if n := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM evidence_events WHERE action='hr.event.received'`); n != 1 {
+			t.Errorf("dispatcher saw %d committed evidence receipts", n)
+		}
+	}
+	got := h.postHR(t, tenant, secret, time.Now(), hrEvent("ordered-1", "joiner", "E-1001"))
+	if got.status != 202 || got.body["decision"] != "accepted" || got.body["generation"] != float64(1) {
+		t.Fatalf("receipt=%d %s", got.status, got.raw)
+	}
+}
+
+func TestHRLeaverWinsEqualTimeAndStaleJoinersAreIgnored(t *testing.T) {
+	d := &fakeDispatcher{}
+	h := newHarnessWithHR(t, api.DenyAll{}, d)
+	tenant := h.tenant(t, "ordered")
+	secret := h.hrSecret(t, tenant)
+	for _, tc := range []struct {
+		id, kind, at, decision string
+		generation             float64
+	}{
+		{"join", "joiner", "2026-10-25T09:00:00Z", "accepted", 1},
+		{"leave", "leaver", "2026-10-25T09:00:00Z", "accepted", 2},
+		{"late", "joiner", "2026-10-25T09:00:00Z", "ignored", 2},
+		{"older", "joiner", "2026-10-25T08:59:59Z", "ignored", 2},
+		{"rehire", "joiner", "2026-10-25T09:00:01Z", "accepted", 3},
+	} {
+		body := strings.Replace(hrEvent(tc.id, tc.kind, "E-1001"), "2026-10-25T09:00:00Z", tc.at, 1)
+		got := h.postHR(t, tenant, secret, time.Now(), body)
+		if got.status != 202 || got.body["decision"] != tc.decision || got.body["generation"] != tc.generation {
+			t.Fatalf("%s: %d %s", tc.id, got.status, got.raw)
+		}
+		if tc.decision == "ignored" && got.body["workflowId"] != "" {
+			t.Fatal("ignored event claims a workflow")
+		}
+	}
+	if d.count() != 3 {
+		t.Fatalf("dispatches=%d, want only join/leaver/newer rehire", d.count())
 	}
 }
 

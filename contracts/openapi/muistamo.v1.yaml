@@ -802,13 +802,13 @@ paths:
               $ref: "../schemas/hrevent.json"
       responses:
         "200":
-          description: This event id was already received; nothing new was started.
+          description: This event id was already received. A pending workflow handoff is retried; completed or ignored events start no additional work.
           content:
             application/json:
               schema:
                 $ref: "../schemas/hreventaccepted.json"
         "202":
-          description: Accepted; a workflow is handling it.
+          description: Recorded with its acceptance decision. Accepted events have been handed to a workflow; ignored stale events start no workflow.
           content:
             application/json:
               schema:

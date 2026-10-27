@@ -528,6 +528,54 @@ func (e HREventType) Valid() bool {
 	}
 }
 
+// Defines values for HREventAcceptedDecision.
+const (
+	HREventAcceptedDecisionAccepted HREventAcceptedDecision = "accepted"
+	HREventAcceptedDecisionIgnored  HREventAcceptedDecision = "ignored"
+	HREventAcceptedDecisionLegacy   HREventAcceptedDecision = "legacy"
+)
+
+// Valid indicates whether the value is a known member of the HREventAcceptedDecision enum.
+func (e HREventAcceptedDecision) Valid() bool {
+	switch e {
+	case HREventAcceptedDecisionAccepted:
+		return true
+	case HREventAcceptedDecisionIgnored:
+		return true
+	case HREventAcceptedDecisionLegacy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HREventAcceptedDispatchState.
+const (
+	HREventAcceptedDispatchStateCancelled  HREventAcceptedDispatchState = "cancelled"
+	HREventAcceptedDispatchStateDispatched HREventAcceptedDispatchState = "dispatched"
+	HREventAcceptedDispatchStateIgnored    HREventAcceptedDispatchState = "ignored"
+	HREventAcceptedDispatchStateLegacy     HREventAcceptedDispatchState = "legacy"
+	HREventAcceptedDispatchStatePending    HREventAcceptedDispatchState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the HREventAcceptedDispatchState enum.
+func (e HREventAcceptedDispatchState) Valid() bool {
+	switch e {
+	case HREventAcceptedDispatchStateCancelled:
+		return true
+	case HREventAcceptedDispatchStateDispatched:
+		return true
+	case HREventAcceptedDispatchStateIgnored:
+		return true
+	case HREventAcceptedDispatchStateLegacy:
+		return true
+	case HREventAcceptedDispatchStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatusStatus.
 const (
 	HealthStatusStatusOk HealthStatusStatus = "ok"
@@ -1900,13 +1948,16 @@ type EntryVerification struct {
 	Version    string     `json:"version"`
 }
 
-// ErasureProof What one service erased for a request, and what it kept and why. It holds no identifier of the person: subjectDigest lets someone who already knows the identifiers confirm which person it was.
+// ErasureProof What one service erased for a request, and what it kept and why. No raw subject identifiers are stored here; digests let an authorised caller confirm a known subject and prevent stale HR data from returning.
 type ErasureProof struct {
 	CompletedAt time.Time `json:"completedAt"`
 
 	// Counts Rows changed per data location, for example entries.contributor.
-	Counts map[string]int     `json:"counts"`
-	Id     openapi_types.UUID `json:"id"`
+	Counts map[string]int `json:"counts"`
+
+	// HrFenceKeys Control-plane erasure fence keys: tenant-scoped, namespaced one-way digests of known aliases and HR keys, retained with the erasure/idempotency proof. No raw email or HR key.
+	HrFenceKeys *[]string          `json:"hrFenceKeys,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
 
 	// Pseudonym What the person's identifiers were replaced with.
 	Pseudonym   string `json:"pseudonym"`
@@ -1994,13 +2045,25 @@ type HREvent struct {
 // HREventType defines model for HREvent.Type.
 type HREventType string
 
-// HREventAccepted Which workflow handles an HR event.
+// HREventAccepted The durable HR acceptance decision and workflow handoff. Ignored or cancelled events have no workflow ID. Generation is per tenant/person; legacy receipts use zero.
 type HREventAccepted struct {
+	Decision      HREventAcceptedDecision      `json:"decision"`
+	DispatchState HREventAcceptedDispatchState `json:"dispatchState"`
+
 	// Duplicate True when this event id was already received.
 	Duplicate  bool   `json:"duplicate"`
 	EventId    string `json:"eventId"`
+	Generation int64  `json:"generation"`
+
+	// WorkflowId Empty until a handoff succeeds, or when this event is ignored/cancelled.
 	WorkflowId string `json:"workflowId"`
 }
+
+// HREventAcceptedDecision defines model for HREventAccepted.Decision.
+type HREventAcceptedDecision string
+
+// HREventAcceptedDispatchState defines model for HREventAccepted.DispatchState.
+type HREventAcceptedDispatchState string
 
 // HealthStatus Response body of every service health endpoint.
 type HealthStatus struct {
