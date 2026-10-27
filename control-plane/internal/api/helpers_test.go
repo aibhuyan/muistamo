@@ -78,11 +78,15 @@ type fakeDispatcher struct {
 	mu    sync.Mutex
 	calls []string
 	fail  error
+	check func(context.Context, lifecycle.Scope, muistamov1.HREvent)
 }
 
-func (d *fakeDispatcher) Dispatch(_ context.Context, scope lifecycle.Scope, event muistamov1.HREvent) (string, error) {
+func (d *fakeDispatcher) Dispatch(ctx context.Context, scope lifecycle.Scope, event muistamov1.HREvent) (string, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.check != nil {
+		d.check(ctx, scope, event)
+	}
 	if d.fail != nil {
 		return "", d.fail
 	}

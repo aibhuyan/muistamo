@@ -2,8 +2,23 @@
 #   filename:  hreventaccepted.json
 
 from __future__ import annotations
+from enum import StrEnum
 from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class Decision(StrEnum):
+    accepted = "accepted"
+    ignored = "ignored"
+    legacy = "legacy"
+
+
+class DispatchState(StrEnum):
+    pending = "pending"
+    dispatched = "dispatched"
+    ignored = "ignored"
+    cancelled = "cancelled"
+    legacy = "legacy"
 
 
 class HREventAccepted(BaseModel):
@@ -11,5 +26,13 @@ class HREventAccepted(BaseModel):
         extra="forbid",
     )
     eventId: str
-    workflowId: str
+    workflowId: Annotated[
+        str,
+        Field(
+            description="Empty until a handoff succeeds, or when this event is ignored/cancelled."
+        ),
+    ]
+    decision: Decision
+    generation: Annotated[int, Field(ge=0)]
+    dispatchState: DispatchState
     duplicate: Annotated[bool, Field(description="True when this event id was already received.")]

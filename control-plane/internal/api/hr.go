@@ -30,7 +30,7 @@ const (
 // HRIntake verifies and accepts HR events. lifecycle.Intake implements it.
 type HRIntake interface {
 	Secret(ctx context.Context, tenant uuid.UUID) ([]byte, error)
-	Accept(ctx context.Context, tenant uuid.UUID, actor, requestID string, event muistamov1.HREvent) (workflowID string, duplicate bool, err error)
+	Accept(ctx context.Context, tenant uuid.UUID, actor, requestID string, event muistamov1.HREvent) (muistamov1.HREventAccepted, error)
 }
 
 // Sign returns the X-Muistamo-Signature value for body at time t. HR connectors and tests use it.

@@ -210,12 +210,11 @@ func (s *server) ReceiveHrEvent(ctx context.Context, req muistamov1.ReceiveHrEve
 	if err != nil {
 		return muistamov1.ReceiveHrEventdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
 	}
-	workflowID, duplicate, err := s.hr.Accept(ctx, actor.Tenant, actor.Name, actor.RequestID, *req.Body)
+	accepted, err := s.hr.Accept(ctx, actor.Tenant, actor.Name, actor.RequestID, *req.Body)
 	if err != nil {
 		return muistamov1.ReceiveHrEventdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
 	}
-	accepted := muistamov1.HREventAccepted{EventId: req.Body.Id, WorkflowId: workflowID, Duplicate: duplicate}
-	if duplicate {
+	if accepted.Duplicate {
 		return muistamov1.ReceiveHrEvent200JSONResponse(accepted), nil
 	}
 	return muistamov1.ReceiveHrEvent202JSONResponse(accepted), nil

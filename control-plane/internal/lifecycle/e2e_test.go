@@ -41,6 +41,7 @@ func TestJoinerLeaverRehireEndToEnd(t *testing.T) {
 	w := worker.New(temporal, queue, worker.Options{})
 	w.RegisterWorkflow(lifecycle.Joiner)
 	w.RegisterWorkflow(lifecycle.Leaver)
+	w.RegisterWorkflow(lifecycle.HRDispatch)
 	w.RegisterActivity(f.acts)
 	if err := w.Start(); err != nil {
 		t.Fatal(err)
@@ -63,11 +64,11 @@ func TestJoinerLeaverRehireEndToEnd(t *testing.T) {
 	}
 	accept := func(e muistamov1.HREvent) string {
 		t.Helper()
-		id, _, err := intake.Accept(ctx, f.scope.Tenant, "hris:test", "req-"+e.Id, e)
+		receipt, err := intake.Accept(ctx, f.scope.Tenant, "hris:test", "req-"+e.Id, e)
 		if err != nil {
 			t.Fatalf("accept %s: %v", e.Id, err)
 		}
-		return id
+		return receipt.WorkflowId
 	}
 	waitFor := func(name string, state muistamov1.InstanceState) {
 		t.Helper()

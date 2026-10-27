@@ -27,9 +27,12 @@ type Person struct {
 // Scope identifies who and what a workflow step acts for. It is carried from the HR event into
 // every activity so evidence names the triggering event.
 type Scope struct {
-	Tenant     uuid.UUID
-	WorkflowID string
-	EventID    string
+	Tenant               uuid.UUID
+	WorkflowID           string
+	EventID              string
+	Generation           int64    `json:",omitempty"`
+	PriorLeaverWorkflows []string `json:",omitempty"`
+	HandoffAttempted     bool     `json:",omitempty"`
 }
 
 func (s Scope) actor() registry.Actor {
@@ -43,6 +46,11 @@ type Activities struct {
 	Revoker     Revoker
 	// Knowledge reviews leavers' personal layers. Nil: reviews are recorded as not opened.
 	Knowledge LeaverReviews
+}
+
+// SettleHRSetup releases the erasure fence after all original-person setup writes finish.
+func (a *Activities) SettleHRSetup(ctx context.Context, scope Scope) error {
+	return a.Registry.SettleHRSetup(ctx, scope.actor(), scope.EventID, scope.Generation)
 }
 
 // MatchTemplates returns the templates assigned to the person's job code.

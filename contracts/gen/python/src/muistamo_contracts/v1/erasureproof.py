@@ -4,7 +4,7 @@
 from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel
 from typing_extensions import TypeAliasType
 from uuid import UUID
 
@@ -25,6 +25,10 @@ class ErasureRetention(BaseModel):
     reason: str
 
 
+class HrFenceKey(RootModel[str]):
+    root: Annotated[str, Field(pattern="^[0-9a-f]{64}$")]
+
+
 class ErasureProof(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -42,6 +46,12 @@ class ErasureProof(BaseModel):
     ]
     retained: list[ErasureRetention]
     warnings: list[str] | None = None
+    hrFenceKeys: Annotated[
+        list[HrFenceKey] | None,
+        Field(
+            description="Control-plane erasure fence keys: tenant-scoped, namespaced one-way digests of known aliases and HR keys, retained with the erasure/idempotency proof. No raw email or HR key."
+        ),
+    ] = None
     subjectDigest: Annotated[
         str,
         Field(

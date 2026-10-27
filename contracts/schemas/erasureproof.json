@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://muistamo.dev/schemas/v1/erasureproof.json",
   "title": "ErasureProof",
-  "description": "What one service erased for a request, and what it kept and why. It holds no identifier of the person: subjectDigest lets someone who already knows the identifiers confirm which person it was.",
+  "description": "What one service erased for a request, and what it kept and why. No raw subject identifiers are stored here; digests let an authorised caller confirm a known subject and prevent stale HR data from returning.",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "service", "completedAt", "requestedBy", "pseudonym", "counts", "retained", "subjectDigest"],
@@ -31,6 +31,7 @@
       }
     },
     "warnings": { "type": "array", "items": { "type": "string" } },
+    "hrFenceKeys": { "description": "Control-plane erasure fence keys: tenant-scoped, namespaced one-way digests of known aliases and HR keys, retained with the erasure/idempotency proof. No raw email or HR key.", "type": "array", "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" } },
     "subjectDigest": { "description": "SHA-256 (hex) over the tenant id and the sorted identifiers.", "type": "string", "pattern": "^[0-9a-f]{64}$" }
   }
 }
