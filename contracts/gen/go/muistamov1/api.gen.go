@@ -1839,6 +1839,36 @@ type EffectiveAgentSpec struct {
 	Version  int               `json:"version"`
 }
 
+// EntraIdentityBinding Operator-controlled Entra identity management binding (FR-201). This configuration is not a public registry YAML kind or API resource. Contains no credential value; the first client-secret resolver is for local development acceptance only.
+type EntraIdentityBinding struct {
+	// BindingVersion Immutable binding version. A changed directory, blueprint, sponsors or credential reference/version requires a new binding version.
+	BindingVersion string `json:"bindingVersion"`
+
+	// BlueprintAppId Blueprint application ID, used for authentication and Graph agentIdentityBlueprintId.
+	BlueprintAppId string `json:"blueprintAppId"`
+
+	// BlueprintObjectId Blueprint application object ID, retained for operator reconciliation.
+	BlueprintObjectId string `json:"blueprintObjectId"`
+
+	// BlueprintPrincipalId Blueprint service principal object ID, retained for operator reconciliation.
+	BlueprintPrincipalId string `json:"blueprintPrincipalId"`
+
+	// CredentialRef Opaque operator credential reference; never an inline credential, URL or filesystem path.
+	CredentialRef string `json:"credentialRef"`
+
+	// CredentialVersion Immutable version resolved with credentialRef. Token reuse is confined to this binding and credential version.
+	CredentialVersion string `json:"credentialVersion"`
+
+	// EntraTenantId Customer Entra directory ID; used in the fixed Microsoft token authority.
+	EntraTenantId string `json:"entraTenantId"`
+
+	// SponsorUserIds Explicit sponsor user object IDs. No directory-wide user search.
+	SponsorUserIds []string `json:"sponsorUserIds"`
+
+	// TenantId Internal Muistamo tenant ID. This is a separate identifier from the Entra directory.
+	TenantId string `json:"tenantId"`
+}
+
 // EntryDecay How recently a reviewer vouched for a pack entry (FR-307). current until dueAt; then due (still served, flagged and queued for the pack's reviewers) until expiresAt; then expired, which is never served and is removed by the next decay sweep. Mandatory packs never expire: their entries stay due and are flagged to privacy officers.
 type EntryDecay struct {
 	DueAt *time.Time `json:"dueAt,omitempty"`
