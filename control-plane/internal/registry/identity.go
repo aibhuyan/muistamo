@@ -390,8 +390,11 @@ func operationInstance(ctx context.Context, tx pgx.Tx, id uuid.UUID) (string, er
 }
 
 // MarkIdentityIndeterminate retains uncertainty without exposing transport/provider text.
-func (s *Service) MarkIdentityIndeterminate(ctx context.Context, actor Actor, id uuid.UUID, code muistamov1.IdentityOperationStatusErrorCode) error {
+func (s *Service) MarkIdentityIndeterminate(ctx context.Context, actor Actor, id uuid.UUID, code muistamov1.IdentityOperationStatusErrorCode, candidates ...uuid.UUID) error {
 	if code != "uncertain" && code != "provider_unavailable" && code != "ownership_unproved" && code != "generation_superseded" && code != "provider_refused" {
+		return ErrInvalid
+	}
+	if len(candidates) > 1 || (len(candidates) == 1 && candidates[0] == uuid.Nil) {
 		return ErrInvalid
 	}
 	return s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
@@ -412,17 +415,38 @@ func (s *Service) MarkIdentityIndeterminate(ctx context.Context, actor Actor, id
 		if op.State != "pending" && op.State != "indeterminate" {
 			return ErrConflict
 		}
-		if op.State == "indeterminate" && op.ErrorCode != nil && *op.ErrorCode == code {
+		var candidate *uuid.UUID
+		if len(candidates) == 1 {
+			candidate = &candidates[0]
+			if op.Action != "create" || (op.CandidateId != nil && *op.CandidateId != *candidate) {
+				return ErrConflict
+			}
+		}
+		if op.State == "indeterminate" && op.ErrorCode != nil && *op.ErrorCode == code && (candidate == nil || (op.CandidateId != nil && *op.CandidateId == *candidate)) {
 			return nil
 		}
-		if _, err := tx.Exec(ctx, `UPDATE identity_operations SET state='indeterminate',error_code=$2,updated_at=now() WHERE id=$1`, id, string(code)); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE identity_operations SET state='indeterminate',error_code=$2,candidate_id=coalesce(candidate_id,$3),updated_at=now() WHERE id=$1`, id, string(code), candidate); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE instance_identities SET observed_state='reconciliation_required',updated_at=now() WHERE id=$1`, op.InstanceIdentityId); err != nil {
 			return err
 		}
-		return recordEvidence(ctx, tx, s.signer, actor, "identity.operation.indeterminate", "IdentityOperation", id.String(), nil, map[string]any{"errorCode": code, "generation": op.HrGeneration})
+		return recordEvidence(ctx, tx, s.signer, actor, "identity.operation.indeterminate", "IdentityOperation", id.String(), nil, map[string]any{"errorCode": code, "generation": op.HrGeneration, "candidateId": candidate})
 	})
+}
+
+// IdentityForOperation follows only the operation's tenant-scoped trusted ownership reference.
+func (s *Service) IdentityForOperation(ctx context.Context, actor Actor, id uuid.UUID) (muistamov1.InstanceIdentityStatus, error) {
+	var out muistamov1.InstanceIdentityStatus
+	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		name, err := operationInstance(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		out, err = identityRow(ctx, tx, name)
+		return err
+	})
+	return out, err
 }
 
 // CommitIdentityResult is for a verified adapter observation, never an operator-supplied ID.
@@ -451,59 +475,67 @@ func (s *Service) CommitIdentityResult(ctx context.Context, actor Actor, id, cre
 		if err != nil {
 			return err
 		}
-		want := muistamov1.InstanceIdentityStatusObservedState("disabled")
-		if op.Action == "enable" {
-			want = "enabled"
-		}
-		if op.Action == "delete" {
-			want = "deleted"
-		}
-		if owned.ProviderMode != "entra" || op.CreationId != creationID || owned.CreationId == nil || *owned.CreationId != creationID || observed != want || (owned.ProviderId != nil && *owned.ProviderId != providerID) {
-			return fmt.Errorf("provider result does not match the original operation: %w", ErrConflict)
-		}
-		if op.State == "succeeded" {
-			if op.ProviderId != nil && *op.ProviderId == providerID {
-				return nil
-			}
-			return ErrConflict
-		}
-		if op.State != "pending" && op.State != "indeterminate" {
-			return ErrConflict
-		}
-		var other bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM identity_operations WHERE instance_identity_id=$1 AND id<>$2 AND state IN ('pending','indeterminate'))`, owned.Id, id).Scan(&other); err != nil {
-			return err
-		}
-		// A successful best-effort disable cannot settle a different late enable/delete.
-		state := observed
-		if other {
-			state = "reconciliation_required"
-		}
-		var enabledGeneration *int64
-		if observed == "enabled" {
-			enabledGeneration = &op.HrGeneration
-		}
-		if _, err := tx.Exec(ctx, `UPDATE instance_identities SET provider_id=$2,observed_state=$3,enabled_generation=$4,updated_at=now() WHERE id=$1`, owned.Id, providerID, string(state), enabledGeneration); err != nil {
-			return identityWriteError(err)
-		}
-		if op.Action == "create" {
-			ref := "entra:" + providerID.String()
-			if current.Document.Spec.IdentityRef != nil && *current.Document.Spec.IdentityRef != ref {
-				return ErrConflict
-			}
-			next := current.Document
-			next.Spec.IdentityRef = &ref
-			if _, err := updateInstance(ctx, tx, current, next); err != nil {
-				return err
-			}
-		}
-		entry, err := evidence.Append(ctx, tx, s.signer, evidence.Entry{Tenant: actor.Tenant, Actor: actor.Name, RequestID: actor.RequestID, Action: "identity.operation.succeeded", SubjectKind: "IdentityOperation", SubjectName: id.String(), After: map[string]any{"action": op.Action, "providerId": providerID, "creationId": creationID, "observedState": observed, "ownershipState": state, "generation": op.HrGeneration, "bindingVersion": op.BindingVersion}})
-		if err != nil {
-			return err
-		}
-		_, err = tx.Exec(ctx, `UPDATE identity_operations SET state='succeeded',provider_id=$2,error_code=NULL,result_evidence_seq=$3,updated_at=now() WHERE id=$1`, id, providerID, entry.Seq)
-		return err
+		return s.commitIdentityResult(ctx, tx, actor, current, owned, op, creationID, providerID, observed)
 	})
+}
+
+func (s *Service) commitIdentityResult(ctx context.Context, tx pgx.Tx, actor Actor, current muistamov1.AgentInstanceRecord, owned muistamov1.InstanceIdentityStatus, op muistamov1.IdentityOperationStatus, creationID, providerID uuid.UUID, observed muistamov1.InstanceIdentityStatusObservedState) error {
+	id := op.Id
+	want := muistamov1.InstanceIdentityStatusObservedState("disabled")
+	if op.Action == "enable" {
+		want = "enabled"
+	}
+	if op.Action == "delete" {
+		want = "deleted"
+	}
+	if owned.ProviderMode != "entra" || op.CreationId != creationID || owned.CreationId == nil || *owned.CreationId != creationID || observed != want || (owned.ProviderId != nil && *owned.ProviderId != providerID) {
+		return fmt.Errorf("provider result does not match the original operation: %w", ErrConflict)
+	}
+	if op.CandidateId != nil && *op.CandidateId != providerID {
+		return fmt.Errorf("provider result conflicts with retained candidate: %w", ErrConflict)
+	}
+	if op.State == "succeeded" {
+		if op.ProviderId != nil && *op.ProviderId == providerID {
+			return nil
+		}
+		return ErrConflict
+	}
+	if op.State != "pending" && op.State != "indeterminate" {
+		return ErrConflict
+	}
+	var other bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM identity_operations WHERE instance_identity_id=$1 AND id<>$2 AND state IN ('pending','indeterminate'))`, owned.Id, id).Scan(&other); err != nil {
+		return err
+	}
+	// A successful best-effort disable cannot settle a different late enable/delete.
+	state := observed
+	if other {
+		state = "reconciliation_required"
+	}
+	var enabledGeneration *int64
+	if observed == "enabled" {
+		enabledGeneration = &op.HrGeneration
+	}
+	if _, err := tx.Exec(ctx, `UPDATE instance_identities SET provider_id=$2,observed_state=$3,enabled_generation=$4,updated_at=now() WHERE id=$1`, owned.Id, providerID, string(state), enabledGeneration); err != nil {
+		return identityWriteError(err)
+	}
+	if op.Action == "create" {
+		ref := "entra:" + providerID.String()
+		if current.Document.Spec.IdentityRef != nil && *current.Document.Spec.IdentityRef != ref {
+			return ErrConflict
+		}
+		next := current.Document
+		next.Spec.IdentityRef = &ref
+		if _, err := updateInstance(ctx, tx, current, next); err != nil {
+			return err
+		}
+	}
+	entry, err := evidence.Append(ctx, tx, s.signer, evidence.Entry{Tenant: actor.Tenant, Actor: actor.Name, RequestID: actor.RequestID, Action: "identity.operation.succeeded", SubjectKind: "IdentityOperation", SubjectName: id.String(), After: map[string]any{"action": op.Action, "providerId": providerID, "creationId": creationID, "observedState": observed, "ownershipState": state, "generation": op.HrGeneration, "bindingVersion": op.BindingVersion}})
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `UPDATE identity_operations SET state='succeeded',provider_id=$2,error_code=NULL,result_evidence_seq=$3,updated_at=now() WHERE id=$1`, id, providerID, entry.Seq)
+	return err
 }
 
 func checkIdentityTransition(ctx context.Context, tx pgx.Tx, current muistamov1.AgentInstanceRecord, to muistamov1.InstanceState, lockedPerson string) error {

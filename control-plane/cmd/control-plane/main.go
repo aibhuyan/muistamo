@@ -31,7 +31,7 @@ func main() {
 	root := &cobra.Command{Use: "control-plane", SilenceUsage: true, SilenceErrors: true}
 	// cobra's Print helpers default to stderr; command output belongs on stdout.
 	root.SetOut(os.Stdout)
-	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd(), catalogueCmd(), privacyCmd(), hrCmd())
+	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd(), catalogueCmd(), privacyCmd(), hrCmd(), entraCmd())
 	if err := root.Execute(); err != nil {
 		log.Error("control-plane failed", "err", err)
 		os.Exit(1)
