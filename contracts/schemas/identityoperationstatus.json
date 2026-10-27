@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/identityoperationstatus.json",
+  "title": "IdentityOperationStatus",
+  "description": "Operator-only Entra operation journal status. Identifiers are internal opaque IDs; no employee email, raw HR event key, credential or provider response body is stored. A pending or indeterminate create never grants permission for another blind POST.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenantId",
+    "id",
+    "instanceIdentityId",
+    "bindingVersion",
+    "hrReceiptId",
+    "hrGeneration",
+    "action",
+    "attempt",
+    "state",
+    "creationId",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "tenantId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "instanceIdentityId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "bindingVersion": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "hrReceiptId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "hrGeneration": {
+      "type": "integer",
+      "format": "int64",
+      "minimum": 1
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "create",
+        "enable",
+        "disable",
+        "delete"
+      ]
+    },
+    "attempt": {"type":"integer","format":"int64","minimum":1,"description":"Distinct provider request attempt for this HR generation/action. Corrective disables have their own intent/result; original uncertainties are never overwritten."},
+    "state": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "succeeded",
+        "indeterminate",
+        "failed"
+      ]
+    },
+    "creationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "providerId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "candidateId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "errorCode": {
+      "type": "string",
+      "enum": [
+        "provider_refused",
+        "provider_unavailable",
+        "ownership_unproved",
+        "uncertain",
+        "generation_superseded"
+      ]
+    },
+    "resultEvidenceSeq": {
+      "type": "integer",
+      "format": "int64",
+      "minimum": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

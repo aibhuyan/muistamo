@@ -176,6 +176,13 @@ func (s *Service) SetIdentityRef(ctx context.Context, actor Actor, name, identit
 		if err != nil {
 			return err
 		}
+		owned, err := identityRow(ctx, tx, name)
+		if err != nil {
+			return err
+		}
+		if owned.ProviderMode != "simulated" {
+			return fmt.Errorf("live identity references come only from verified journal results: %w", ErrConflict)
+		}
 		if current.Document.Spec.IdentityRef != nil && *current.Document.Spec.IdentityRef == identityRef {
 			rec = current
 			return nil
@@ -231,6 +238,9 @@ func (s *Service) TransitionTo(ctx context.Context, actor Actor, name string, to
 			return current, err
 		}
 		if current.Document.Spec.State == to {
+			if to == muistamov1.InstanceStateActive || to == muistamov1.InstanceStateRetired {
+				return s.checkSameIdentityState(ctx, actor, name, to)
+			}
 			return current, nil
 		}
 		rec, err := s.Transition(ctx, actor, name, to, ETag(current.Revision))

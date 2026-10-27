@@ -591,6 +591,129 @@ func (e HealthStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for IdentityOperationStatusAction.
+const (
+	IdentityOperationStatusActionCreate  IdentityOperationStatusAction = "create"
+	IdentityOperationStatusActionDelete  IdentityOperationStatusAction = "delete"
+	IdentityOperationStatusActionDisable IdentityOperationStatusAction = "disable"
+	IdentityOperationStatusActionEnable  IdentityOperationStatusAction = "enable"
+)
+
+// Valid indicates whether the value is a known member of the IdentityOperationStatusAction enum.
+func (e IdentityOperationStatusAction) Valid() bool {
+	switch e {
+	case IdentityOperationStatusActionCreate:
+		return true
+	case IdentityOperationStatusActionDelete:
+		return true
+	case IdentityOperationStatusActionDisable:
+		return true
+	case IdentityOperationStatusActionEnable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IdentityOperationStatusErrorCode.
+const (
+	IdentityOperationStatusErrorCodeGenerationSuperseded IdentityOperationStatusErrorCode = "generation_superseded"
+	IdentityOperationStatusErrorCodeOwnershipUnproved    IdentityOperationStatusErrorCode = "ownership_unproved"
+	IdentityOperationStatusErrorCodeProviderRefused      IdentityOperationStatusErrorCode = "provider_refused"
+	IdentityOperationStatusErrorCodeProviderUnavailable  IdentityOperationStatusErrorCode = "provider_unavailable"
+	IdentityOperationStatusErrorCodeUncertain            IdentityOperationStatusErrorCode = "uncertain"
+)
+
+// Valid indicates whether the value is a known member of the IdentityOperationStatusErrorCode enum.
+func (e IdentityOperationStatusErrorCode) Valid() bool {
+	switch e {
+	case IdentityOperationStatusErrorCodeGenerationSuperseded:
+		return true
+	case IdentityOperationStatusErrorCodeOwnershipUnproved:
+		return true
+	case IdentityOperationStatusErrorCodeProviderRefused:
+		return true
+	case IdentityOperationStatusErrorCodeProviderUnavailable:
+		return true
+	case IdentityOperationStatusErrorCodeUncertain:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IdentityOperationStatusState.
+const (
+	IdentityOperationStatusStateFailed        IdentityOperationStatusState = "failed"
+	IdentityOperationStatusStateIndeterminate IdentityOperationStatusState = "indeterminate"
+	IdentityOperationStatusStatePending       IdentityOperationStatusState = "pending"
+	IdentityOperationStatusStateSucceeded     IdentityOperationStatusState = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the IdentityOperationStatusState enum.
+func (e IdentityOperationStatusState) Valid() bool {
+	switch e {
+	case IdentityOperationStatusStateFailed:
+		return true
+	case IdentityOperationStatusStateIndeterminate:
+		return true
+	case IdentityOperationStatusStatePending:
+		return true
+	case IdentityOperationStatusStateSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceIdentityStatusObservedState.
+const (
+	InstanceIdentityStatusObservedStateDeleted                InstanceIdentityStatusObservedState = "deleted"
+	InstanceIdentityStatusObservedStateDisabled               InstanceIdentityStatusObservedState = "disabled"
+	InstanceIdentityStatusObservedStateEnabled                InstanceIdentityStatusObservedState = "enabled"
+	InstanceIdentityStatusObservedStateReconciliationRequired InstanceIdentityStatusObservedState = "reconciliation_required"
+	InstanceIdentityStatusObservedStateSimulated              InstanceIdentityStatusObservedState = "simulated"
+	InstanceIdentityStatusObservedStateUnprovisioned          InstanceIdentityStatusObservedState = "unprovisioned"
+)
+
+// Valid indicates whether the value is a known member of the InstanceIdentityStatusObservedState enum.
+func (e InstanceIdentityStatusObservedState) Valid() bool {
+	switch e {
+	case InstanceIdentityStatusObservedStateDeleted:
+		return true
+	case InstanceIdentityStatusObservedStateDisabled:
+		return true
+	case InstanceIdentityStatusObservedStateEnabled:
+		return true
+	case InstanceIdentityStatusObservedStateReconciliationRequired:
+		return true
+	case InstanceIdentityStatusObservedStateSimulated:
+		return true
+	case InstanceIdentityStatusObservedStateUnprovisioned:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceIdentityStatusProviderMode.
+const (
+	InstanceIdentityStatusProviderModeEntra     InstanceIdentityStatusProviderMode = "entra"
+	InstanceIdentityStatusProviderModeSimulated InstanceIdentityStatusProviderMode = "simulated"
+)
+
+// Valid indicates whether the value is a known member of the InstanceIdentityStatusProviderMode enum.
+func (e InstanceIdentityStatusProviderMode) Valid() bool {
+	switch e {
+	case InstanceIdentityStatusProviderModeEntra:
+		return true
+	case InstanceIdentityStatusProviderModeSimulated:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InstanceState.
 const (
 	InstanceStateActive      InstanceState = "active"
@@ -2073,6 +2196,70 @@ type HealthStatus struct {
 
 // HealthStatusStatus defines model for HealthStatus.Status.
 type HealthStatusStatus string
+
+// IdentityBindingStatus Operator-only durable binding metadata. The full config, sponsor list and credential reference/value are not stored here; configDigest pins the exact validated EntraIdentityBinding. This is not a public YAML kind or administration endpoint.
+type IdentityBindingStatus struct {
+	BindingVersion openapi_types.UUID `json:"bindingVersion"`
+	BlueprintAppId openapi_types.UUID `json:"blueprintAppId"`
+	ConfigDigest   string             `json:"configDigest"`
+	CreatedAt      time.Time          `json:"createdAt"`
+	EntraTenantId  openapi_types.UUID `json:"entraTenantId"`
+	TenantId       openapi_types.UUID `json:"tenantId"`
+}
+
+// IdentityOperationStatus Operator-only Entra operation journal status. Identifiers are internal opaque IDs; no employee email, raw HR event key, credential or provider response body is stored. A pending or indeterminate create never grants permission for another blind POST.
+type IdentityOperationStatus struct {
+	Action IdentityOperationStatusAction `json:"action"`
+
+	// Attempt Distinct provider request attempt for this HR generation/action. Corrective disables have their own intent/result; original uncertainties are never overwritten.
+	Attempt            int64                             `json:"attempt"`
+	BindingVersion     openapi_types.UUID                `json:"bindingVersion"`
+	CandidateId        *openapi_types.UUID               `json:"candidateId,omitempty"`
+	CreatedAt          time.Time                         `json:"createdAt"`
+	CreationId         openapi_types.UUID                `json:"creationId"`
+	ErrorCode          *IdentityOperationStatusErrorCode `json:"errorCode,omitempty"`
+	HrGeneration       int64                             `json:"hrGeneration"`
+	HrReceiptId        openapi_types.UUID                `json:"hrReceiptId"`
+	Id                 openapi_types.UUID                `json:"id"`
+	InstanceIdentityId openapi_types.UUID                `json:"instanceIdentityId"`
+	ProviderId         *openapi_types.UUID               `json:"providerId,omitempty"`
+	ResultEvidenceSeq  *int64                            `json:"resultEvidenceSeq,omitempty"`
+	State              IdentityOperationStatusState      `json:"state"`
+	TenantId           openapi_types.UUID                `json:"tenantId"`
+	UpdatedAt          time.Time                         `json:"updatedAt"`
+}
+
+// IdentityOperationStatusAction defines model for IdentityOperationStatus.Action.
+type IdentityOperationStatusAction string
+
+// IdentityOperationStatusErrorCode defines model for IdentityOperationStatus.ErrorCode.
+type IdentityOperationStatusErrorCode string
+
+// IdentityOperationStatusState defines model for IdentityOperationStatus.State.
+type IdentityOperationStatusState string
+
+// InstanceIdentityStatus Durable provider mode and ownership for one instance. observedState is the last verified provider observation, not an authorization or a claim of immediate token revocation. Trusted HR association uses an opaque receipt UUID, separate from editable document labels.
+type InstanceIdentityStatus struct {
+	AssignmentReceiptId *openapi_types.UUID                 `json:"assignmentReceiptId,omitempty"`
+	BindingVersion      *openapi_types.UUID                 `json:"bindingVersion,omitempty"`
+	ConfigDigest        *string                             `json:"configDigest,omitempty"`
+	CreationId          *openapi_types.UUID                 `json:"creationId,omitempty"`
+	EnabledGeneration   *int64                              `json:"enabledGeneration,omitempty"`
+	EntraTenantId       *openapi_types.UUID                 `json:"entraTenantId,omitempty"`
+	Id                  openapi_types.UUID                  `json:"id"`
+	InstanceName        string                              `json:"instanceName"`
+	ObservedState       InstanceIdentityStatusObservedState `json:"observedState"`
+	ProviderId          *openapi_types.UUID                 `json:"providerId,omitempty"`
+	ProviderMode        InstanceIdentityStatusProviderMode  `json:"providerMode"`
+	TenantId            openapi_types.UUID                  `json:"tenantId"`
+	UpdatedAt           time.Time                           `json:"updatedAt"`
+}
+
+// InstanceIdentityStatusObservedState defines model for InstanceIdentityStatus.ObservedState.
+type InstanceIdentityStatusObservedState string
+
+// InstanceIdentityStatusProviderMode defines model for InstanceIdentityStatus.ProviderMode.
+type InstanceIdentityStatusProviderMode string
 
 // InstanceState Lifecycle state of an agent instance (PRD section 5).
 type InstanceState string

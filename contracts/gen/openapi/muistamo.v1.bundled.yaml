@@ -2239,6 +2239,193 @@ components:
           - ok
         service:
           type: string
+    IdentityBindingStatus:
+      title: IdentityBindingStatus
+      description: Operator-only durable binding metadata. The full config, sponsor
+        list and credential reference/value are not stored here; configDigest pins
+        the exact validated EntraIdentityBinding. This is not a public YAML kind or
+        administration endpoint.
+      type: object
+      additionalProperties: false
+      required:
+      - tenantId
+      - bindingVersion
+      - configDigest
+      - entraTenantId
+      - blueprintAppId
+      - createdAt
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        bindingVersion:
+          type: string
+          format: uuid
+        configDigest:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        entraTenantId:
+          type: string
+          format: uuid
+        blueprintAppId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+    IdentityOperationStatus:
+      title: IdentityOperationStatus
+      description: Operator-only Entra operation journal status. Identifiers are internal
+        opaque IDs; no employee email, raw HR event key, credential or provider response
+        body is stored. A pending or indeterminate create never grants permission
+        for another blind POST.
+      type: object
+      additionalProperties: false
+      required:
+      - tenantId
+      - id
+      - instanceIdentityId
+      - bindingVersion
+      - hrReceiptId
+      - hrGeneration
+      - action
+      - attempt
+      - state
+      - creationId
+      - createdAt
+      - updatedAt
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        instanceIdentityId:
+          type: string
+          format: uuid
+        bindingVersion:
+          type: string
+          format: uuid
+        hrReceiptId:
+          type: string
+          format: uuid
+        hrGeneration:
+          type: integer
+          format: int64
+          minimum: 1
+        action:
+          type: string
+          enum:
+          - create
+          - enable
+          - disable
+          - delete
+        attempt:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Distinct provider request attempt for this HR generation/action.
+            Corrective disables have their own intent/result; original uncertainties
+            are never overwritten.
+        state:
+          type: string
+          enum:
+          - pending
+          - succeeded
+          - indeterminate
+          - failed
+        creationId:
+          type: string
+          format: uuid
+        providerId:
+          type: string
+          format: uuid
+        candidateId:
+          type: string
+          format: uuid
+        errorCode:
+          type: string
+          enum:
+          - provider_refused
+          - provider_unavailable
+          - ownership_unproved
+          - uncertain
+          - generation_superseded
+        resultEvidenceSeq:
+          type: integer
+          format: int64
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    InstanceIdentityStatus:
+      title: InstanceIdentityStatus
+      description: Durable provider mode and ownership for one instance. observedState
+        is the last verified provider observation, not an authorization or a claim
+        of immediate token revocation. Trusted HR association uses an opaque receipt
+        UUID, separate from editable document labels.
+      type: object
+      additionalProperties: false
+      required:
+      - tenantId
+      - id
+      - instanceName
+      - providerMode
+      - observedState
+      - updatedAt
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        instanceName:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        providerMode:
+          type: string
+          enum:
+          - simulated
+          - entra
+        bindingVersion:
+          type: string
+          format: uuid
+        configDigest:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        entraTenantId:
+          type: string
+          format: uuid
+        assignmentReceiptId:
+          type: string
+          format: uuid
+        providerId:
+          type: string
+          format: uuid
+        creationId:
+          type: string
+          format: uuid
+        observedState:
+          type: string
+          enum:
+          - simulated
+          - unprovisioned
+          - disabled
+          - enabled
+          - deleted
+          - reconciliation_required
+        enabledGeneration:
+          type: integer
+          format: int64
+          minimum: 1
+        updatedAt:
+          type: string
+          format: date-time
     InstanceState:
       title: InstanceState
       description: Lifecycle state of an agent instance (PRD section 5).

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/identitybindingstatus.json",
+  "title": "IdentityBindingStatus",
+  "description": "Operator-only durable binding metadata. The full config, sponsor list and credential reference/value are not stored here; configDigest pins the exact validated EntraIdentityBinding. This is not a public YAML kind or administration endpoint.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenantId",
+    "bindingVersion",
+    "configDigest",
+    "entraTenantId",
+    "blueprintAppId",
+    "createdAt"
+  ],
+  "properties": {
+    "tenantId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "bindingVersion": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "configDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "entraTenantId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "blueprintAppId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
