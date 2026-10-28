@@ -1893,6 +1893,24 @@ components:
           pattern: ^[a-z0-9][a-z0-9._-]{0,99}$
           description: Immutable version resolved with credentialRef. Token reuse
             is confined to this binding and credential version.
+    EntraLifecycleRef:
+      title: EntraLifecycleRef
+      description: Opaque reference for new live lifecycle workflows and activities.
+        Load identity mode, historical binding, person and current HR generation from
+        the committed receipt; never carry HR email or provider credentials in this
+        input.
+      type: object
+      additionalProperties: false
+      required:
+      - tenantId
+      - receiptId
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        receiptId:
+          type: string
+          format: uuid
     EntryDecay:
       title: EntryDecay
       description: 'How recently a reviewer vouched for a pack entry (FR-307). current
@@ -2224,6 +2242,32 @@ components:
         duplicate:
           description: True when this event id was already received.
           type: boolean
+    HRIdentityRoute:
+      title: HRIdentityRoute
+      description: Receipt-pinned lifecycle route, loaded from committed tenant-scoped
+        HR state. A worker environment flag cannot change this decision. Simulation
+        has no binding; Entra requires its exact historical binding.
+      type: object
+      additionalProperties: false
+      required:
+      - tenantId
+      - receiptId
+      - providerMode
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        receiptId:
+          type: string
+          format: uuid
+        providerMode:
+          type: string
+          enum:
+          - simulated
+          - entra
+        bindingVersion:
+          type: string
+          format: uuid
     HealthStatus:
       title: HealthStatus
       description: Response body of every service health endpoint.
@@ -2268,6 +2312,27 @@ components:
           type: string
           format: uuid
         blueprintAppId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+    IdentityEnrollmentStatus:
+      title: IdentityEnrollmentStatus
+      description: Operator-only immutable enrollment of a fresh Muistamo tenant into
+        the development Entra lifecycle. No credential value or complete binding configuration
+        is stored here.
+      type: object
+      additionalProperties: false
+      required:
+      - tenantId
+      - bindingVersion
+      - createdAt
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        bindingVersion:
           type: string
           format: uuid
         createdAt:

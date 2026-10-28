@@ -576,6 +576,24 @@ func (e HREventAcceptedDispatchState) Valid() bool {
 	}
 }
 
+// Defines values for HRIdentityRouteProviderMode.
+const (
+	HRIdentityRouteProviderModeEntra     HRIdentityRouteProviderMode = "entra"
+	HRIdentityRouteProviderModeSimulated HRIdentityRouteProviderMode = "simulated"
+)
+
+// Valid indicates whether the value is a known member of the HRIdentityRouteProviderMode enum.
+func (e HRIdentityRouteProviderMode) Valid() bool {
+	switch e {
+	case HRIdentityRouteProviderModeEntra:
+		return true
+	case HRIdentityRouteProviderModeSimulated:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatusStatus.
 const (
 	HealthStatusStatusOk HealthStatusStatus = "ok"
@@ -2040,6 +2058,12 @@ type EntraIdentityBinding struct {
 	TenantId string `json:"tenantId"`
 }
 
+// EntraLifecycleRef Opaque reference for new live lifecycle workflows and activities. Load identity mode, historical binding, person and current HR generation from the committed receipt; never carry HR email or provider credentials in this input.
+type EntraLifecycleRef struct {
+	ReceiptId openapi_types.UUID `json:"receiptId"`
+	TenantId  openapi_types.UUID `json:"tenantId"`
+}
+
 // EntryDecay How recently a reviewer vouched for a pack entry (FR-307). current until dueAt; then due (still served, flagged and queued for the pack's reviewers) until expiresAt; then expired, which is never served and is removed by the next decay sweep. Mandatory packs never expire: their entries stay due and are flagged to privacy officers.
 type EntryDecay struct {
 	DueAt *time.Time `json:"dueAt,omitempty"`
@@ -2188,6 +2212,17 @@ type HREventAcceptedDecision string
 // HREventAcceptedDispatchState defines model for HREventAccepted.DispatchState.
 type HREventAcceptedDispatchState string
 
+// HRIdentityRoute Receipt-pinned lifecycle route, loaded from committed tenant-scoped HR state. A worker environment flag cannot change this decision. Simulation has no binding; Entra requires its exact historical binding.
+type HRIdentityRoute struct {
+	BindingVersion *openapi_types.UUID         `json:"bindingVersion,omitempty"`
+	ProviderMode   HRIdentityRouteProviderMode `json:"providerMode"`
+	ReceiptId      openapi_types.UUID          `json:"receiptId"`
+	TenantId       openapi_types.UUID          `json:"tenantId"`
+}
+
+// HRIdentityRouteProviderMode defines model for HRIdentityRoute.ProviderMode.
+type HRIdentityRouteProviderMode string
+
 // HealthStatus Response body of every service health endpoint.
 type HealthStatus struct {
 	Service string             `json:"service"`
@@ -2204,6 +2239,13 @@ type IdentityBindingStatus struct {
 	ConfigDigest   string             `json:"configDigest"`
 	CreatedAt      time.Time          `json:"createdAt"`
 	EntraTenantId  openapi_types.UUID `json:"entraTenantId"`
+	TenantId       openapi_types.UUID `json:"tenantId"`
+}
+
+// IdentityEnrollmentStatus Operator-only immutable enrollment of a fresh Muistamo tenant into the development Entra lifecycle. No credential value or complete binding configuration is stored here.
+type IdentityEnrollmentStatus struct {
+	BindingVersion openapi_types.UUID `json:"bindingVersion"`
+	CreatedAt      time.Time          `json:"createdAt"`
 	TenantId       openapi_types.UUID `json:"tenantId"`
 }
 

@@ -46,6 +46,9 @@ func liveIdentity(t *testing.T) (fixture, muistamov1.EntraIdentityBinding, muist
 	if _, _, err := f.svc.RegisterIdentityBinding(ctx, f.actor, b); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := f.svc.EnrollIdentityTenant(ctx, f.actor, uuid.MustParse(b.BindingVersion)); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := f.svc.ApplyTemplate(ctx, f.actor, template("identity test")); err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +335,7 @@ func TestIdentityUnsignedHRDecisionCannotCreateLiveInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	testdb.Exec(t, f.db.OwnerURL, `INSERT INTO hr_events(tenant_id,event_id,type,person_id,workflow_id,payload,occurred_at,generation,decision,dispatch_state) VALUES($1,'unsigned','joiner','HR-PERSON','',$2,now(),2,'accepted','pending')`, f.actor.Tenant, payload)
+	testdb.Exec(t, f.db.OwnerURL, `INSERT INTO hr_events(tenant_id,event_id,type,person_id,workflow_id,payload,occurred_at,generation,decision,dispatch_state,identity_mode,identity_binding_version) VALUES($1,'unsigned','joiner','HR-PERSON','',$2,now(),2,'accepted','pending','entra',$3)`, f.actor.Tenant, payload, uuid.MustParse(b.BindingVersion))
 	doc := instance("requested")
 	doc.Metadata.Name = r.Document.Metadata.Name + "-unsigned"
 	if _, _, err := f.svc.CreateEntraInstance(ctx, f.actor, doc, "unsigned", 2, uuid.MustParse(b.BindingVersion)); !errors.Is(err, registry.ErrConflict) {

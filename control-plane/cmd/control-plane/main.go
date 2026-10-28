@@ -98,10 +98,16 @@ func serveCmd(log *slog.Logger) *cobra.Command {
 }
 
 func workerCmd(log *slog.Logger) *cobra.Command {
-	return &cobra.Command{
+	var bindingPaths []string
+	var credentialStdin bool
+	cmd := &cobra.Command{
 		Use:   "worker",
 		Short: "Run lifecycle workflows (MUISTAMO_DATABASE_URL, MUISTAMO_EVIDENCE_KEY_FILE, TEMPORAL_ADDRESS)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			configs, err := readEntraWorkerBindings(cmd, bindingPaths, credentialStdin)
+			if err != nil {
+				return err
+			}
 			ctx := cmd.Context()
 			db, err := store.Open(ctx, requireEnv("MUISTAMO_DATABASE_URL"))
 			if err != nil {
@@ -119,8 +125,28 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 			defer temporal.Close()
 
 			// Invariant 8: say plainly what is not real yet.
-			log.Warn("SIMULATED: instance identities (Entra, FR-201) and credential revocation (gateway, D28) are not implemented; the worker records them in evidence as simulated")
+			log.Warn("SIMULATED: legacy workflow identities and gateway credential revocation remain simulated and are labeled in evidence")
 			simulated := &lifecycle.Simulated{}
+			service := registry.New(db, key)
+			if len(configs) > 0 {
+				identity, err := validateEntraWorkerBindings(ctx, service, configs)
+				if err != nil {
+					return err
+				}
+				live := worker.New(temporal, lifecycle.EntraTaskQueue, worker.Options{})
+				live.RegisterWorkflow(lifecycle.EntraHRDispatch)
+				live.RegisterWorkflow(lifecycle.EntraJoiner)
+				live.RegisterWorkflow(lifecycle.EntraLeaver)
+				live.RegisterActivity(&lifecycle.EntraActivities{Registry: service, Identity: identity, Revoker: simulated})
+				if err := live.Start(); err != nil {
+					return fmt.Errorf("start Entra lifecycle worker: %w", err)
+				}
+				defer live.Stop()
+				log.Info("Entra lifecycle worker running", "task_queue", lifecycle.EntraTaskQueue, "binding_count", len(configs))
+				log.Warn("live knowledge reviews are not integrated; leaver evidence records review-not-opened")
+			} else {
+				log.Warn("no Entra binding configured: live lifecycle queue is not served; live HR handoffs remain pending")
+			}
 			w := worker.New(temporal, lifecycle.TaskQueue, worker.Options{})
 			w.RegisterWorkflow(lifecycle.Joiner)
 			w.RegisterWorkflow(lifecycle.Leaver)
@@ -136,6 +162,9 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 			return w.Run(worker.InterruptCh())
 		},
 	}
+	cmd.Flags().StringSliceVar(&bindingPaths, "entra-binding", nil, "historical development binding JSON files, one private credential line per file")
+	cmd.Flags().BoolVar(&credentialStdin, "credential-stdin", false, "read development Entra credentials privately from redirected stdin")
+	return cmd
 }
 
 func migrateCmd() *cobra.Command {

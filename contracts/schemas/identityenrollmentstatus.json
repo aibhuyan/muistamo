@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/identityenrollmentstatus.json",
+  "title": "IdentityEnrollmentStatus",
+  "description": "Operator-only immutable enrollment of a fresh Muistamo tenant into the development Entra lifecycle. No credential value or complete binding configuration is stored here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenantId", "bindingVersion", "createdAt"],
+  "properties": {
+    "tenantId": {"type": "string", "format": "uuid"},
+    "bindingVersion": {"type": "string", "format": "uuid"},
+    "createdAt": {"type": "string", "format": "date-time"}
+  }
+}

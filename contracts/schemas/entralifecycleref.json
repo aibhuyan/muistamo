@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/entralifecycleref.json",
+  "title": "EntraLifecycleRef",
+  "description": "Opaque reference for new live lifecycle workflows and activities. Load identity mode, historical binding, person and current HR generation from the committed receipt; never carry HR email or provider credentials in this input.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenantId", "receiptId"],
+  "properties": {
+    "tenantId": {"type": "string", "format": "uuid"},
+    "receiptId": {"type": "string", "format": "uuid"}
+  }
+}

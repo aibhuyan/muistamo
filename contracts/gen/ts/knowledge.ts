@@ -1058,6 +1058,16 @@ export interface components {
             credentialVersion: string;
         };
         /**
+         * EntraLifecycleRef
+         * @description Opaque reference for new live lifecycle workflows and activities. Load identity mode, historical binding, person and current HR generation from the committed receipt; never carry HR email or provider credentials in this input.
+         */
+        EntraLifecycleRef: {
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            receiptId: string;
+        };
+        /**
          * EntryDecay
          * @description How recently a reviewer vouched for a pack entry (FR-307). current until dueAt; then due (still served, flagged and queued for the pack's reviewers) until expiresAt; then expired, which is never served and is removed by the next decay sweep. Mandatory packs never expire: their entries stay due and are flagged to privacy officers.
          */
@@ -1207,6 +1217,20 @@ export interface components {
             duplicate: boolean;
         };
         /**
+         * HRIdentityRoute
+         * @description Receipt-pinned lifecycle route, loaded from committed tenant-scoped HR state. A worker environment flag cannot change this decision. Simulation has no binding; Entra requires its exact historical binding.
+         */
+        HRIdentityRoute: {
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            receiptId: string;
+            /** @enum {string} */
+            providerMode: "simulated" | "entra";
+            /** Format: uuid */
+            bindingVersion?: string;
+        };
+        /**
          * HealthStatus
          * @description Response body of every service health endpoint.
          */
@@ -1229,6 +1253,18 @@ export interface components {
             entraTenantId: string;
             /** Format: uuid */
             blueprintAppId: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * IdentityEnrollmentStatus
+         * @description Operator-only immutable enrollment of a fresh Muistamo tenant into the development Entra lifecycle. No credential value or complete binding configuration is stored here.
+         */
+        IdentityEnrollmentStatus: {
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            bindingVersion: string;
             /** Format: date-time */
             createdAt: string;
         };
