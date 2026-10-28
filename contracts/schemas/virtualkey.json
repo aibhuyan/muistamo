@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/virtualkey.json",
+  "title": "VirtualKey",
+  "description": "A gateway virtual key, without its secret. A key is usable while active, unexpired and its instance is active; revocation is final.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "instance",
+    "aliases",
+    "monthlyBudget",
+    "status",
+    "createdAt",
+    "createdBy"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "instance": {
+      "type": "string"
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "monthlyBudget": {
+      "$ref": "money.json"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "description": "active and unexpired keys are usable (while the instance is active); expired is derived from expiresAt and never stored; revocation is final.",
+      "type": "string",
+      "enum": [
+        "active",
+        "expired",
+        "revoked"
+      ]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "createdBy": {
+      "type": "string"
+    },
+    "revokedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revokedBy": {
+      "type": "string"
+    },
+    "revokeReason": {
+      "description": "A fixed reason code or text free of personal data.",
+      "type": "string"
+    }
+  }
+}

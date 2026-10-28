@@ -3186,6 +3186,23 @@ components:
           $ref: '#/components/schemas/ModelCatalogueItem'
         approval:
           $ref: '#/components/schemas/ModelApproval'
+    Money:
+      title: Money
+      description: An exact amount. A decimal string, never a binary float, so billed
+        costs and budgets are exact (invariant 7). EUR only while model price sheets
+        are EUR only.
+      type: object
+      additionalProperties: false
+      required:
+      - amount
+      - currency
+      properties:
+        amount:
+          type: string
+          pattern: ^(0|[1-9][0-9]{0,11})(\.[0-9]{1,12})?$
+        currency:
+          type: string
+          const: EUR
     ObjectMeta:
       title: ObjectMeta
       description: Metadata shared by every Muistamo YAML kind.
@@ -4032,6 +4049,98 @@ components:
           type: integer
         total:
           type: integer
+    UsagePage:
+      title: UsagePage
+      description: Authorized gateway calls in a period, newest first, metered or
+        not.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRecord'
+        next:
+          description: Cursor for the next page; absent on the last page.
+          type: string
+    UsageRecord:
+      title: UsageRecord
+      description: 'A call the gateway''s check authorized, and what it cost. metered
+        is false when no usage arrived from the gateway: the call may not have run
+        (the gateway can still reject an authorized call), or its usage export was
+        lost. Unmetered calls are reported, never estimated.'
+      type: object
+      additionalProperties: false
+      required:
+      - requestId
+      - keyId
+      - instance
+      - person
+      - kind
+      - authorizedAt
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        keyId:
+          type: string
+          format: uuid
+        instance:
+          type: string
+        person:
+          type: string
+        costCentre:
+          type: string
+        kind:
+          type: string
+          enum:
+          - model
+          - mcp
+        alias:
+          type: string
+        provider:
+          type: string
+        model:
+          description: The provider's model id the alias resolved to when authorized.
+          type: string
+        mcpMethod:
+          type: string
+        mcpTool:
+          type: string
+        authorizedAt:
+          type: string
+          format: date-time
+        metered:
+          description: 'Model calls only: false when no usage arrived from the gateway,
+            because the call may not have run (the gateway can reject an authorized
+            call) or its usage export was lost. Unmetered calls are reported, never
+            estimated. Absent for MCP calls, which carry no tokens.'
+          type: boolean
+        inputTokens:
+          type: integer
+          minimum: 0
+        cachedInputTokens:
+          type: integer
+          minimum: 0
+        outputTokens:
+          type: integer
+          minimum: 0
+        cost:
+          description: At provider cost from the price snapshot taken when authorized;
+            no markup.
+          $ref: '#/components/schemas/Money'
+        recordedAt:
+          type: string
+          format: date-time
+      if:
+        properties:
+          kind:
+            const: model
+      then:
+        required:
+        - metered
     VerificationInput:
       title: VerificationInput
       description: A reviewer confirms the immutable entry revision they inspected,
@@ -4064,3 +4173,133 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EntryVerification'
+    VirtualKey:
+      title: VirtualKey
+      description: A gateway virtual key, without its secret. A key is usable while
+        active, unexpired and its instance is active; revocation is final.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - instance
+      - aliases
+      - monthlyBudget
+      - status
+      - createdAt
+      - createdBy
+      properties:
+        id:
+          type: string
+          format: uuid
+        instance:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        monthlyBudget:
+          $ref: '#/components/schemas/Money'
+        expiresAt:
+          type: string
+          format: date-time
+        status:
+          description: active and unexpired keys are usable (while the instance is
+            active); expired is derived from expiresAt and never stored; revocation
+            is final.
+          type: string
+          enum:
+          - active
+          - expired
+          - revoked
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        revokedAt:
+          type: string
+          format: date-time
+        revokedBy:
+          type: string
+        revokeReason:
+          description: A fixed reason code or text free of personal data.
+          type: string
+    VirtualKeyIssued:
+      title: VirtualKeyIssued
+      description: A newly issued key and its secret. The secret is returned only
+        here, once; Muistamo keeps only its SHA-256 and can never show it again.
+      type: object
+      additionalProperties: false
+      required:
+      - key
+      - secret
+      properties:
+        key:
+          $ref: '#/components/schemas/VirtualKey'
+        secret:
+          description: mvk_<key id>_<43 base64url characters encoding 32 random bytes>.
+            Send as a bearer token to the gateway. Muistamo stores SHA-256 of the
+            32 decoded bytes.
+          type: string
+          pattern: ^mvk_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$
+    VirtualKeyPage:
+      title: VirtualKeyPage
+      description: Virtual keys, newest first, never with secrets.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/VirtualKey'
+        next:
+          description: Cursor for the next page; absent on the last page.
+          type: string
+    VirtualKeyRequest:
+      title: VirtualKeyRequest
+      description: Issue a gateway virtual key to an agent instance (FR-702, E6.1).
+        Only the instance's owner or sponsor may. The secret is shown once in the
+        response and never stored.
+      type: object
+      additionalProperties: false
+      required:
+      - instance
+      - aliases
+      - monthlyBudget
+      properties:
+        instance:
+          type: string
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+        aliases:
+          description: Model aliases the key may call; each must be one the instance's
+            template allows.
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+        monthlyBudget:
+          description: Calls are refused once the recorded spend of calls authorized
+            in the current UTC calendar month reaches it. Calls in flight can overshoot;
+            the overshoot is reported, not hidden.
+          $ref: '#/components/schemas/Money'
+        expiresAt:
+          type: string
+          format: date-time
+    VirtualKeyRevocation:
+      title: VirtualKeyRevocation
+      description: 'Revoke a key. Final: a revoked key never becomes active again.'
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          description: 'A fixed reason code or text free of personal data: erasure
+            cannot clean free text.'
+          type: string
+          minLength: 1
+          maxLength: 2000

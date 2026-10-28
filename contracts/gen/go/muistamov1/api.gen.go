@@ -1224,6 +1224,21 @@ func (e ModelCatalogueItemSpecPriceSheetCurrency) Valid() bool {
 	}
 }
 
+// Defines values for MoneyCurrency.
+const (
+	MoneyCurrencyEUR MoneyCurrency = "EUR"
+)
+
+// Valid indicates whether the value is a known member of the MoneyCurrency enum.
+func (e MoneyCurrency) Valid() bool {
+	switch e {
+	case MoneyCurrencyEUR:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PolicyDecisionDecision.
 const (
 	PolicyDecisionDecisionAllow PolicyDecisionDecision = "allow"
@@ -1554,6 +1569,45 @@ const (
 func (e RolloutRequestAcknowledgeUnevaluated) Valid() bool {
 	switch e {
 	case RolloutRequestAcknowledgeUnevaluatedTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UsageRecordKind.
+const (
+	UsageRecordKindMcp   UsageRecordKind = "mcp"
+	UsageRecordKindModel UsageRecordKind = "model"
+)
+
+// Valid indicates whether the value is a known member of the UsageRecordKind enum.
+func (e UsageRecordKind) Valid() bool {
+	switch e {
+	case UsageRecordKindMcp:
+		return true
+	case UsageRecordKindModel:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VirtualKeyStatus.
+const (
+	VirtualKeyStatusActive  VirtualKeyStatus = "active"
+	VirtualKeyStatusExpired VirtualKeyStatus = "expired"
+	VirtualKeyStatusRevoked VirtualKeyStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the VirtualKeyStatus enum.
+func (e VirtualKeyStatus) Valid() bool {
+	switch e {
+	case VirtualKeyStatusActive:
+		return true
+	case VirtualKeyStatusExpired:
+		return true
+	case VirtualKeyStatusRevoked:
 		return true
 	default:
 		return false
@@ -2713,6 +2767,15 @@ type ModelCatalogueItemRecord struct {
 	UpdatedBy string             `json:"updatedBy"`
 }
 
+// Money An exact amount. A decimal string, never a binary float, so billed costs and budgets are exact (invariant 7). EUR only while model price sheets are EUR only.
+type Money struct {
+	Amount   string        `json:"amount"`
+	Currency MoneyCurrency `json:"currency"`
+}
+
+// MoneyCurrency defines model for Money.Currency.
+type MoneyCurrency string
+
 // ObjectMeta Metadata shared by every Muistamo YAML kind.
 type ObjectMeta struct {
 	Labels *map[string]string `json:"labels,omitempty"`
@@ -3103,6 +3166,45 @@ type SyncResult struct {
 	Total   int    `json:"total"`
 }
 
+// UsagePage Authorized gateway calls in a period, newest first, metered or not.
+type UsagePage struct {
+	Items []UsageRecord `json:"items"`
+
+	// Next Cursor for the next page; absent on the last page.
+	Next *string `json:"next,omitempty"`
+}
+
+// UsageRecord A call the gateway's check authorized, and what it cost. metered is false when no usage arrived from the gateway: the call may not have run (the gateway can still reject an authorized call), or its usage export was lost. Unmetered calls are reported, never estimated.
+type UsageRecord struct {
+	Alias             *string   `json:"alias,omitempty"`
+	AuthorizedAt      time.Time `json:"authorizedAt"`
+	CachedInputTokens *int      `json:"cachedInputTokens,omitempty"`
+
+	// Cost At provider cost from the price snapshot taken when authorized; no markup.
+	Cost        *Money             `json:"cost,omitempty"`
+	CostCentre  *string            `json:"costCentre,omitempty"`
+	InputTokens *int               `json:"inputTokens,omitempty"`
+	Instance    string             `json:"instance"`
+	KeyId       openapi_types.UUID `json:"keyId"`
+	Kind        UsageRecordKind    `json:"kind"`
+	McpMethod   *string            `json:"mcpMethod,omitempty"`
+	McpTool     *string            `json:"mcpTool,omitempty"`
+
+	// Metered Model calls only: false when no usage arrived from the gateway, because the call may not have run (the gateway can reject an authorized call) or its usage export was lost. Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens.
+	Metered *bool `json:"metered,omitempty"`
+
+	// Model The provider's model id the alias resolved to when authorized.
+	Model        *string            `json:"model,omitempty"`
+	OutputTokens *int               `json:"outputTokens,omitempty"`
+	Person       string             `json:"person"`
+	Provider     *string            `json:"provider,omitempty"`
+	RecordedAt   *time.Time         `json:"recordedAt,omitempty"`
+	RequestId    openapi_types.UUID `json:"requestId"`
+}
+
+// UsageRecordKind defines model for UsageRecord.Kind.
+type UsageRecordKind string
+
 // VerificationInput A reviewer confirms the immutable entry revision they inspected, restarting its decay clock. A replaced revision is refused with 409.
 type VerificationInput struct {
 	// EntryId The immutable entry ID shown to the reviewer; never silently confirm a replacement with the same key.
@@ -3113,6 +3215,64 @@ type VerificationInput struct {
 // VerificationPage Entries due or expired in packs the caller may confirm, soonest to expire first.
 type VerificationPage struct {
 	Items []EntryVerification `json:"items"`
+}
+
+// VirtualKey A gateway virtual key, without its secret. A key is usable while active, unexpired and its instance is active; revocation is final.
+type VirtualKey struct {
+	Aliases   []string           `json:"aliases"`
+	CreatedAt time.Time          `json:"createdAt"`
+	CreatedBy string             `json:"createdBy"`
+	ExpiresAt *time.Time         `json:"expiresAt,omitempty"`
+	Id        openapi_types.UUID `json:"id"`
+	Instance  string             `json:"instance"`
+
+	// MonthlyBudget An exact amount. A decimal string, never a binary float, so billed costs and budgets are exact (invariant 7). EUR only while model price sheets are EUR only.
+	MonthlyBudget Money `json:"monthlyBudget"`
+
+	// RevokeReason A fixed reason code or text free of personal data.
+	RevokeReason *string    `json:"revokeReason,omitempty"`
+	RevokedAt    *time.Time `json:"revokedAt,omitempty"`
+	RevokedBy    *string    `json:"revokedBy,omitempty"`
+
+	// Status active and unexpired keys are usable (while the instance is active); expired is derived from expiresAt and never stored; revocation is final.
+	Status VirtualKeyStatus `json:"status"`
+}
+
+// VirtualKeyStatus active and unexpired keys are usable (while the instance is active); expired is derived from expiresAt and never stored; revocation is final.
+type VirtualKeyStatus string
+
+// VirtualKeyIssued A newly issued key and its secret. The secret is returned only here, once; Muistamo keeps only its SHA-256 and can never show it again.
+type VirtualKeyIssued struct {
+	// Key A gateway virtual key, without its secret. A key is usable while active, unexpired and its instance is active; revocation is final.
+	Key VirtualKey `json:"key"`
+
+	// Secret mvk_<key id>_<43 base64url characters encoding 32 random bytes>. Send as a bearer token to the gateway. Muistamo stores SHA-256 of the 32 decoded bytes.
+	Secret string `json:"secret"`
+}
+
+// VirtualKeyPage Virtual keys, newest first, never with secrets.
+type VirtualKeyPage struct {
+	Items []VirtualKey `json:"items"`
+
+	// Next Cursor for the next page; absent on the last page.
+	Next *string `json:"next,omitempty"`
+}
+
+// VirtualKeyRequest Issue a gateway virtual key to an agent instance (FR-702, E6.1). Only the instance's owner or sponsor may. The secret is shown once in the response and never stored.
+type VirtualKeyRequest struct {
+	// Aliases Model aliases the key may call; each must be one the instance's template allows.
+	Aliases   []string   `json:"aliases"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	Instance  string     `json:"instance"`
+
+	// MonthlyBudget Calls are refused once the recorded spend of calls authorized in the current UTC calendar month reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden.
+	MonthlyBudget Money `json:"monthlyBudget"`
+}
+
+// VirtualKeyRevocation Revoke a key. Final: a revoked key never becomes active again.
+type VirtualKeyRevocation struct {
+	// Reason A fixed reason code or text free of personal data: erasure cannot clean free text.
+	Reason string `json:"reason"`
 }
 
 // Cursor defines model for Cursor.
@@ -3175,6 +3335,20 @@ type ListTemplatesParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListUsageParams defines parameters for ListUsage.
+type ListUsageParams struct {
+	Instance *string    `form:"instance,omitempty" json:"instance,omitempty"`
+	From     *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To       *time.Time `form:"to,omitempty" json:"to,omitempty"`
+	Cursor   *string    `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListVirtualKeysParams defines parameters for ListVirtualKeys.
+type ListVirtualKeysParams struct {
+	Instance *string `form:"instance,omitempty" json:"instance,omitempty"`
+	Cursor   *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ApplyActionPolicyJSONRequestBody defines body for ApplyActionPolicy for application/json ContentType.
 type ApplyActionPolicyJSONRequestBody = ActionPolicy
 
@@ -3225,6 +3399,12 @@ type RollbackRolloutJSONRequestBody = RollbackRequest
 
 // ApplyTemplateJSONRequestBody defines body for ApplyTemplate for application/json ContentType.
 type ApplyTemplateJSONRequestBody = AgentTemplate
+
+// IssueVirtualKeyJSONRequestBody defines body for IssueVirtualKey for application/json ContentType.
+type IssueVirtualKeyJSONRequestBody = VirtualKeyRequest
+
+// RevokeVirtualKeyJSONRequestBody defines body for RevokeVirtualKey for application/json ContentType.
+type RevokeVirtualKeyJSONRequestBody = VirtualKeyRevocation
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -3691,6 +3871,47 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/templates/{name}/versions/{version}/publication (the `RequestPublication` operationId).
 	RequestPublication(ctx context.Context, name Name, version int, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListUsage Authorized gateway calls and their cost at provider prices, metered or not
+	//
+	// Corresponds with GET /v1/usage (the `ListUsage` operationId).
+	ListUsage(ctx context.Context, params *ListUsageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVirtualKeys Virtual keys the caller may see, newest first, never with secrets
+	//
+	// Corresponds with GET /v1/virtual-keys (the `ListVirtualKeys` operationId).
+	ListVirtualKeys(ctx context.Context, params *ListVirtualKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// IssueVirtualKeyWithBody Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/virtual-keys (the `IssueVirtualKey` operationId).
+	IssueVirtualKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// IssueVirtualKey Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/virtual-keys (the `IssueVirtualKey` operationId).
+	IssueVirtualKey(ctx context.Context, body IssueVirtualKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVirtualKey performs a GET /v1/virtual-keys/{id} (the `GetVirtualKey` operationId) request.
+	GetVirtualKey(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeVirtualKeyWithBody Revoke a key; final, and effective at the gateway within 30 seconds
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/virtual-keys/{id}/revocation (the `RevokeVirtualKey` operationId).
+	RevokeVirtualKeyWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeVirtualKey Revoke a key; final, and effective at the gateway within 30 seconds
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/virtual-keys/{id}/revocation (the `RevokeVirtualKey` operationId).
+	RevokeVirtualKey(ctx context.Context, id openapi_types.UUID, body RevokeVirtualKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetHealth Service health
@@ -4715,6 +4936,117 @@ func (c *Client) GetTemplateVersion(ctx context.Context, name Name, version int,
 // Corresponds with POST /v1/templates/{name}/versions/{version}/publication (the `RequestPublication` operationId).
 func (c *Client) RequestPublication(ctx context.Context, name Name, version int, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRequestPublicationRequest(c.Server, name, version)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListUsage Authorized gateway calls and their cost at provider prices, metered or not
+//
+// Corresponds with GET /v1/usage (the `ListUsage` operationId).
+func (c *Client) ListUsage(ctx context.Context, params *ListUsageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListUsageRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListVirtualKeys Virtual keys the caller may see, newest first, never with secrets
+//
+// Corresponds with GET /v1/virtual-keys (the `ListVirtualKeys` operationId).
+func (c *Client) ListVirtualKeys(ctx context.Context, params *ListVirtualKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVirtualKeysRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// IssueVirtualKeyWithBody Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/virtual-keys (the `IssueVirtualKey` operationId).
+func (c *Client) IssueVirtualKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueVirtualKeyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// IssueVirtualKey Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/virtual-keys (the `IssueVirtualKey` operationId).
+func (c *Client) IssueVirtualKey(ctx context.Context, body IssueVirtualKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueVirtualKeyRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVirtualKey performs a GET /v1/virtual-keys/{id} (the `GetVirtualKey` operationId) request.
+func (c *Client) GetVirtualKey(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVirtualKeyRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeVirtualKeyWithBody Revoke a key; final, and effective at the gateway within 30 seconds
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/virtual-keys/{id}/revocation (the `RevokeVirtualKey` operationId).
+func (c *Client) RevokeVirtualKeyWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeVirtualKeyRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeVirtualKey Revoke a key; final, and effective at the gateway within 30 seconds
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/virtual-keys/{id}/revocation (the `RevokeVirtualKey` operationId).
+func (c *Client) RevokeVirtualKey(ctx context.Context, id openapi_types.UUID, body RevokeVirtualKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeVirtualKeyRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6606,6 +6938,283 @@ func NewRequestPublicationRequest(server string, name Name, version int) (*http.
 	return req, nil
 }
 
+// NewListUsageRequest constructs an http.Request for the ListUsage method
+func NewListUsageRequest(server string, params *ListUsageParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/usage")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Instance != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "instance", *params.Instance, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from", *params.From, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.To != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "to", *params.To, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListVirtualKeysRequest constructs an http.Request for the ListVirtualKeys method
+func NewListVirtualKeysRequest(server string, params *ListVirtualKeysParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/virtual-keys")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Instance != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "instance", *params.Instance, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewIssueVirtualKeyRequest calls the generic IssueVirtualKey builder with application/json body
+func NewIssueVirtualKeyRequest(server string, body IssueVirtualKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewIssueVirtualKeyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewIssueVirtualKeyRequestWithBody constructs an http.Request for the IssueVirtualKey method, with any body, and a specified content type
+func NewIssueVirtualKeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/virtual-keys")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetVirtualKeyRequest constructs an http.Request for the GetVirtualKey method
+func NewGetVirtualKeyRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/virtual-keys/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeVirtualKeyRequest calls the generic RevokeVirtualKey builder with application/json body
+func NewRevokeVirtualKeyRequest(server string, id openapi_types.UUID, body RevokeVirtualKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRevokeVirtualKeyRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewRevokeVirtualKeyRequestWithBody constructs an http.Request for the RevokeVirtualKey method, with any body, and a specified content type
+func NewRevokeVirtualKeyRequestWithBody(server string, id openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/virtual-keys/%s/revocation", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -7101,6 +7710,53 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/templates/{name}/versions/{version}/publication (the `RequestPublication` operationId).
 	RequestPublicationWithResponse(ctx context.Context, name Name, version int, reqEditors ...RequestEditorFn) (*RequestPublicationResponse, error)
+
+	// ListUsageWithResponse Authorized gateway calls and their cost at provider prices, metered or not
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/usage (the `ListUsage` operationId).
+	ListUsageWithResponse(ctx context.Context, params *ListUsageParams, reqEditors ...RequestEditorFn) (*ListUsageResponse, error)
+
+	// ListVirtualKeysWithResponse Virtual keys the caller may see, newest first, never with secrets
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/virtual-keys (the `ListVirtualKeys` operationId).
+	ListVirtualKeysWithResponse(ctx context.Context, params *ListVirtualKeysParams, reqEditors ...RequestEditorFn) (*ListVirtualKeysResponse, error)
+
+	// IssueVirtualKeyWithBodyWithResponse Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/virtual-keys (the `IssueVirtualKey` operationId).
+	IssueVirtualKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueVirtualKeyResponse, error)
+
+	// IssueVirtualKeyWithResponse Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/virtual-keys (the `IssueVirtualKey` operationId).
+	IssueVirtualKeyWithResponse(ctx context.Context, body IssueVirtualKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueVirtualKeyResponse, error)
+
+	// GetVirtualKeyWithResponse performs a GET /v1/virtual-keys/{id} (the `GetVirtualKey` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetVirtualKeyWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetVirtualKeyResponse, error)
+
+	// RevokeVirtualKeyWithBodyWithResponse Revoke a key; final, and effective at the gateway within 30 seconds
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/virtual-keys/{id}/revocation (the `RevokeVirtualKey` operationId).
+	RevokeVirtualKeyWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeVirtualKeyResponse, error)
+
+	// RevokeVirtualKeyWithResponse Revoke a key; final, and effective at the gateway within 30 seconds
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/virtual-keys/{id}/revocation (the `RevokeVirtualKey` operationId).
+	RevokeVirtualKeyWithResponse(ctx context.Context, id openapi_types.UUID, body RevokeVirtualKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeVirtualKeyResponse, error)
 }
 
 type GetHealthResponse struct {
@@ -9520,6 +10176,246 @@ func (r RequestPublicationResponse) ContentType() string {
 	return ""
 }
 
+type ListUsageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UsagePage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListUsageResponse) GetJSON200() *UsagePage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListUsageResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListUsageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListUsageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListUsageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListUsageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListVirtualKeysResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VirtualKeyPage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListVirtualKeysResponse) GetJSON200() *VirtualKeyPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListVirtualKeysResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListVirtualKeysResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListVirtualKeysResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListVirtualKeysResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListVirtualKeysResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type IssueVirtualKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *VirtualKeyIssued
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r IssueVirtualKeyResponse) GetJSON201() *VirtualKeyIssued {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r IssueVirtualKeyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r IssueVirtualKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r IssueVirtualKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r IssueVirtualKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r IssueVirtualKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVirtualKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VirtualKey
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVirtualKeyResponse) GetJSON200() *VirtualKey {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetVirtualKeyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVirtualKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVirtualKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVirtualKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVirtualKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeVirtualKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VirtualKey
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RevokeVirtualKeyResponse) GetJSON200() *VirtualKey {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RevokeVirtualKeyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeVirtualKeyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeVirtualKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeVirtualKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeVirtualKeyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetHealthWithResponse Service health
 //
 // Returns a wrapper object for the known response body format(s).
@@ -10354,6 +11250,95 @@ func (c *ClientWithResponses) RequestPublicationWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseRequestPublicationResponse(rsp)
+}
+
+// ListUsageWithResponse Authorized gateway calls and their cost at provider prices, metered or not
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/usage (the `ListUsage` operationId).
+func (c *ClientWithResponses) ListUsageWithResponse(ctx context.Context, params *ListUsageParams, reqEditors ...RequestEditorFn) (*ListUsageResponse, error) {
+	rsp, err := c.ListUsage(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListUsageResponse(rsp)
+}
+
+// ListVirtualKeysWithResponse Virtual keys the caller may see, newest first, never with secrets
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/virtual-keys (the `ListVirtualKeys` operationId).
+func (c *ClientWithResponses) ListVirtualKeysWithResponse(ctx context.Context, params *ListVirtualKeysParams, reqEditors ...RequestEditorFn) (*ListVirtualKeysResponse, error) {
+	rsp, err := c.ListVirtualKeys(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVirtualKeysResponse(rsp)
+}
+
+// IssueVirtualKeyWithBodyWithResponse Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/virtual-keys (the `IssueVirtualKey` operationId).
+func (c *ClientWithResponses) IssueVirtualKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueVirtualKeyResponse, error) {
+	rsp, err := c.IssueVirtualKeyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueVirtualKeyResponse(rsp)
+}
+
+// IssueVirtualKeyWithResponse Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/virtual-keys (the `IssueVirtualKey` operationId).
+func (c *ClientWithResponses) IssueVirtualKeyWithResponse(ctx context.Context, body IssueVirtualKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueVirtualKeyResponse, error) {
+	rsp, err := c.IssueVirtualKey(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueVirtualKeyResponse(rsp)
+}
+
+// GetVirtualKeyWithResponse performs a GET /v1/virtual-keys/{id} (the `GetVirtualKey` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetVirtualKeyWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetVirtualKeyResponse, error) {
+	rsp, err := c.GetVirtualKey(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVirtualKeyResponse(rsp)
+}
+
+// RevokeVirtualKeyWithBodyWithResponse Revoke a key; final, and effective at the gateway within 30 seconds
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/virtual-keys/{id}/revocation (the `RevokeVirtualKey` operationId).
+func (c *ClientWithResponses) RevokeVirtualKeyWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeVirtualKeyResponse, error) {
+	rsp, err := c.RevokeVirtualKeyWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeVirtualKeyResponse(rsp)
+}
+
+// RevokeVirtualKeyWithResponse Revoke a key; final, and effective at the gateway within 30 seconds
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/virtual-keys/{id}/revocation (the `RevokeVirtualKey` operationId).
+func (c *ClientWithResponses) RevokeVirtualKeyWithResponse(ctx context.Context, id openapi_types.UUID, body RevokeVirtualKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeVirtualKeyResponse, error) {
+	rsp, err := c.RevokeVirtualKey(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeVirtualKeyResponse(rsp)
 }
 
 // ParseGetHealthResponse parses an HTTP response from a GetHealthWithResponse call
@@ -12170,6 +13155,171 @@ func ParseRequestPublicationResponse(rsp *http.Response) (*RequestPublicationRes
 	return response, nil
 }
 
+// ParseListUsageResponse parses an HTTP response from a ListUsageWithResponse call
+func ParseListUsageResponse(rsp *http.Response) (*ListUsageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListUsageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UsagePage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListVirtualKeysResponse parses an HTTP response from a ListVirtualKeysWithResponse call
+func ParseListVirtualKeysResponse(rsp *http.Response) (*ListVirtualKeysResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListVirtualKeysResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VirtualKeyPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseIssueVirtualKeyResponse parses an HTTP response from a IssueVirtualKeyWithResponse call
+func ParseIssueVirtualKeyResponse(rsp *http.Response) (*IssueVirtualKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &IssueVirtualKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest VirtualKeyIssued
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVirtualKeyResponse parses an HTTP response from a GetVirtualKeyWithResponse call
+func ParseGetVirtualKeyResponse(rsp *http.Response) (*GetVirtualKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVirtualKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VirtualKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeVirtualKeyResponse parses an HTTP response from a RevokeVirtualKeyWithResponse call
+func ParseRevokeVirtualKeyResponse(rsp *http.Response) (*RevokeVirtualKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeVirtualKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VirtualKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetHealth Service health
@@ -12313,6 +13463,21 @@ type ServerInterface interface {
 	// RequestPublication Ask for this template version to be published to the catalogue
 	// (POST /v1/templates/{name}/versions/{version}/publication)
 	RequestPublication(w http.ResponseWriter, r *http.Request, name Name, version int)
+	// ListUsage Authorized gateway calls and their cost at provider prices, metered or not
+	// (GET /v1/usage)
+	ListUsage(w http.ResponseWriter, r *http.Request, params ListUsageParams)
+	// ListVirtualKeys Virtual keys the caller may see, newest first, never with secrets
+	// (GET /v1/virtual-keys)
+	ListVirtualKeys(w http.ResponseWriter, r *http.Request, params ListVirtualKeysParams)
+	// IssueVirtualKey Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	// (POST /v1/virtual-keys)
+	IssueVirtualKey(w http.ResponseWriter, r *http.Request)
+
+	// (GET /v1/virtual-keys/{id})
+	GetVirtualKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// RevokeVirtualKey Revoke a key; final, and effective at the gateway within 30 seconds
+	// (POST /v1/virtual-keys/{id}/revocation)
+	RevokeVirtualKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -13511,6 +14676,190 @@ func (siw *ServerInterfaceWrapper) RequestPublication(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// ListUsage operation middleware
+func (siw *ServerInterfaceWrapper) ListUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListUsageParams
+
+	// ------------- Optional query parameter "instance" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "instance", r.URL.Query(), &params.Instance, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "instance"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "instance", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUsage(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVirtualKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListVirtualKeys(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVirtualKeysParams
+
+	// ------------- Optional query parameter "instance" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "instance", r.URL.Query(), &params.Instance, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "instance"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "instance", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVirtualKeys(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// IssueVirtualKey operation middleware
+func (siw *ServerInterfaceWrapper) IssueVirtualKey(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.IssueVirtualKey(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVirtualKey operation middleware
+func (siw *ServerInterfaceWrapper) GetVirtualKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVirtualKey(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeVirtualKey operation middleware
+func (siw *ServerInterfaceWrapper) RevokeVirtualKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeVirtualKey(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -13657,6 +15006,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/rollouts", wrapper.ListRollouts)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/rollouts/{id}", wrapper.GetRollout)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/rollouts/{id}/rollback", wrapper.RollbackRollout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/virtual-keys", wrapper.ListVirtualKeys)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/virtual-keys", wrapper.IssueVirtualKey)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/virtual-keys/{id}", wrapper.GetVirtualKey)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/virtual-keys/{id}/revocation", wrapper.RevokeVirtualKey)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/usage", wrapper.ListUsage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/instances", wrapper.ListInstances)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/instances/{name}", wrapper.GetInstance)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/instances/{name}", wrapper.ApplyInstance)
@@ -15751,6 +17105,202 @@ func (response RequestPublicationdefaultApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type ListUsageRequestObject struct {
+	Params ListUsageParams
+}
+
+type ListUsageResponseObject interface {
+	VisitListUsageResponse(w http.ResponseWriter) error
+}
+
+type ListUsage200JSONResponse UsagePage
+
+func (response ListUsage200JSONResponse) VisitListUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUsagedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListUsagedefaultApplicationProblemPlusJSONResponse) VisitListUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVirtualKeysRequestObject struct {
+	Params ListVirtualKeysParams
+}
+
+type ListVirtualKeysResponseObject interface {
+	VisitListVirtualKeysResponse(w http.ResponseWriter) error
+}
+
+type ListVirtualKeys200JSONResponse VirtualKeyPage
+
+func (response ListVirtualKeys200JSONResponse) VisitListVirtualKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListVirtualKeysdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListVirtualKeysdefaultApplicationProblemPlusJSONResponse) VisitListVirtualKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueVirtualKeyRequestObject struct {
+	Body *IssueVirtualKeyJSONRequestBody
+}
+
+type IssueVirtualKeyResponseObject interface {
+	VisitIssueVirtualKeyResponse(w http.ResponseWriter) error
+}
+
+type IssueVirtualKey201JSONResponse VirtualKeyIssued
+
+func (response IssueVirtualKey201JSONResponse) VisitIssueVirtualKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueVirtualKeydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response IssueVirtualKeydefaultApplicationProblemPlusJSONResponse) VisitIssueVirtualKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVirtualKeyRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetVirtualKeyResponseObject interface {
+	VisitGetVirtualKeyResponse(w http.ResponseWriter) error
+}
+
+type GetVirtualKey200JSONResponse VirtualKey
+
+func (response GetVirtualKey200JSONResponse) VisitGetVirtualKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetVirtualKeydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetVirtualKeydefaultApplicationProblemPlusJSONResponse) VisitGetVirtualKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeVirtualKeyRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *RevokeVirtualKeyJSONRequestBody
+}
+
+type RevokeVirtualKeyResponseObject interface {
+	VisitRevokeVirtualKeyResponse(w http.ResponseWriter) error
+}
+
+type RevokeVirtualKey200JSONResponse VirtualKey
+
+func (response RevokeVirtualKey200JSONResponse) VisitRevokeVirtualKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeVirtualKeydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RevokeVirtualKeydefaultApplicationProblemPlusJSONResponse) VisitRevokeVirtualKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetHealth Service health
@@ -15894,6 +17444,21 @@ type StrictServerInterface interface {
 	// RequestPublication Ask for this template version to be published to the catalogue
 	// (POST /v1/templates/{name}/versions/{version}/publication)
 	RequestPublication(ctx context.Context, request RequestPublicationRequestObject) (RequestPublicationResponseObject, error)
+	// ListUsage Authorized gateway calls and their cost at provider prices, metered or not
+	// (GET /v1/usage)
+	ListUsage(ctx context.Context, request ListUsageRequestObject) (ListUsageResponseObject, error)
+	// ListVirtualKeys Virtual keys the caller may see, newest first, never with secrets
+	// (GET /v1/virtual-keys)
+	ListVirtualKeys(ctx context.Context, request ListVirtualKeysRequestObject) (ListVirtualKeysResponseObject, error)
+	// IssueVirtualKey Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	// (POST /v1/virtual-keys)
+	IssueVirtualKey(ctx context.Context, request IssueVirtualKeyRequestObject) (IssueVirtualKeyResponseObject, error)
+
+	// (GET /v1/virtual-keys/{id})
+	GetVirtualKey(ctx context.Context, request GetVirtualKeyRequestObject) (GetVirtualKeyResponseObject, error)
+	// RevokeVirtualKey Revoke a key; final, and effective at the gateway within 30 seconds
+	// (POST /v1/virtual-keys/{id}/revocation)
+	RevokeVirtualKey(ctx context.Context, request RevokeVirtualKeyRequestObject) (RevokeVirtualKeyResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -17245,6 +18810,148 @@ func (sh *strictHandler) RequestPublication(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RequestPublicationResponseObject); ok {
 		if err := validResponse.VisitRequestPublicationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListUsage operation middleware
+func (sh *strictHandler) ListUsage(w http.ResponseWriter, r *http.Request, params ListUsageParams) {
+	var request ListUsageRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListUsage(ctx, request.(ListUsageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListUsage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListUsageResponseObject); ok {
+		if err := validResponse.VisitListUsageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListVirtualKeys operation middleware
+func (sh *strictHandler) ListVirtualKeys(w http.ResponseWriter, r *http.Request, params ListVirtualKeysParams) {
+	var request ListVirtualKeysRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListVirtualKeys(ctx, request.(ListVirtualKeysRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListVirtualKeys")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListVirtualKeysResponseObject); ok {
+		if err := validResponse.VisitListVirtualKeysResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// IssueVirtualKey operation middleware
+func (sh *strictHandler) IssueVirtualKey(w http.ResponseWriter, r *http.Request) {
+	var request IssueVirtualKeyRequestObject
+
+	var body IssueVirtualKeyJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.IssueVirtualKey(ctx, request.(IssueVirtualKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "IssueVirtualKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(IssueVirtualKeyResponseObject); ok {
+		if err := validResponse.VisitIssueVirtualKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetVirtualKey operation middleware
+func (sh *strictHandler) GetVirtualKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetVirtualKeyRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetVirtualKey(ctx, request.(GetVirtualKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetVirtualKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetVirtualKeyResponseObject); ok {
+		if err := validResponse.VisitGetVirtualKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeVirtualKey operation middleware
+func (sh *strictHandler) RevokeVirtualKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request RevokeVirtualKeyRequestObject
+
+	request.Id = id
+
+	var body RevokeVirtualKeyJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeVirtualKey(ctx, request.(RevokeVirtualKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeVirtualKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeVirtualKeyResponseObject); ok {
+		if err := validResponse.VisitRevokeVirtualKeyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

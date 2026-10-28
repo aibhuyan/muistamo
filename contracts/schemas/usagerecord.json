@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/usagerecord.json",
+  "title": "UsageRecord",
+  "description": "A call the gateway's check authorized, and what it cost. metered is false when no usage arrived from the gateway: the call may not have run (the gateway can still reject an authorized call), or its usage export was lost. Unmetered calls are reported, never estimated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "requestId",
+    "keyId",
+    "instance",
+    "person",
+    "kind",
+    "authorizedAt"
+  ],
+  "properties": {
+    "requestId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "keyId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "instance": {
+      "type": "string"
+    },
+    "person": {
+      "type": "string"
+    },
+    "costCentre": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "model",
+        "mcp"
+      ]
+    },
+    "alias": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "model": {
+      "description": "The provider's model id the alias resolved to when authorized.",
+      "type": "string"
+    },
+    "mcpMethod": {
+      "type": "string"
+    },
+    "mcpTool": {
+      "type": "string"
+    },
+    "authorizedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metered": {
+      "description": "Model calls only: false when no usage arrived from the gateway, because the call may not have run (the gateway can reject an authorized call) or its usage export was lost. Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens.",
+      "type": "boolean"
+    },
+    "inputTokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cachedInputTokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "outputTokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cost": {
+      "description": "At provider cost from the price snapshot taken when authorized; no markup.",
+      "$ref": "money.json"
+    },
+    "recordedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "if": {
+    "properties": {
+      "kind": {
+        "const": "model"
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "metered"
+    ]
+  }
+}
