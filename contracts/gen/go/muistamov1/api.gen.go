@@ -510,6 +510,69 @@ func (e ErasureProofService) Valid() bool {
 	}
 }
 
+// Defines values for GatewayAuthorizationDecisionReason.
+const (
+	GatewayAuthorizationDecisionReasonAliasNotAllowed      GatewayAuthorizationDecisionReason = "alias-not-allowed"
+	GatewayAuthorizationDecisionReasonAllowed              GatewayAuthorizationDecisionReason = "allowed"
+	GatewayAuthorizationDecisionReasonBudgetReached        GatewayAuthorizationDecisionReason = "budget-reached"
+	GatewayAuthorizationDecisionReasonIdentityNotReady     GatewayAuthorizationDecisionReason = "identity-not-ready"
+	GatewayAuthorizationDecisionReasonInactiveInstance     GatewayAuthorizationDecisionReason = "inactive-instance"
+	GatewayAuthorizationDecisionReasonInactiveKey          GatewayAuthorizationDecisionReason = "inactive-key"
+	GatewayAuthorizationDecisionReasonInvalidKey           GatewayAuthorizationDecisionReason = "invalid-key"
+	GatewayAuthorizationDecisionReasonInvalidRequest       GatewayAuthorizationDecisionReason = "invalid-request"
+	GatewayAuthorizationDecisionReasonMcpNotIntegrated     GatewayAuthorizationDecisionReason = "mcp-not-integrated"
+	GatewayAuthorizationDecisionReasonPersonNotEstablished GatewayAuthorizationDecisionReason = "person-not-established"
+	GatewayAuthorizationDecisionReasonRouteNotCurrent      GatewayAuthorizationDecisionReason = "route-not-current"
+)
+
+// Valid indicates whether the value is a known member of the GatewayAuthorizationDecisionReason enum.
+func (e GatewayAuthorizationDecisionReason) Valid() bool {
+	switch e {
+	case GatewayAuthorizationDecisionReasonAliasNotAllowed:
+		return true
+	case GatewayAuthorizationDecisionReasonAllowed:
+		return true
+	case GatewayAuthorizationDecisionReasonBudgetReached:
+		return true
+	case GatewayAuthorizationDecisionReasonIdentityNotReady:
+		return true
+	case GatewayAuthorizationDecisionReasonInactiveInstance:
+		return true
+	case GatewayAuthorizationDecisionReasonInactiveKey:
+		return true
+	case GatewayAuthorizationDecisionReasonInvalidKey:
+		return true
+	case GatewayAuthorizationDecisionReasonInvalidRequest:
+		return true
+	case GatewayAuthorizationDecisionReasonMcpNotIntegrated:
+		return true
+	case GatewayAuthorizationDecisionReasonPersonNotEstablished:
+		return true
+	case GatewayAuthorizationDecisionReasonRouteNotCurrent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GatewayAuthorizationRequestKind.
+const (
+	GatewayAuthorizationRequestKindMcp   GatewayAuthorizationRequestKind = "mcp"
+	GatewayAuthorizationRequestKindModel GatewayAuthorizationRequestKind = "model"
+)
+
+// Valid indicates whether the value is a known member of the GatewayAuthorizationRequestKind enum.
+func (e GatewayAuthorizationRequestKind) Valid() bool {
+	switch e {
+	case GatewayAuthorizationRequestKindMcp:
+		return true
+	case GatewayAuthorizationRequestKindModel:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HREventType.
 const (
 	HREventTypeJoiner HREventType = "joiner"
@@ -2247,6 +2310,57 @@ type EvidenceEventPage struct {
 
 	// NextAfterSeq Pass as afterSeq for the next page. Absent on the last page.
 	NextAfterSeq *int `json:"nextAfterSeq,omitempty"`
+}
+
+// GatewayAuthorizationDecision Evidence-backed authorization, never proof of upstream execution. Identity fields exist only on allow. Cedar remains observation-only.
+type GatewayAuthorizationDecision struct {
+	Allowed    bool                `json:"allowed"`
+	CostCentre *string             `json:"costCentre,omitempty"`
+	Instance   *string             `json:"instance,omitempty"`
+	KeyId      *openapi_types.UUID `json:"keyId,omitempty"`
+
+	// Person Canonical development principal, dev: followed by the immutable user binding reference. This bounded slice does not establish an Entra OBO principal.
+	Person *string `json:"person,omitempty"`
+
+	// Policy The policy engine's answer. Release 1 runs in observe mode: nothing is enforced yet (the gateway is not built), so enforced is always false and wouldBlock says what enforcement would do.
+	Policy    *PolicyDecision                    `json:"policy,omitempty"`
+	Reason    GatewayAuthorizationDecisionReason `json:"reason"`
+	RequestId openapi_types.UUID                 `json:"requestId"`
+}
+
+// GatewayAuthorizationDecisionReason defines model for GatewayAuthorizationDecision.Reason.
+type GatewayAuthorizationDecisionReason string
+
+// GatewayAuthorizationRequest Normalized ext_authz attributes. Never persisted verbatim. The bearer secret is passed separately and never enters this contract or evidence. Protocol kind comes from the trusted listener.
+type GatewayAuthorizationRequest struct {
+	Alias         *string                         `json:"alias,omitempty"`
+	Kind          GatewayAuthorizationRequestKind `json:"kind"`
+	MetadataValid bool                            `json:"metadataValid"`
+	Method        string                          `json:"method"`
+	Path          string                          `json:"path"`
+}
+
+// GatewayAuthorizationRequestKind defines model for GatewayAuthorizationRequest.Kind.
+type GatewayAuthorizationRequestKind string
+
+// GatewayAuthzConfig Trusted gateway/listener configuration for model authorization. Its SHA-256 fingerprint must match the parsed gRPC metadata in the gateway configuration. No provider credentials or customer content.
+type GatewayAuthzConfig struct {
+	Models   []GatewayModelRoute `json:"models"`
+	TenantId openapi_types.UUID  `json:"tenantId"`
+}
+
+// GatewayModelRoute An operator-pinned route; stale alias/model revisions or target mismatch refuse calls until both gateway and checker configuration are refreshed.
+type GatewayModelRoute struct {
+	Alias         string `json:"alias"`
+	AliasRevision int    `json:"aliasRevision"`
+
+	// BaseUrl Trusted operator-pinned deployment endpoint, without credentials, query or fragment. The later renderer must emit this exact target and the matching configuration fingerprint together. Not independent provider-region verification.
+	BaseUrl       string `json:"baseUrl"`
+	CatalogueName string `json:"catalogueName"`
+	Model         string `json:"model"`
+	ModelRevision int    `json:"modelRevision"`
+	Provider      string `json:"provider"`
+	Region        string `json:"region"`
 }
 
 // HREvent A joiner or leaver event from the tenant's HR system, in Muistamo's own shape. HRIS connectors map their payloads onto this. Sent to POST /v1/hr/events with an HMAC signature.

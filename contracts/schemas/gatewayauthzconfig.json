@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/gatewayauthzconfig.json",
+  "title": "GatewayAuthzConfig",
+  "description": "Trusted gateway/listener configuration for model authorization. Its SHA-256 fingerprint must match the parsed gRPC metadata in the gateway configuration. No provider credentials or customer content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenantId", "models"],
+  "properties": {
+    "tenantId": {"type": "string", "format": "uuid"},
+    "models": {"type": "array", "minItems": 1, "items": {"$ref": "gatewaymodelroute.json"}}
+  }
+}

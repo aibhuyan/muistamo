@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/gatewayauthorizationdecision.json",
+  "title": "GatewayAuthorizationDecision",
+  "description": "Evidence-backed authorization, never proof of upstream execution. Identity fields exist only on allow. Cedar remains observation-only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["allowed", "reason", "requestId"],
+  "properties": {
+    "allowed": {"type": "boolean"},
+    "reason": {"type": "string", "enum": ["allowed", "invalid-request", "invalid-key", "inactive-key", "inactive-instance", "identity-not-ready", "person-not-established", "alias-not-allowed", "route-not-current", "budget-reached", "mcp-not-integrated"]},
+    "requestId": {"type": "string", "format": "uuid"},
+    "keyId": {"type": "string", "format": "uuid"},
+    "instance": {"type": "string"},
+    "person": {"description": "Canonical development principal, dev: followed by the immutable user binding reference. This bounded slice does not establish an Entra OBO principal.", "type": "string"},
+    "costCentre": {"type": "string"},
+    "policy": {"$ref": "policydecision.json"}
+  }
+}

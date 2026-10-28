@@ -47,6 +47,24 @@ func Open(ctx context.Context, url string) (*DB, error) {
 // Close releases the pool.
 func (db *DB) Close() { db.pool.Close() }
 
+// RequireApplicationRole refuses owner/superuser connections on the gateway request path.
+// Those roles can bypass tenant RLS even when FORCE is set.
+func (db *DB) RequireApplicationRole(ctx context.Context) error {
+	var allowed bool
+	err := db.pool.QueryRow(ctx, `SELECT NOT r.rolsuper AND NOT r.rolbypassrls
+		AND pg_has_role(current_user,'muistamo_app','MEMBER')
+		AND NOT pg_has_role(current_user,c.relowner,'USAGE')
+		FROM pg_roles r JOIN pg_class c ON c.oid='public.virtual_keys'::regclass
+		WHERE r.rolname=current_user`).Scan(&allowed)
+	if err != nil {
+		return fmt.Errorf("check application database role: %w", err)
+	}
+	if !allowed {
+		return errors.New("gateway authorization requires a non-owner application role without RLS bypass")
+	}
+	return nil
+}
+
 // InTenant runs fn in a transaction that row-level security scopes to tenant. The transaction
 // commits only if fn returns nil.
 func (db *DB) InTenant(ctx context.Context, tenant uuid.UUID, fn func(pgx.Tx) error) error {

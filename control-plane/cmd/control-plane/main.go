@@ -371,6 +371,7 @@ func gatewayCmd() *cobra.Command {
 	_ = set.MarkFlagRequired("actor")
 	admins.AddCommand(set)
 	cmd.AddCommand(admins)
+	cmd.AddCommand(gatewayAuthorizationCmd(), gatewayDigestCmd())
 	return cmd
 }
 

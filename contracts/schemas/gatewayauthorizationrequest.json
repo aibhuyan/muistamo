@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/gatewayauthorizationrequest.json",
+  "title": "GatewayAuthorizationRequest",
+  "description": "Normalized ext_authz attributes. Never persisted verbatim. The bearer secret is passed separately and never enters this contract or evidence. Protocol kind comes from the trusted listener.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "method", "path", "metadataValid"],
+  "properties": {
+    "kind": {"type": "string", "enum": ["model", "mcp"]},
+    "method": {"type": "string"},
+    "path": {"type": "string"},
+    "metadataValid": {"type": "boolean"},
+    "alias": {"type": "string"}
+  }
+}

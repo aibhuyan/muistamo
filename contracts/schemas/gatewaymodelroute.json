@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/gatewaymodelroute.json",
+  "title": "GatewayModelRoute",
+  "description": "An operator-pinned route; stale alias/model revisions or target mismatch refuse calls until both gateway and checker configuration are refreshed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["alias", "aliasRevision", "catalogueName", "modelRevision", "provider", "model", "region", "baseUrl"],
+  "properties": {
+    "alias": {"type": "string", "minLength": 1},
+    "aliasRevision": {"type": "integer", "minimum": 1},
+    "catalogueName": {"type": "string", "minLength": 1},
+    "modelRevision": {"type": "integer", "minimum": 1},
+    "provider": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1},
+    "region": {"type": "string", "minLength": 1},
+    "baseUrl": {"description": "Trusted operator-pinned deployment endpoint, without credentials, query or fragment. The later renderer must emit this exact target and the matching configuration fingerprint together. Not independent provider-region verification.", "type": "string", "format": "uri"}
+  }
+}
