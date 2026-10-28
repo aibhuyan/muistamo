@@ -950,6 +950,13 @@ paths:
           $ref: "#/components/responses/Problem"
 
 components:
+  schemas:
+    GatewayAuthzConfig:
+      $ref: "../schemas/gatewayauthzconfig.json"
+    GatewayAuthorizationRequest:
+      $ref: "../schemas/gatewayauthorizationrequest.json"
+    GatewayAuthorizationDecision:
+      $ref: "../schemas/gatewayauthorizationdecision.json"
   parameters:
     Name:
       name: name

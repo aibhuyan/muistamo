@@ -1377,6 +1377,63 @@ export interface components {
             nextAfterSeq?: number;
         };
         /**
+         * GatewayAuthorizationDecision
+         * @description Evidence-backed authorization, never proof of upstream execution. Identity fields exist only on allow. Cedar remains observation-only.
+         */
+        GatewayAuthorizationDecision: {
+            allowed: boolean;
+            /** @enum {string} */
+            reason: "allowed" | "invalid-request" | "invalid-key" | "inactive-key" | "inactive-instance" | "identity-not-ready" | "person-not-established" | "alias-not-allowed" | "route-not-current" | "budget-reached" | "mcp-not-integrated";
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            keyId?: string;
+            instance?: string;
+            /** @description Canonical development principal, dev: followed by the immutable user binding reference. This bounded slice does not establish an Entra OBO principal. */
+            person?: string;
+            costCentre?: string;
+            policy?: components["schemas"]["PolicyDecision"];
+        };
+        /**
+         * GatewayAuthorizationRequest
+         * @description Normalized ext_authz attributes. Never persisted verbatim. The bearer secret is passed separately and never enters this contract or evidence. Protocol kind comes from the trusted listener.
+         */
+        GatewayAuthorizationRequest: {
+            /** @enum {string} */
+            kind: "model" | "mcp";
+            method: string;
+            path: string;
+            metadataValid: boolean;
+            alias?: string;
+        };
+        /**
+         * GatewayAuthzConfig
+         * @description Trusted gateway/listener configuration for model authorization. Its SHA-256 fingerprint must match the parsed gRPC metadata in the gateway configuration. No provider credentials or customer content.
+         */
+        GatewayAuthzConfig: {
+            /** Format: uuid */
+            tenantId: string;
+            models: components["schemas"]["GatewayModelRoute"][];
+        };
+        /**
+         * GatewayModelRoute
+         * @description An operator-pinned route; stale alias/model revisions or target mismatch refuse calls until both gateway and checker configuration are refreshed.
+         */
+        GatewayModelRoute: {
+            alias: string;
+            aliasRevision: number;
+            catalogueName: string;
+            modelRevision: number;
+            provider: string;
+            model: string;
+            region: string;
+            /**
+             * Format: uri
+             * @description Trusted operator-pinned deployment endpoint, without credentials, query or fragment. The later renderer must emit this exact target and the matching configuration fingerprint together. Not independent provider-region verification.
+             */
+            baseUrl: string;
+        };
+        /**
          * HREvent
          * @description A joiner or leaver event from the tenant's HR system, in Muistamo's own shape. HRIS connectors map their payloads onto this. Sent to POST /v1/hr/events with an HMAC signature.
          */
