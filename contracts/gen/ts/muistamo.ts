@@ -415,7 +415,7 @@ export interface paths {
         /** Virtual keys the caller may see, newest first, never with secrets */
         get: operations["listVirtualKeys"];
         put?: never;
-        /** Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once */
+        /** Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once */
         post: operations["issueVirtualKey"];
         delete?: never;
         options?: never;
@@ -2407,7 +2407,7 @@ export interface components {
             /** Format: date-time */
             revokedAt?: string;
             revokedBy?: string;
-            /** @description A fixed reason code or text free of personal data. */
+            /** @description A fixed revocation reason code; never free text. */
             revokeReason?: string;
         };
         /**
@@ -2430,7 +2430,7 @@ export interface components {
         };
         /**
          * VirtualKeyRequest
-         * @description Issue a gateway virtual key to an agent instance (FR-702, E6.1). Only the instance's owner or sponsor may. The secret is shown once in the response and never stored.
+         * @description Issue a gateway virtual key to an active agent instance (FR-702, E6.1). MVP: only operator-appointed gateway administrators may manage keys. Verified owner/sponsor self-service is deferred. The secret is shown once in the response and never stored.
          */
         VirtualKeyRequest: {
             instance: string;
@@ -2446,8 +2446,11 @@ export interface components {
          * @description Revoke a key. Final: a revoked key never becomes active again.
          */
         VirtualKeyRevocation: {
-            /** @description A fixed reason code or text free of personal data: erasure cannot clean free text. */
-            reason: string;
+            /**
+             * @description A fixed reason code; personal data and secrets must never enter retained revocation records.
+             * @enum {string}
+             */
+            reason: "operator" | "compromised" | "rotation" | "leaver";
         };
     };
     responses: {
@@ -3149,6 +3152,7 @@ export interface operations {
             /** @description The key and its one-time secret. */
             201: {
                 headers: {
+                    "Cache-Control": "no-store";
                     [name: string]: unknown;
                 };
                 content: {

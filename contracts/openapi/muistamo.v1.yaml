@@ -475,7 +475,7 @@ paths:
           $ref: "#/components/responses/Problem"
     post:
       operationId: issueVirtualKey
-      summary: Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+      summary: Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
       requestBody:
         required: true
         content:
@@ -485,6 +485,12 @@ paths:
       responses:
         "201":
           description: The key and its one-time secret.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
           content:
             application/json:
               schema:

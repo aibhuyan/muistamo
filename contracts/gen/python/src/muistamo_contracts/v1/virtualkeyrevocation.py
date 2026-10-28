@@ -2,8 +2,16 @@
 #   filename:  virtualkeyrevocation.json
 
 from __future__ import annotations
+from enum import StrEnum
 from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class Reason(StrEnum):
+    operator = "operator"
+    compromised = "compromised"
+    rotation = "rotation"
+    leaver = "leaver"
 
 
 class VirtualKeyRevocation(BaseModel):
@@ -11,10 +19,8 @@ class VirtualKeyRevocation(BaseModel):
         extra="forbid",
     )
     reason: Annotated[
-        str,
+        Reason,
         Field(
-            description="A fixed reason code or text free of personal data: erasure cannot clean free text.",
-            max_length=2000,
-            min_length=1,
+            description="A fixed reason code; personal data and secrets must never enter retained revocation records."
         ),
     ]

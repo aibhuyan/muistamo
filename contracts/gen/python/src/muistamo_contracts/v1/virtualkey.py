@@ -35,5 +35,5 @@ class VirtualKey(BaseModel):
     revokedAt: AwareDatetime | None = None
     revokedBy: str | None = None
     revokeReason: Annotated[
-        str | None, Field(description="A fixed reason code or text free of personal data.")
+        str | None, Field(description="A fixed revocation reason code; never free text.")
     ] = None

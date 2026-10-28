@@ -111,6 +111,10 @@ func seedPerson(t *testing.T, h harness, tenant uuid.UUID) {
 	testdb.ExecIn(t, h.db.AppURL, tenant, insertKey, tenant, gatewayKey)
 	testdb.ExecIn(t, h.db.AppURL, tenant, insertModelCall, tenant, gatewayCall, gatewayKey)
 	testdb.ExecIn(t, h.db.AppURL, tenant, insertUsage, tenant, gatewayCall)
+	// A is a gateway administrator too: erasure removes the row.
+	if err := registry.ConfigureGatewayAdmins(t.Context(), h.db.OwnerURL, registry.Actor{Tenant: tenant, Name: "operator:test", RequestID: uuid.NewString()}, []string{subjectIdentity}, h.key); err != nil {
+		t.Fatal(err)
+	}
 	// And a key A revoked: erasure must pseudonymise revoked_by through the revocation trigger.
 	revokedKey := uuid.New()
 	testdb.ExecIn(t, h.db.AppURL, tenant, insertKey, tenant, revokedKey)
@@ -202,7 +206,7 @@ func TestErasureRemovesThePersonEverywhereButEvidence(t *testing.T) {
 	counts, _ := got.body["counts"].(map[string]any)
 	for _, k := range []string{"agent_template_versions.created_by", "catalogue_requests.requested_by", "catalogue_approvals.approver",
 		"policy_documents.updated_by", "catalogue_approvers", "agent_instances.document", "hr_events.payload",
-		"virtual_keys.created_by", "virtual_keys.revoked_by", "gateway_calls.person"} {
+		"virtual_keys.created_by", "virtual_keys.revoked_by", "gateway_calls.person", "gateway_admins"} {
 		if n, _ := counts[k].(float64); n < 1 {
 			t.Errorf("count %s = %v, want at least 1", k, counts[k])
 		}

@@ -165,9 +165,9 @@ func TestGatewaySchemaPricesUsageAtProviderCostOnly(t *testing.T) {
 		args []any
 		code string
 	}{
-		"a marked-up cost": {strings.Replace(insertUsage, "0.000138", "0.000139", 1), []any{a, call()}, raised},
-		"a discounted cost": {strings.Replace(insertUsage, "0.000138", "0.000100", 1), []any{a, call()}, raised},
-		"another currency": {strings.Replace(insertUsage, "'EUR')", "'USD')", 1), []any{a, call()}, raised},
+		"a marked-up cost":     {strings.Replace(insertUsage, "0.000138", "0.000139", 1), []any{a, call()}, raised},
+		"a discounted cost":    {strings.Replace(insertUsage, "0.000138", "0.000100", 1), []any{a, call()}, raised},
+		"another currency":     {strings.Replace(insertUsage, "'EUR')", "'USD')", 1), []any{a, call()}, raised},
 		"usage on an MCP call": {insertUsage, []any{a, mcp}, raised},
 		// Priced exactly, (5-6)*3 + 6*3 + 7*15 = 120 per million, so only the CHECK can refuse it.
 		"more cached than input tokens": {`INSERT INTO usage_records (tenant_id, request_id, input_tokens, cached_input_tokens,
@@ -203,15 +203,15 @@ func TestGatewaySchemaRefusesIncompleteRecords(t *testing.T) {
 		args []any
 		code string
 	}{
-		"a key for an instance that does not exist": {strings.Replace(insertKey, "'analyst-intern-person-a'", "'nobody'", 1), []any{a, uuid.New()}, foreignKeyViolation},
-		"a key whose secret hash is not 32 bytes":   {strings.Replace(insertKey, "repeat('ab', 32)", "repeat('ab', 16)", 1), []any{a, uuid.New()}, checkViolation},
-		"a key with no aliases":                     {strings.Replace(insertKey, "ARRAY['reasoning-default']", "ARRAY[]::text[]", 1), []any{a, uuid.New()}, checkViolation},
-		"a key with a negative budget":              {strings.Replace(insertKey, ", 10, 'EUR'", ", -1, 'EUR'", 1), []any{a, uuid.New()}, checkViolation},
-		"a key id reused":                           {insertKey, []any{a, key}, uniqueViolation},
-		"a model call with no price snapshot":       {strings.Replace(insertModelCall, "'EUR', 3, 15", "NULL, NULL, NULL", 1), []any{a, uuid.New(), key}, checkViolation},
-		"a call for an unknown key":                 {insertModelCall, []any{a, uuid.New(), uuid.New()}, foreignKeyViolation},
-		"a call billed to another instance":         {strings.Replace(insertModelCall, "VALUES ($1, $2, $3, 'analyst-intern-person-a'", "VALUES ($1, $2, $3, 'someone-else'", 1), []any{a, uuid.New(), key}, foreignKeyViolation},
-		"an MCP call with no method":                {strings.Replace(insertMCPCall, "'tools/call'", "NULL", 1), []any{a, uuid.New(), key}, checkViolation},
+		"a key for an instance that does not exist":  {strings.Replace(insertKey, "'analyst-intern-person-a'", "'nobody'", 1), []any{a, uuid.New()}, foreignKeyViolation},
+		"a key whose secret hash is not 32 bytes":    {strings.Replace(insertKey, "repeat('ab', 32)", "repeat('ab', 16)", 1), []any{a, uuid.New()}, checkViolation},
+		"a key with no aliases":                      {strings.Replace(insertKey, "ARRAY['reasoning-default']", "ARRAY[]::text[]", 1), []any{a, uuid.New()}, checkViolation},
+		"a key with a negative budget":               {strings.Replace(insertKey, ", 10, 'EUR'", ", -1, 'EUR'", 1), []any{a, uuid.New()}, checkViolation},
+		"a key id reused":                            {insertKey, []any{a, key}, uniqueViolation},
+		"a model call with no price snapshot":        {strings.Replace(insertModelCall, "'EUR', 3, 15", "NULL, NULL, NULL", 1), []any{a, uuid.New(), key}, checkViolation},
+		"a call for an unknown key":                  {insertModelCall, []any{a, uuid.New(), uuid.New()}, foreignKeyViolation},
+		"a call billed to another instance":          {strings.Replace(insertModelCall, "VALUES ($1, $2, $3, 'analyst-intern-person-a'", "VALUES ($1, $2, $3, 'someone-else'", 1), []any{a, uuid.New(), key}, foreignKeyViolation},
+		"an MCP call with no method":                 {strings.Replace(insertMCPCall, "'tools/call'", "NULL", 1), []any{a, uuid.New(), key}, checkViolation},
 		"usage for a call that was never authorized": {insertUsage, []any{a, uuid.New()}, raised},
 		"a second usage record for one call":         {insertUsage, []any{a, call}, uniqueViolation},
 		// Priced exactly, -1*3 + 7*15 = 102 per million, so only the CHECK can refuse it.
@@ -240,24 +240,11 @@ func TestGatewayKeyTenantLookupRevealsOnlyTheTenant(t *testing.T) {
 	}
 }
 
-func TestGatewayEndpointsSayTheyAreNotBuiltYet(t *testing.T) {
+func TestUsageEndpointSaysItIsNotBuiltYet(t *testing.T) {
 	h := newHarness(t, api.InsecureDevHeaders{})
 	a := h.tenant(t, "tenant-a")
-	id := uuid.NewString()
-	for _, c := range []struct{ method, path, body string }{
-		{http.MethodGet, "/v1/virtual-keys", ""},
-		{http.MethodPost, "/v1/virtual-keys", `{"instance":"x","aliases":["a"],"monthlyBudget":{"amount":"10","currency":"EUR"}}`},
-		{http.MethodGet, "/v1/virtual-keys/" + id, ""},
-		{http.MethodPost, "/v1/virtual-keys/" + id + "/revocation", `{"reason":"r"}`},
-		{http.MethodGet, "/v1/usage", ""},
-	} {
-		got := h.call(t, a, c.method, c.path, c.body)
-		if got.status != http.StatusNotImplemented || !strings.Contains(got.raw, "agentgateway-plan") {
-			t.Errorf("%s %s = %d: %s, want an honest 501", c.method, c.path, got.status, got.raw)
-		}
-	}
-	// The POST bodies are validated against their contracts before the handler.
-	if got := h.call(t, a, http.MethodPost, "/v1/virtual-keys", `{"instance":"x","aliases":["a"],"monthlyBudget":{"amount":"1.5","currency":"USD"}}`); got.status != http.StatusBadRequest && got.status != http.StatusUnprocessableEntity {
-		t.Errorf("a USD budget = %d, want a contract refusal", got.status)
+	got := h.call(t, a, http.MethodGet, "/v1/usage", "")
+	if got.status != http.StatusNotImplemented || !strings.Contains(got.raw, "agentgateway-plan") {
+		t.Errorf("GET /v1/usage = %d: %s, want an honest 501", got.status, got.raw)
 	}
 }

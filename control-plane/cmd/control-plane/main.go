@@ -31,7 +31,7 @@ func main() {
 	root := &cobra.Command{Use: "control-plane", SilenceUsage: true, SilenceErrors: true}
 	// cobra's Print helpers default to stderr; command output belongs on stdout.
 	root.SetOut(os.Stdout)
-	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd(), catalogueCmd(), privacyCmd(), hrCmd(), entraCmd())
+	root.AddCommand(serveCmd(log), workerCmd(log), migrateCmd(), tenantCmd(), evidenceCmd(), catalogueCmd(), privacyCmd(), hrCmd(), entraCmd(), gatewayCmd())
 	if err := root.Execute(); err != nil {
 		log.Error("control-plane failed", "err", err)
 		os.Exit(1)
@@ -324,6 +324,53 @@ func catalogueCmd() *cobra.Command {
 	_ = set.MarkFlagRequired("tenant")
 	approvers.AddCommand(set)
 	cmd.AddCommand(approvers)
+	return cmd
+}
+
+func gatewayCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "gateway", Short: "Manage the model and tool gateway"}
+	admins := &cobra.Command{Use: "admins", Short: "Manage gateway administrators, who issue and revoke virtual keys"}
+	var tenant, operator string
+	var clear bool
+	set := &cobra.Command{
+		Use:   "set --tenant ID --actor OPERATOR ADMIN... | --clear",
+		Short: "Replace the tenant's gateway administrators (MUISTAMO_MIGRATE_DATABASE_URL)",
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if (len(args) == 0) != clear {
+				return errors.New("supply administrator identities or --clear")
+			}
+			id, err := uuid.Parse(tenant)
+			if err != nil {
+				return fmt.Errorf("tenant id: %w", err)
+			}
+			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			defer cancel()
+			ownerURL := requireEnv("MUISTAMO_MIGRATE_DATABASE_URL")
+			db, err := store.Open(ctx, ownerURL)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			key, err := loadSigner(ctx, db, requireEnv("MUISTAMO_EVIDENCE_KEY_FILE"))
+			if err != nil {
+				return err
+			}
+			who := registry.Actor{Tenant: id, Name: operator, RequestID: uuid.NewString()}
+			if err := registry.ConfigureGatewayAdmins(ctx, ownerURL, who, args, key); err != nil {
+				return err
+			}
+			cmd.Printf("tenant %s now has %d gateway administrators\n", id, len(args))
+			return nil
+		},
+	}
+	set.Flags().StringVar(&tenant, "tenant", "", "tenant id")
+	set.Flags().StringVar(&operator, "actor", "", "operator identity for signed evidence")
+	set.Flags().BoolVar(&clear, "clear", false, "remove every gateway administrator")
+	_ = set.MarkFlagRequired("tenant")
+	_ = set.MarkFlagRequired("actor")
+	admins.AddCommand(set)
+	cmd.AddCommand(admins)
 	return cmd
 }
 

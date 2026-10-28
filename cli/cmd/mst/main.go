@@ -34,7 +34,7 @@ func main() {
 	flags.StringVar(&opts.tenant, "tenant", os.Getenv("MST_TENANT"), "tenant id, development only (MST_TENANT)")
 	flags.StringVar(&opts.actor, "actor", envOr("MST_ACTOR", os.Getenv("USER")), "acting person, development only (MST_ACTOR)")
 
-	root.AddCommand(cloneCmd(opts), modelsCmd(opts), rolloutCmd(opts))
+	root.AddCommand(cloneCmd(opts), modelsCmd(opts), rolloutCmd(opts), gatewayCmd(opts))
 	root.AddCommand(
 		&cobra.Command{
 			Use:   "version",
