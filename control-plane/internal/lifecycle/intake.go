@@ -126,13 +126,21 @@ func (in *Intake) Accept(ctx context.Context, tenant uuid.UUID, actor, requestID
 			receipt.DispatchState = muistamov1.HREventAcceptedDispatchStateIgnored
 			receipt.Generation = latest.generation
 		}
+		version, err := store.IdentityEnrollmentVersion(ctx, tx)
+		if err != nil {
+			return err
+		}
+		mode := "simulated"
+		if version != nil {
+			mode = "entra"
+		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO hr_events (tenant_id,event_id,type,person_id,workflow_id,payload,occurred_at,generation,decision,dispatch_state)
-			VALUES ($1,$2,$3,$4,'',$5,$6,$7,$8,$9)`,
-			tenant, event.Id, string(event.Type), event.Person.Id, payload, occurred, receipt.Generation, string(receipt.Decision), string(receipt.DispatchState)); err != nil {
+			INSERT INTO hr_events (tenant_id,event_id,type,person_id,workflow_id,payload,occurred_at,generation,decision,dispatch_state,identity_mode,identity_binding_version)
+			VALUES ($1,$2,$3,$4,'',$5,$6,$7,$8,$9,$10,$11)`,
+			tenant, event.Id, string(event.Type), event.Person.Id, payload, occurred, receipt.Generation, string(receipt.Decision), string(receipt.DispatchState), mode, version); err != nil {
 			return fmt.Errorf("record HR event: %w", err)
 		}
-		afterDecision := map[string]any{"eventId": event.Id, "type": event.Type, "generation": receipt.Generation, "decision": receipt.Decision, "dispatchState": receipt.DispatchState}
+		afterDecision := map[string]any{"eventId": event.Id, "type": event.Type, "generation": receipt.Generation, "decision": receipt.Decision, "dispatchState": receipt.DispatchState, "identityMode": mode, "identityBindingVersion": version}
 		if privacyBlocked {
 			afterDecision["reason"] = "source predates erasure boundary"
 		} else {
@@ -251,7 +259,15 @@ func (in *Intake) dispatchPending(ctx context.Context, tenant uuid.UUID, actor, 
 		if in.Dispatcher == nil {
 			return ErrDispatch
 		}
-		scope = Scope{Tenant: tenant, EventID: id, Generation: receipt.Generation, HandoffAttempted: attempted != nil}
+		route, err := store.HRIdentityRoute(ctx, tx, tenant, id)
+		if err != nil {
+			return err
+		}
+		scope = Scope{Tenant: tenant, EventID: id, Generation: receipt.Generation, HandoffAttempted: attempted != nil, IdentityRoute: &route}
+		dispatchID, err := DispatchWorkflowID(scope)
+		if err != nil {
+			return err
+		}
 		if event.Type == muistamov1.HREventTypeJoiner {
 			rows, err := tx.Query(ctx, "SELECT DISTINCT workflow_id FROM hr_events WHERE person_id=$1 AND type='leaver' AND dispatch_state IN ('legacy','dispatched') AND workflow_id<>'' ORDER BY workflow_id", person)
 			if err != nil {
@@ -275,7 +291,7 @@ func (in *Intake) dispatchPending(ctx context.Context, tenant uuid.UUID, actor, 
 			if _, err := tx.Exec(ctx, "UPDATE hr_events SET dispatch_attempted_at=now() WHERE event_id=$1", id); err != nil {
 				return err
 			}
-			if _, err := evidence.Append(ctx, tx, in.Signer, evidence.Entry{Tenant: tenant, Actor: actor, RequestID: requestID, Action: "hr.event.dispatch-intent", SubjectKind: "HRPerson", SubjectName: person, After: map[string]any{"eventId": id, "generation": receipt.Generation, "dispatchWorkflowId": HRDispatchWorkflowID(tenant, id)}}); err != nil {
+			if _, err := evidence.Append(ctx, tx, in.Signer, evidence.Entry{Tenant: tenant, Actor: actor, RequestID: requestID, Action: "hr.event.dispatch-intent", SubjectKind: "HRPerson", SubjectName: person, After: map[string]any{"eventId": id, "generation": receipt.Generation, "dispatchWorkflowId": dispatchID}}); err != nil {
 				return err
 			}
 		}
@@ -324,7 +340,11 @@ func (in *Intake) dispatchPending(ctx context.Context, tenant uuid.UUID, actor, 
 		if _, err := tx.Exec(ctx, "UPDATE hr_events SET workflow_id=$2,dispatch_state='dispatched',dispatched_at=now() WHERE event_id=$1", id, workflowID); err != nil {
 			return err
 		}
-		if _, err := evidence.Append(ctx, tx, in.Signer, evidence.Entry{Tenant: tenant, Actor: actor, RequestID: requestID, Action: "hr.event.dispatched", SubjectKind: "HRPerson", SubjectName: event.Person.Id, After: map[string]any{"eventId": id, "generation": current.Generation, "workflowId": workflowID, "dispatchWorkflowId": HRDispatchWorkflowID(tenant, id)}}); err != nil {
+		dispatchID, err := DispatchWorkflowID(scope)
+		if err != nil {
+			return err
+		}
+		if _, err := evidence.Append(ctx, tx, in.Signer, evidence.Entry{Tenant: tenant, Actor: actor, RequestID: requestID, Action: "hr.event.dispatched", SubjectKind: "HRPerson", SubjectName: event.Person.Id, After: map[string]any{"eventId": id, "generation": current.Generation, "workflowId": workflowID, "dispatchWorkflowId": dispatchID}}); err != nil {
 			return err
 		}
 		receipt = current
@@ -397,7 +417,10 @@ func LeaverWorkflowID(tenant uuid.UUID, personID string) string {
 func (d TemporalDispatcher) Dispatch(ctx context.Context, scope Scope, event muistamov1.HREvent) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	id := HRDispatchWorkflowID(scope.Tenant, event.Id)
+	id, err := DispatchWorkflowID(scope)
+	if err != nil {
+		return "", err
+	}
 	if scope.HandoffAttempted {
 		execution, err := d.Client.DescribeWorkflowExecution(ctx, id, "")
 		if err != nil {
@@ -416,7 +439,17 @@ func (d TemporalDispatcher) Dispatch(ctx context.Context, scope Scope, event mui
 		}
 		return target, nil
 	}
-	run, err := d.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: id, TaskQueue: d.queue(), WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE}, HRDispatch, HRDispatchInput{Scope: scope, Event: event})
+	var handler any = HRDispatch
+	var input any = HRDispatchInput{Scope: scope, Event: event}
+	queue := d.queue()
+	if scope.IdentityRoute != nil && scope.IdentityRoute.ProviderMode == "entra" {
+		handler = EntraHRDispatch
+		input = muistamov1.EntraLifecycleRef{TenantId: scope.Tenant, ReceiptId: scope.IdentityRoute.ReceiptId}
+		if d.TaskQueue == "" {
+			queue = EntraTaskQueue
+		}
+	}
+	run, err := d.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: id, TaskQueue: queue, WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING, WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE}, handler, input)
 	if err != nil {
 		var existing *serviceerror.WorkflowExecutionAlreadyStarted
 		if !errors.As(err, &existing) {
@@ -429,6 +462,32 @@ func (d TemporalDispatcher) Dispatch(ctx context.Context, scope Scope, event mui
 		return "", fmt.Errorf("wait for durable HR handoff: %w", err)
 	}
 	return target, nil
+}
+
+// DispatchWorkflowID depends only on the committed receipt's pinned route. Nil is reserved
+// for legacy callers/histories; new intake always loads a route, including simulation backfill.
+func DispatchWorkflowID(scope Scope) (string, error) {
+	if scope.IdentityRoute == nil {
+		return HRDispatchWorkflowID(scope.Tenant, scope.EventID), nil
+	}
+	route := scope.IdentityRoute
+	if route.TenantId != scope.Tenant || route.ReceiptId == uuid.Nil {
+		return "", ErrHandoffUncertain
+	}
+	switch route.ProviderMode {
+	case "simulated":
+		if route.BindingVersion != nil {
+			return "", ErrHandoffUncertain
+		}
+		return HRDispatchWorkflowID(scope.Tenant, scope.EventID), nil
+	case "entra":
+		if route.BindingVersion == nil || *route.BindingVersion == uuid.Nil {
+			return "", ErrHandoffUncertain
+		}
+		return EntraDispatchWorkflowID(muistamov1.EntraLifecycleRef{TenantId: scope.Tenant, ReceiptId: route.ReceiptId}), nil
+	default:
+		return "", ErrHandoffUncertain
+	}
 }
 
 func (d TemporalDispatcher) queue() string {

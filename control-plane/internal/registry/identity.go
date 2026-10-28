@@ -145,7 +145,7 @@ func latestIdentityHR(ctx context.Context, tx pgx.Tx, person string) (string, in
 
 func requireIdentityHRReceipt(ctx context.Context, tx pgx.Tx, receipt uuid.UUID) error {
 	var proof bool
-	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM hr_events h JOIN evidence_events e ON e.tenant_id=h.tenant_id AND e.action='hr.event.received' AND e.subject_kind='HRPerson' AND e.subject_name=h.person_id AND e.after->>'eventId'=h.event_id AND e.after->>'type'=h.type AND e.after->>'generation'=h.generation::text AND e.after->>'decision'='accepted' WHERE h.receipt_id=$1 AND h.decision='accepted')`, receipt).Scan(&proof)
+	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM hr_events h JOIN evidence_events e ON e.tenant_id=h.tenant_id AND e.action='hr.event.received' AND e.subject_kind='HRPerson' AND e.subject_name=h.person_id AND e.after->>'eventId'=h.event_id AND e.after->>'type'=h.type AND e.after->>'generation'=h.generation::text AND e.after->>'decision'='accepted' WHERE h.receipt_id=$1 AND h.decision='accepted' AND (h.identity_mode='simulated' OR (e.after->>'identityMode'='entra' AND e.after->>'identityBindingVersion'=h.identity_binding_version::text)))`, receipt).Scan(&proof)
 	if err != nil {
 		return err
 	}
@@ -167,6 +167,13 @@ func (s *Service) CreateEntraInstance(ctx context.Context, actor Actor, doc muis
 		binding, err := identityBindingRow(ctx, tx, version)
 		if err != nil {
 			return err
+		}
+		route, err := store.HRIdentityRoute(ctx, tx, actor.Tenant, eventID)
+		if err != nil {
+			return err
+		}
+		if route.ProviderMode != "entra" || route.BindingVersion == nil || *route.BindingVersion != version {
+			return fmt.Errorf("HR receipt does not select this live binding: %w", ErrConflict)
 		}
 		var receipt uuid.UUID
 		var person, email, kind, decision, dispatch string
@@ -560,6 +567,13 @@ func checkIdentityTransition(ctx context.Context, tx pgx.Tx, current muistamov1.
 		return fmt.Errorf("identity reconciliation is outstanding: %w", ErrConflict)
 	}
 	if to == "retired" {
+		absent, err := noIdentityRetirement(ctx, tx, owned, lockedPerson)
+		if err != nil {
+			return err
+		}
+		if absent {
+			return nil
+		}
 		if owned.ObservedState != "deleted" || owned.ProviderId == nil {
 			return fmt.Errorf("provider cleanup is incomplete: %w", ErrConflict)
 		}

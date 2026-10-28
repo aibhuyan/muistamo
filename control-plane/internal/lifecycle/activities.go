@@ -30,9 +30,10 @@ type Scope struct {
 	Tenant               uuid.UUID
 	WorkflowID           string
 	EventID              string
-	Generation           int64    `json:",omitempty"`
-	PriorLeaverWorkflows []string `json:",omitempty"`
-	HandoffAttempted     bool     `json:",omitempty"`
+	Generation           int64                       `json:",omitempty"`
+	PriorLeaverWorkflows []string                    `json:",omitempty"`
+	HandoffAttempted     bool                        `json:",omitempty"`
+	IdentityRoute        *muistamov1.HRIdentityRoute `json:",omitempty"`
 }
 
 func (s Scope) actor() registry.Actor {

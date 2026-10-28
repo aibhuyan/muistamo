@@ -103,6 +103,10 @@ func (g *adapterGraph) transport(t *testing.T) roundTripFunc {
 }
 
 func setupAdapter(t *testing.T) adapterFixture {
+	return setupAdapterSeed(t, true)
+}
+
+func setupAdapterSeed(t *testing.T, seed bool) adapterFixture {
 	t.Helper()
 	ctx := context.Background()
 	db := testdb.New(t)
@@ -120,16 +124,35 @@ func setupAdapter(t *testing.T) adapterFixture {
 	if _, _, err := svc.RegisterIdentityBinding(ctx, actor, b); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := svc.EnrollIdentityTenant(ctx, actor, uuid.MustParse(b.BindingVersion)); err != nil {
+		t.Fatal(err)
+	}
 	var template muistamov1.AgentTemplate
 	template.ApiVersion = "muistamo.dev/v1"
 	template.Kind = "AgentTemplate"
 	template.Metadata.Name = "analyst"
 	template.Spec.Purpose = "adapter test"
 	template.Spec.ModelAlias = "reasoning-default"
-	if _, _, err := svc.ApplyTemplate(ctx, actor, template); err != nil {
+	if !seed {
+		codes := []string{"INTERN"}
+		template.Spec.Assignment = &struct {
+			HrJobCodes *[]string `json:"hrJobCodes,omitempty"`
+		}{HrJobCodes: &codes}
+		risk := muistamov1.AgentTemplateSpecRiskTierLow
+		template.Spec.RiskTier = &risk
+	}
+	published, _, err := svc.ApplyTemplate(ctx, actor, template)
+	if err != nil {
 		t.Fatal(err)
 	}
-	seedAdapterHR(t, conn, key, actor, "join", "joiner", 1)
+	if !seed {
+		if _, err := svc.RequestPublication(ctx, actor, "analyst", published.Version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if seed {
+		seedAdapterHR(t, conn, key, actor, "join", "joiner", 1)
+	}
 	var doc muistamov1.AgentInstance
 	doc.ApiVersion = "muistamo.dev/v1"
 	doc.Kind = "AgentInstance"
@@ -139,8 +162,10 @@ func setupAdapter(t *testing.T) adapterFixture {
 	doc.Spec.Binding.Type = "user"
 	doc.Spec.Binding.Ref = "person@example.invalid"
 	doc.Spec.State = "requested"
-	if _, _, err := svc.CreateEntraInstance(ctx, actor, doc, "join", 1, uuid.MustParse(b.BindingVersion)); err != nil {
-		t.Fatal(err)
+	if seed {
+		if _, _, err := svc.CreateEntraInstance(ctx, actor, doc, "join", 1, uuid.MustParse(b.BindingVersion)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	c, err := New(b, func(context.Context, string, string) (string, error) { return fakeSecret, nil })
 	if err != nil {
@@ -170,10 +195,10 @@ func seedAdapterHR(t *testing.T, db *store.DB, key evidence.LocalKey, actor regi
 		t.Fatal(err)
 	}
 	if err := db.InTenant(context.Background(), actor.Tenant, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(context.Background(), `INSERT INTO hr_events(tenant_id,event_id,type,person_id,workflow_id,payload,occurred_at,generation,decision,dispatch_state) VALUES($1,$2,$3,$4,'',$5,$6,$7,'accepted','pending')`, actor.Tenant, id, kind, event.Person.Id, raw, event.OccurredAt, gen); err != nil {
+		if _, err := tx.Exec(context.Background(), `INSERT INTO hr_events(tenant_id,event_id,type,person_id,workflow_id,payload,occurred_at,generation,decision,dispatch_state,identity_mode,identity_binding_version) VALUES($1,$2,$3,$4,'',$5,$6,$7,'accepted','pending','entra',(SELECT binding_version FROM identity_enrollments))`, actor.Tenant, id, kind, event.Person.Id, raw, event.OccurredAt, gen); err != nil {
 			return err
 		}
-		_, err := evidence.Append(context.Background(), tx, key, evidence.Entry{Tenant: actor.Tenant, Actor: "hris:test", RequestID: id, Action: "hr.event.received", SubjectKind: "HRPerson", SubjectName: event.Person.Id, After: map[string]any{"eventId": id, "type": kind, "generation": gen, "decision": "accepted"}})
+		_, err := evidence.Append(context.Background(), tx, key, evidence.Entry{Tenant: actor.Tenant, Actor: "hris:test", RequestID: id, Action: "hr.event.received", SubjectKind: "HRPerson", SubjectName: event.Person.Id, After: map[string]any{"eventId": id, "type": kind, "generation": gen, "decision": "accepted", "identityMode": "entra", "identityBindingVersion": binding().BindingVersion}})
 		return err
 	}); err != nil {
 		t.Fatal(err)

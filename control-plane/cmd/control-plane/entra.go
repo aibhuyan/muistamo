@@ -132,8 +132,42 @@ func entraCmd() *cobra.Command {
 	reconcile.Flags().StringVar(&operation, "operation", "", "opaque original operation id")
 	reconcile.Flags().StringVar(&bindingFile, "binding", "", "exact historical binding JSON; no credential value")
 	reconcile.Flags().BoolVar(&credentialStdin, "credential-stdin", false, "read local development credential privately from redirected stdin")
+	var enrollBinding string
+	enroll := &cobra.Command{Use: "enroll --tenant ID --actor OPERATOR --binding FILE", Short: "Select one immutable Entra binding for a fresh development tenant", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		raw, err := os.ReadFile(enrollBinding)
+		if err != nil {
+			return fmt.Errorf("read enrollment binding: %w", err)
+		}
+		binding, err := entra.ParseBinding(raw)
+		if err != nil {
+			return err
+		}
+		ctx, cancel, db, who, err := open(cmd)
+		if err != nil {
+			return err
+		}
+		defer cancel()
+		defer db.Close()
+		if binding.TenantId != who.Tenant.String() {
+			return entra.ErrConfiguration
+		}
+		key, err := loadSigner(ctx, db, requireEnv("MUISTAMO_EVIDENCE_KEY_FILE"))
+		if err != nil {
+			return err
+		}
+		service := registry.New(db, key)
+		if _, _, err := service.RegisterIdentityBinding(ctx, who, binding); err != nil {
+			return err
+		}
+		out, err := service.EnrollIdentityTenant(ctx, who, uuid.MustParse(binding.BindingVersion))
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(out)
+	}}
+	enroll.Flags().StringVar(&enrollBinding, "binding", "", "development binding JSON metadata; no credential value")
 	root.PersistentFlags().StringVar(&tenant, "tenant", "", "Muistamo tenant id")
 	root.PersistentFlags().StringVar(&actor, "actor", "", "operator identity recorded in evidence")
-	root.AddCommand(status, reconcile)
+	root.AddCommand(status, reconcile, enroll)
 	return root
 }

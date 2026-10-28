@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
+	"muistamo.dev/muistamo/control-plane/internal/evidence"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
 	"muistamo.dev/muistamo/control-plane/internal/store"
 	"muistamo.dev/muistamo/control-plane/internal/testdb"
@@ -133,5 +134,61 @@ func TestEntraPrivateInputPrecedesBoundedDatabasePhase(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("closed private input blocked command completion")
+	}
+}
+
+func TestEntraEnrollCommandSelectsOnlyFreshTenant(t *testing.T) {
+	db := testdb.New(t)
+	ctx := context.Background()
+	tenant, err := store.CreateTenant(ctx, db.OwnerURL, "enroll-cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := workerBindingFile(t)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var binding muistamov1.EntraIdentityBinding
+	if err := json.Unmarshal(raw, &binding); err != nil {
+		t.Fatal(err)
+	}
+	binding.TenantId = tenant.String()
+	raw, err = json.Marshal(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	key, pemBytes, err := evidence.GenerateLocalKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(t.TempDir(), "operator.key")
+	if err := os.WriteFile(keyPath, pemBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RegisterSigningKey(ctx, db.OwnerURL, key.KeyID(), key.Public()); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MUISTAMO_DATABASE_URL", db.AppURL)
+	t.Setenv("MUISTAMO_EVIDENCE_KEY_FILE", keyPath)
+	for range 2 {
+		cmd := entraCmd()
+		out := &bytes.Buffer{}
+		cmd.SetOut(out)
+		cmd.SetErr(&bytes.Buffer{})
+		cmd.SetArgs([]string{"enroll", "--tenant", tenant.String(), "--actor", "operator:test", "--binding", path})
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		var status muistamov1.IdentityEnrollmentStatus
+		if err := json.Unmarshal(out.Bytes(), &status); err != nil || status.TenantId != tenant || status.BindingVersion.String() != binding.BindingVersion {
+			t.Fatalf("wrong tenant enrolled: %s %v", out, err)
+		}
+	}
+	if count := testdb.Count(t, db.OwnerURL, `SELECT count(*) FROM evidence_events WHERE action='identity.tenant-enrolled'`); count != 1 {
+		t.Fatalf("repeat enrollment rewrote selection: events=%d", count)
 	}
 }

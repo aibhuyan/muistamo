@@ -191,6 +191,9 @@ func (s *Service) ApplyInstance(ctx context.Context, actor Actor, doc muistamov1
 	var rec muistamov1.AgentInstanceRecord
 	var created bool
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		if err := store.LockHRPrivacy(ctx, tx, actor.Tenant, false); err != nil {
+			return err
+		}
 		current, err := lockInstance(ctx, tx, name)
 		if errors.Is(err, ErrNotFound) {
 			if ifMatch != "" {
@@ -354,23 +357,33 @@ func createInstance(ctx context.Context, tx pgx.Tx, signer evidence.Signer, acto
 }
 
 func createInstanceWithIdentity(ctx context.Context, tx pgx.Tx, signer evidence.Signer, actor Actor, doc muistamov1.AgentInstance, identity *muistamov1.InstanceIdentityStatus) (muistamov1.AgentInstanceRecord, error) {
+	if err := store.LockHRPrivacy(ctx, tx, actor.Tenant, false); err != nil {
+		return muistamov1.AgentInstanceRecord{}, err
+	}
+	version, err := store.IdentityEnrollmentVersion(ctx, tx)
+	if err != nil {
+		return muistamov1.AgentInstanceRecord{}, err
+	}
+	if (identity == nil && version != nil) || (identity != nil && (version == nil || identity.BindingVersion == nil || *identity.BindingVersion != *version)) {
+		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("instance creation must follow the enrolled HR identity route: %w", ErrConflict)
+	}
 	name := doc.Metadata.Name
 	if doc.Spec.State != muistamov1.InstanceStateRequested {
 		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("instance %q must be created in state requested, not %s: %w", name, doc.Spec.State, ErrInvalid)
 	}
 	ref := doc.Spec.TemplateRef
-	version, err := strconv.Atoi(ref.Version)
-	if err != nil || version < 1 {
+	templateVersionNumber, err := strconv.Atoi(ref.Version)
+	if err != nil || templateVersionNumber < 1 {
 		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("templateRef.version %q must be a template version number: %w", ref.Version, ErrInvalid)
 	}
-	if _, _, err := templateVersion(ctx, tx, ref.Name, version); err != nil {
+	if _, _, err := templateVersion(ctx, tx, ref.Name, templateVersionNumber); err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return muistamov1.AgentInstanceRecord{}, fmt.Errorf("templateRef %s version %d does not exist: %w", ref.Name, version, ErrInvalid)
+			return muistamov1.AgentInstanceRecord{}, fmt.Errorf("templateRef %s version %d does not exist: %w", ref.Name, templateVersionNumber, ErrInvalid)
 		}
 		return muistamov1.AgentInstanceRecord{}, err
 	}
 	if doc.Spec.CloneRef != nil {
-		if err := cloneForInstance(ctx, tx, *doc.Spec.CloneRef, ref.Name, version); err != nil {
+		if err := cloneForInstance(ctx, tx, *doc.Spec.CloneRef, ref.Name, templateVersionNumber); err != nil {
 			return muistamov1.AgentInstanceRecord{}, err
 		}
 	}
@@ -382,7 +395,7 @@ func createInstanceWithIdentity(ctx context.Context, tx pgx.Tx, signer evidence.
 	err = tx.QueryRow(ctx, `
 		INSERT INTO agent_instances (tenant_id, name, template_name, template_version, state, revision, document)
 		VALUES ($1, $2, $3, $4, $5, 1, $6) RETURNING created_at, updated_at`,
-		actor.Tenant, name, ref.Name, version, string(doc.Spec.State), body).Scan(&rec.CreatedAt, &rec.UpdatedAt)
+		actor.Tenant, name, ref.Name, templateVersionNumber, string(doc.Spec.State), body).Scan(&rec.CreatedAt, &rec.UpdatedAt)
 	if err != nil {
 		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("insert instance %q: %w", name, err)
 	}
