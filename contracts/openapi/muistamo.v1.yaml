@@ -449,6 +449,128 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/virtual-keys:
+    get:
+      operationId: listVirtualKeys
+      summary: Virtual keys the caller may see, newest first, never with secrets
+      parameters:
+        - name: instance
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Keys.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/virtualkeypage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: issueVirtualKey
+      summary: Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/virtualkeyrequest.json"
+      responses:
+        "201":
+          description: The key and its one-time secret.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/virtualkeyissued.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/virtual-keys/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getVirtualKey
+      responses:
+        "200":
+          description: The key, without its secret.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/virtualkey.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/virtual-keys/{id}/revocation:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: revokeVirtualKey
+      summary: Revoke a key; final, and effective at the gateway within 30 seconds
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/virtualkeyrevocation.json"
+      responses:
+        "200":
+          description: The revoked key.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/virtualkey.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/usage:
+    get:
+      operationId: listUsage
+      summary: Authorized gateway calls and their cost at provider prices, metered or not
+      parameters:
+        - name: instance
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Calls, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/usagepage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/instances:
     get:
       operationId: listInstances

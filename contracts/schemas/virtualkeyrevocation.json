@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/virtualkeyrevocation.json",
+  "title": "VirtualKeyRevocation",
+  "description": "Revoke a key. Final: a revoked key never becomes active again.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reason"],
+  "properties": {
+    "reason": { "type": "string", "minLength": 1, "maxLength": 2000 }
+  }
+}

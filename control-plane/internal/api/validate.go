@@ -43,6 +43,10 @@ func validateDocuments(next http.Handler) http.Handler {
 			validate = func(b []byte) error { return contracts.ValidateAgainst("erasurerequest.json", b) }
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/privacy/access":
 			validate = func(b []byte) error { return contracts.ValidateAgainst("accessrequest.json", b) }
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/virtual-keys":
+			validate = func(b []byte) error { return contracts.ValidateAgainst("virtualkeyrequest.json", b) }
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/virtual-keys/") && strings.HasSuffix(r.URL.Path, "/revocation"):
+			validate = func(b []byte) error { return contracts.ValidateAgainst("virtualkeyrevocation.json", b) }
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/transitions"):
 			validate = func(b []byte) error { return contracts.ValidateAgainst("instancetransition.json", b) }
 		case r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch:

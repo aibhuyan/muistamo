@@ -405,6 +405,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/virtual-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Virtual keys the caller may see, newest first, never with secrets */
+        get: operations["listVirtualKeys"];
+        put?: never;
+        /** Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once */
+        post: operations["issueVirtualKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/virtual-keys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getVirtualKey"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/virtual-keys/{id}/revocation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a key; final, and effective at the gateway within 30 seconds */
+        post: operations["revokeVirtualKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Authorized gateway calls and their cost at provider prices, metered or not */
+        get: operations["listUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/instances": {
         parameters: {
             query?: never;
@@ -1866,6 +1938,15 @@ export interface components {
             approval: components["schemas"]["ModelApproval"];
         };
         /**
+         * Money
+         * @description An exact amount. A decimal string, never a binary float, so billed costs and budgets are exact (invariant 7). EUR only while model price sheets are EUR only.
+         */
+        Money: {
+            amount: string;
+            /** @constant */
+            currency: "EUR";
+        };
+        /**
          * ObjectMeta
          * @description Metadata shared by every Muistamo YAML kind.
          */
@@ -2244,6 +2325,45 @@ export interface components {
             total: number;
         };
         /**
+         * UsagePage
+         * @description Authorized gateway calls in a period, newest first, metered or not.
+         */
+        UsagePage: {
+            items: components["schemas"]["UsageRecord"][];
+            /** @description Cursor for the next page; absent on the last page. */
+            next?: string;
+        };
+        /**
+         * UsageRecord
+         * @description A call the gateway's check authorized, and what it cost. metered is false when no usage arrived from the gateway: the call may not have run (the gateway can still reject an authorized call), or its usage export was lost. Unmetered calls are reported, never estimated.
+         */
+        UsageRecord: {
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            keyId: string;
+            instance: string;
+            person: string;
+            costCentre?: string;
+            /** @enum {string} */
+            kind: "model" | "mcp";
+            alias?: string;
+            provider?: string;
+            /** @description The provider's model id the alias resolved to when authorized. */
+            model?: string;
+            mcpMethod?: string;
+            mcpTool?: string;
+            /** Format: date-time */
+            authorizedAt: string;
+            metered: boolean;
+            inputTokens?: number;
+            outputTokens?: number;
+            /** @description At provider cost from the price snapshot taken when authorized; no markup. */
+            cost?: components["schemas"]["Money"];
+            /** Format: date-time */
+            recordedAt?: string;
+        };
+        /**
          * VerificationInput
          * @description A reviewer confirms the immutable entry revision they inspected, restarting its decay clock. A replaced revision is refused with 409.
          */
@@ -2261,6 +2381,64 @@ export interface components {
          */
         VerificationPage: {
             items: components["schemas"]["EntryVerification"][];
+        };
+        /**
+         * VirtualKey
+         * @description A gateway virtual key, without its secret. A key is usable while active, unexpired and its instance is active; revocation is final.
+         */
+        VirtualKey: {
+            /** Format: uuid */
+            id: string;
+            instance: string;
+            aliases: string[];
+            monthlyBudget: components["schemas"]["Money"];
+            /** Format: date-time */
+            expiresAt?: string;
+            /** @enum {string} */
+            status: "active" | "revoked";
+            /** Format: date-time */
+            createdAt: string;
+            createdBy: string;
+            /** Format: date-time */
+            revokedAt?: string;
+            revokedBy?: string;
+            revokeReason?: string;
+        };
+        /**
+         * VirtualKeyIssued
+         * @description A newly issued key and its secret. The secret is returned only here, once; Muistamo keeps only its SHA-256 and can never show it again.
+         */
+        VirtualKeyIssued: {
+            key: components["schemas"]["VirtualKey"];
+            /** @description mvk_<key id>_<secret>. Send as a bearer token to the gateway. */
+            secret: string;
+        };
+        /**
+         * VirtualKeyPage
+         * @description Virtual keys, newest first, never with secrets.
+         */
+        VirtualKeyPage: {
+            items: components["schemas"]["VirtualKey"][];
+        };
+        /**
+         * VirtualKeyRequest
+         * @description Issue a gateway virtual key to an agent instance (FR-702, E6.1). Only the instance's owner or sponsor may. The secret is shown once in the response and never stored.
+         */
+        VirtualKeyRequest: {
+            instance: string;
+            /** @description Model aliases the key may call; each must be one the instance's template allows. */
+            aliases: string[];
+            /** @description Calls are refused once this calendar month's recorded spend reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden. */
+            monthlyBudget: components["schemas"]["Money"];
+            /** Format: date-time */
+            expiresAt?: string;
+        };
+        /**
+         * VirtualKeyRevocation
+         * @description Revoke a key. Final: a revoked key never becomes active again.
+         */
+        VirtualKeyRevocation: {
+            reason: string;
         };
     };
     responses: {
@@ -2917,6 +3095,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Rollout"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listVirtualKeys: {
+        parameters: {
+            query?: {
+                instance?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Keys. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VirtualKeyPage"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    issueVirtualKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VirtualKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description The key and its one-time secret. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VirtualKeyIssued"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getVirtualKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The key, without its secret. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VirtualKey"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    revokeVirtualKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VirtualKeyRevocation"];
+            };
+        };
+        responses: {
+            /** @description The revoked key. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VirtualKey"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listUsage: {
+        parameters: {
+            query?: {
+                instance?: string;
+                from?: string;
+                to?: string;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Calls, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsagePage"];
                 };
             };
             default: components["responses"]["Problem"];

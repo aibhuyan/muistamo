@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/usagepage.json",
+  "title": "UsagePage",
+  "description": "Authorized gateway calls in a period, newest first, metered or not.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": { "type": "array", "items": { "$ref": "usagerecord.json" } },
+    "next": { "description": "Cursor for the next page; absent on the last page.", "type": "string" }
+  }
+}
