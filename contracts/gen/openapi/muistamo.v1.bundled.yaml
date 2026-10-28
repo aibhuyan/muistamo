@@ -448,6 +448,11 @@ paths:
         required: false
         schema:
           type: string
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
       responses:
         '200':
           description: Keys.
@@ -4385,7 +4390,6 @@ components:
       - person
       - kind
       - authorizedAt
-      - metered
       properties:
         requestId:
           type: string
@@ -4419,8 +4423,15 @@ components:
           type: string
           format: date-time
         metered:
+          description: 'Model calls only: false when no usage arrived from the gateway,
+            because the call may not have run (the gateway can reject an authorized
+            call) or its usage export was lost. Unmetered calls are reported, never
+            estimated. Absent for MCP calls, which carry no tokens.'
           type: boolean
         inputTokens:
+          type: integer
+          minimum: 0
+        cachedInputTokens:
           type: integer
           minimum: 0
         outputTokens:
@@ -4433,6 +4444,13 @@ components:
         recordedAt:
           type: string
           format: date-time
+      if:
+        properties:
+          kind:
+            const: model
+      then:
+        required:
+        - metered
     VerificationInput:
       title: VerificationInput
       description: A reviewer confirms the immutable entry revision they inspected,
@@ -4495,9 +4513,13 @@ components:
           type: string
           format: date-time
         status:
+          description: active and unexpired keys are usable (while the instance is
+            active); expired is derived from expiresAt and never stored; revocation
+            is final.
           type: string
           enum:
           - active
+          - expired
           - revoked
         createdAt:
           type: string
@@ -4510,6 +4532,7 @@ components:
         revokedBy:
           type: string
         revokeReason:
+          description: A fixed reason code or text free of personal data.
           type: string
     VirtualKeyIssued:
       title: VirtualKeyIssued
@@ -4524,9 +4547,11 @@ components:
         key:
           $ref: '#/components/schemas/VirtualKey'
         secret:
-          description: mvk_<key id>_<secret>. Send as a bearer token to the gateway.
+          description: mvk_<key id>_<43 base64url characters encoding 32 random bytes>.
+            Send as a bearer token to the gateway. Muistamo stores SHA-256 of the
+            32 decoded bytes.
           type: string
-          pattern: ^mvk_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_[A-Za-z0-9_-]{43}$
+          pattern: ^mvk_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$
     VirtualKeyPage:
       title: VirtualKeyPage
       description: Virtual keys, newest first, never with secrets.
@@ -4539,6 +4564,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/VirtualKey'
+        next:
+          description: Cursor for the next page; absent on the last page.
+          type: string
     VirtualKeyRequest:
       title: VirtualKeyRequest
       description: Issue a gateway virtual key to an agent instance (FR-702, E6.1).
@@ -4564,9 +4592,9 @@ components:
             type: string
             minLength: 1
         monthlyBudget:
-          description: Calls are refused once this calendar month's recorded spend
-            reaches it. Calls in flight can overshoot; the overshoot is reported,
-            not hidden.
+          description: Calls are refused once the recorded spend of calls authorized
+            in the current UTC calendar month reaches it. Calls in flight can overshoot;
+            the overshoot is reported, not hidden.
           $ref: '#/components/schemas/Money'
         expiresAt:
           type: string
@@ -4580,6 +4608,8 @@ components:
       - reason
       properties:
         reason:
+          description: 'A fixed reason code or text free of personal data: erasure
+            cannot clean free text.'
           type: string
           minLength: 1
           maxLength: 2000

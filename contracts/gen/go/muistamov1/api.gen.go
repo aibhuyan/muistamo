@@ -1596,6 +1596,7 @@ func (e UsageRecordKind) Valid() bool {
 // Defines values for VirtualKeyStatus.
 const (
 	VirtualKeyStatusActive  VirtualKeyStatus = "active"
+	VirtualKeyStatusExpired VirtualKeyStatus = "expired"
 	VirtualKeyStatusRevoked VirtualKeyStatus = "revoked"
 )
 
@@ -1603,6 +1604,8 @@ const (
 func (e VirtualKeyStatus) Valid() bool {
 	switch e {
 	case VirtualKeyStatusActive:
+		return true
+	case VirtualKeyStatusExpired:
 		return true
 	case VirtualKeyStatusRevoked:
 		return true
@@ -3173,8 +3176,9 @@ type UsagePage struct {
 
 // UsageRecord A call the gateway's check authorized, and what it cost. metered is false when no usage arrived from the gateway: the call may not have run (the gateway can still reject an authorized call), or its usage export was lost. Unmetered calls are reported, never estimated.
 type UsageRecord struct {
-	Alias        *string   `json:"alias,omitempty"`
-	AuthorizedAt time.Time `json:"authorizedAt"`
+	Alias             *string   `json:"alias,omitempty"`
+	AuthorizedAt      time.Time `json:"authorizedAt"`
+	CachedInputTokens *int      `json:"cachedInputTokens,omitempty"`
 
 	// Cost At provider cost from the price snapshot taken when authorized; no markup.
 	Cost        *Money             `json:"cost,omitempty"`
@@ -3185,7 +3189,9 @@ type UsageRecord struct {
 	Kind        UsageRecordKind    `json:"kind"`
 	McpMethod   *string            `json:"mcpMethod,omitempty"`
 	McpTool     *string            `json:"mcpTool,omitempty"`
-	Metered     bool               `json:"metered"`
+
+	// Metered Model calls only: false when no usage arrived from the gateway, because the call may not have run (the gateway can reject an authorized call) or its usage export was lost. Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens.
+	Metered *bool `json:"metered,omitempty"`
 
 	// Model The provider's model id the alias resolved to when authorized.
 	Model        *string            `json:"model,omitempty"`
@@ -3221,14 +3227,18 @@ type VirtualKey struct {
 	Instance  string             `json:"instance"`
 
 	// MonthlyBudget An exact amount. A decimal string, never a binary float, so billed costs and budgets are exact (invariant 7). EUR only while model price sheets are EUR only.
-	MonthlyBudget Money            `json:"monthlyBudget"`
-	RevokeReason  *string          `json:"revokeReason,omitempty"`
-	RevokedAt     *time.Time       `json:"revokedAt,omitempty"`
-	RevokedBy     *string          `json:"revokedBy,omitempty"`
-	Status        VirtualKeyStatus `json:"status"`
+	MonthlyBudget Money `json:"monthlyBudget"`
+
+	// RevokeReason A fixed reason code or text free of personal data.
+	RevokeReason *string    `json:"revokeReason,omitempty"`
+	RevokedAt    *time.Time `json:"revokedAt,omitempty"`
+	RevokedBy    *string    `json:"revokedBy,omitempty"`
+
+	// Status active and unexpired keys are usable (while the instance is active); expired is derived from expiresAt and never stored; revocation is final.
+	Status VirtualKeyStatus `json:"status"`
 }
 
-// VirtualKeyStatus defines model for VirtualKey.Status.
+// VirtualKeyStatus active and unexpired keys are usable (while the instance is active); expired is derived from expiresAt and never stored; revocation is final.
 type VirtualKeyStatus string
 
 // VirtualKeyIssued A newly issued key and its secret. The secret is returned only here, once; Muistamo keeps only its SHA-256 and can never show it again.
@@ -3236,13 +3246,16 @@ type VirtualKeyIssued struct {
 	// Key A gateway virtual key, without its secret. A key is usable while active, unexpired and its instance is active; revocation is final.
 	Key VirtualKey `json:"key"`
 
-	// Secret mvk_<key id>_<secret>. Send as a bearer token to the gateway.
+	// Secret mvk_<key id>_<43 base64url characters encoding 32 random bytes>. Send as a bearer token to the gateway. Muistamo stores SHA-256 of the 32 decoded bytes.
 	Secret string `json:"secret"`
 }
 
 // VirtualKeyPage Virtual keys, newest first, never with secrets.
 type VirtualKeyPage struct {
 	Items []VirtualKey `json:"items"`
+
+	// Next Cursor for the next page; absent on the last page.
+	Next *string `json:"next,omitempty"`
 }
 
 // VirtualKeyRequest Issue a gateway virtual key to an agent instance (FR-702, E6.1). Only the instance's owner or sponsor may. The secret is shown once in the response and never stored.
@@ -3252,12 +3265,13 @@ type VirtualKeyRequest struct {
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 	Instance  string     `json:"instance"`
 
-	// MonthlyBudget Calls are refused once this calendar month's recorded spend reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden.
+	// MonthlyBudget Calls are refused once the recorded spend of calls authorized in the current UTC calendar month reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden.
 	MonthlyBudget Money `json:"monthlyBudget"`
 }
 
 // VirtualKeyRevocation Revoke a key. Final: a revoked key never becomes active again.
 type VirtualKeyRevocation struct {
+	// Reason A fixed reason code or text free of personal data: erasure cannot clean free text.
 	Reason string `json:"reason"`
 }
 
@@ -3332,6 +3346,7 @@ type ListUsageParams struct {
 // ListVirtualKeysParams defines parameters for ListVirtualKeys.
 type ListVirtualKeysParams struct {
 	Instance *string `form:"instance,omitempty" json:"instance,omitempty"`
+	Cursor   *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // ApplyActionPolicyJSONRequestBody defines body for ApplyActionPolicy for application/json ContentType.
@@ -7044,6 +7059,18 @@ func NewListVirtualKeysRequest(server string, params *ListVirtualKeysParams) (*h
 		if params.Instance != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "instance", *params.Instance, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -14739,6 +14766,19 @@ func (siw *ServerInterfaceWrapper) ListVirtualKeys(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "instance"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "instance", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
 		}
 		return
 	}

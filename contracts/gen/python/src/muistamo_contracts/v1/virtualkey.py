@@ -4,12 +4,14 @@
 from __future__ import annotations
 from enum import StrEnum
 from uuid import UUID
-from pydantic import AwareDatetime, BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from typing import Annotated
 from . import money
 
 
 class Status(StrEnum):
     active = "active"
+    expired = "expired"
     revoked = "revoked"
 
 
@@ -22,9 +24,16 @@ class VirtualKey(BaseModel):
     aliases: list[str]
     monthlyBudget: money.Money
     expiresAt: AwareDatetime | None = None
-    status: Status
+    status: Annotated[
+        Status,
+        Field(
+            description="active and unexpired keys are usable (while the instance is active); expired is derived from expiresAt and never stored; revocation is final."
+        ),
+    ]
     createdAt: AwareDatetime
     createdBy: str
     revokedAt: AwareDatetime | None = None
     revokedBy: str | None = None
-    revokeReason: str | None = None
+    revokeReason: Annotated[
+        str | None, Field(description="A fixed reason code or text free of personal data.")
+    ] = None

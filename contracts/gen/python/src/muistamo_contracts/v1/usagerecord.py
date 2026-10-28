@@ -33,8 +33,14 @@ class UsageRecord(BaseModel):
     mcpMethod: str | None = None
     mcpTool: str | None = None
     authorizedAt: AwareDatetime
-    metered: bool
+    metered: Annotated[
+        bool | None,
+        Field(
+            description="Model calls only: false when no usage arrived from the gateway, because the call may not have run (the gateway can reject an authorized call) or its usage export was lost. Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens."
+        ),
+    ] = None
     inputTokens: Annotated[int | None, Field(ge=0)] = None
+    cachedInputTokens: Annotated[int | None, Field(ge=0)] = None
     outputTokens: Annotated[int | None, Field(ge=0)] = None
     cost: Annotated[
         money.Money | None,

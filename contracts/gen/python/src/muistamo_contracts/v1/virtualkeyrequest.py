@@ -26,7 +26,7 @@ class VirtualKeyRequest(BaseModel):
     monthlyBudget: Annotated[
         money.Money,
         Field(
-            description="Calls are refused once this calendar month's recorded spend reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden."
+            description="Calls are refused once the recorded spend of calls authorized in the current UTC calendar month reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden."
         ),
     ]
     expiresAt: AwareDatetime | None = None

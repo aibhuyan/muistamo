@@ -5,8 +5,15 @@
   "description": "Revoke a key. Final: a revoked key never becomes active again.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["reason"],
+  "required": [
+    "reason"
+  ],
   "properties": {
-    "reason": { "type": "string", "minLength": 1, "maxLength": 2000 }
+    "reason": {
+      "description": "A fixed reason code or text free of personal data: erasure cannot clean free text.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    }
   }
 }

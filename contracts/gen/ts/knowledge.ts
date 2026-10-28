@@ -2157,8 +2157,10 @@ export interface components {
             mcpTool?: string;
             /** Format: date-time */
             authorizedAt: string;
-            metered: boolean;
+            /** @description Model calls only: false when no usage arrived from the gateway, because the call may not have run (the gateway can reject an authorized call) or its usage export was lost. Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens. */
+            metered?: boolean;
             inputTokens?: number;
+            cachedInputTokens?: number;
             outputTokens?: number;
             /** @description At provider cost from the price snapshot taken when authorized; no markup. */
             cost?: components["schemas"]["Money"];
@@ -2196,14 +2198,18 @@ export interface components {
             monthlyBudget: components["schemas"]["Money"];
             /** Format: date-time */
             expiresAt?: string;
-            /** @enum {string} */
-            status: "active" | "revoked";
+            /**
+             * @description active and unexpired keys are usable (while the instance is active); expired is derived from expiresAt and never stored; revocation is final.
+             * @enum {string}
+             */
+            status: "active" | "expired" | "revoked";
             /** Format: date-time */
             createdAt: string;
             createdBy: string;
             /** Format: date-time */
             revokedAt?: string;
             revokedBy?: string;
+            /** @description A fixed reason code or text free of personal data. */
             revokeReason?: string;
         };
         /**
@@ -2212,7 +2218,7 @@ export interface components {
          */
         VirtualKeyIssued: {
             key: components["schemas"]["VirtualKey"];
-            /** @description mvk_<key id>_<secret>. Send as a bearer token to the gateway. */
+            /** @description mvk_<key id>_<43 base64url characters encoding 32 random bytes>. Send as a bearer token to the gateway. Muistamo stores SHA-256 of the 32 decoded bytes. */
             secret: string;
         };
         /**
@@ -2221,6 +2227,8 @@ export interface components {
          */
         VirtualKeyPage: {
             items: components["schemas"]["VirtualKey"][];
+            /** @description Cursor for the next page; absent on the last page. */
+            next?: string;
         };
         /**
          * VirtualKeyRequest
@@ -2230,7 +2238,7 @@ export interface components {
             instance: string;
             /** @description Model aliases the key may call; each must be one the instance's template allows. */
             aliases: string[];
-            /** @description Calls are refused once this calendar month's recorded spend reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden. */
+            /** @description Calls are refused once the recorded spend of calls authorized in the current UTC calendar month reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden. */
             monthlyBudget: components["schemas"]["Money"];
             /** Format: date-time */
             expiresAt?: string;
@@ -2240,6 +2248,7 @@ export interface components {
          * @description Revoke a key. Final: a revoked key never becomes active again.
          */
         VirtualKeyRevocation: {
+            /** @description A fixed reason code or text free of personal data: erasure cannot clean free text. */
             reason: string;
         };
     };

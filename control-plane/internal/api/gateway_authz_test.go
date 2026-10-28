@@ -37,12 +37,17 @@ func TestAuthzGatewayRecordsAreTenantScoped(t *testing.T) {
 	}{
 		"a key for A's instance": {insertKey, []any{a, uuid.New()}},
 		"a call on A's key":      {insertModelCall, []any{a, uuid.New(), keyA}},
-		"usage on A's call":      {insertUsage, []any{a, callA}},
 	} {
 		err := testdb.ExecErr(app, b, s.sql, s.args...)
 		if err == nil || !strings.Contains(err.Error(), "row-level security") {
 			t.Errorf("%s as B: err = %v, want a row-level security violation", name, err)
 		}
+	}
+	// Usage on A's call is refused too. The pricing trigger runs before the RLS write check and,
+	// under B's policy, cannot see A's call; read isolation of usage_records is proven above.
+	if err := testdb.ExecErr(app, b, insertUsage, a, callA); err == nil ||
+		(!strings.Contains(err.Error(), "row-level security") && !strings.Contains(err.Error(), "usage for unknown call")) {
+		t.Errorf("usage on A's call as B: err = %v, want a refusal", err)
 	}
 	// B cannot bill a call to A's key from its own tenant either: the key does not exist for B.
 	if err := testdb.ExecErr(app, b, insertModelCall, b, uuid.New(), keyA); err == nil {

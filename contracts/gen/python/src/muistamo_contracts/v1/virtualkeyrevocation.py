@@ -10,4 +10,11 @@ class VirtualKeyRevocation(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    reason: Annotated[str, Field(max_length=2000, min_length=1)]
+    reason: Annotated[
+        str,
+        Field(
+            description="A fixed reason code or text free of personal data: erasure cannot clean free text.",
+            max_length=2000,
+            min_length=1,
+        ),
+    ]

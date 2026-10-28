@@ -5,8 +5,19 @@
   "description": "Virtual keys, newest first, never with secrets.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["items"],
+  "required": [
+    "items"
+  ],
   "properties": {
-    "items": { "type": "array", "items": { "$ref": "virtualkey.json" } }
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "virtualkey.json"
+      }
+    },
+    "next": {
+      "description": "Cursor for the next page; absent on the last page.",
+      "type": "string"
+    }
   }
 }

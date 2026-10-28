@@ -52,6 +52,9 @@ var controlPlaneRetained = []retention{
 		"the joiner and leaver flows. Email and other fields are pseudonymised."},
 	{Data: "erasure_requests.proof.hrFenceKeys", Reason: "Tenant-scoped one-way alias/HR-key digests prevent pre-erasure HR input from restoring deleted data, including before a person's first HR event. Retained with the erasure/idempotency proof."},
 	{Data: "entra_bindings, instance_identities and identity_operations", Reason: "Binding digests and opaque receipt, instance, operation and provider IDs are retained for ownership, cleanup and idempotency proof tied to signed evidence. No employee email, sponsor list, credential or raw HR payload is stored in these rows."},
+	{Data: "instance names and cost centres on virtual_keys and gateway_calls", Reason: "Copies of the retained agent_instances " +
+		"names (which contain the HR person id) and cost centres, kept as the billing and audit trail of each authorized call. " +
+		"Who issued, revoked or made a call is pseudonymised."},
 	{Data: "backups", Reason: "Backups expire on their own schedule; data restored from one must be erased again."},
 }
 
@@ -377,7 +380,8 @@ func RowsMentioning(ctx context.Context, tx pgx.Tx, table string, values []strin
 		}
 		needles[i] = string(b)
 	}
-	rows, err := tx.Query(ctx, `SELECT to_jsonb(t) FROM `+table+` t
+	// A key's secret hash is never exported: it says nothing about the person.
+	rows, err := tx.Query(ctx, `SELECT to_jsonb(t) - 'secret_sha256' FROM `+table+` t
 		WHERE t.tenant_id = current_setting('muistamo.tenant_id', true)::uuid
 		  AND EXISTS (SELECT 1 FROM unnest($1::text[]) n WHERE strpos(to_jsonb(t)::text, n) > 0)`, needles)
 	if err != nil {

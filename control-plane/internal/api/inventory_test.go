@@ -56,3 +56,28 @@ func TestEveryTenantTableIsClassifiedForPrivacy(t *testing.T) {
 		}
 	}
 }
+
+// Every tenant table must be isolated by row-level security, forced for its owner too.
+func TestEveryTenantTableHasForcedRowLevelSecurity(t *testing.T) {
+	h := newHarness(t, api.InsecureDevHeaders{})
+	conn, err := pgx.Connect(t.Context(), h.db.OwnerURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(t.Context()) }()
+	rows, err := conn.Query(t.Context(), `SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'public' AND c.relkind = 'r' AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity)
+		  AND EXISTS (SELECT 1 FROM information_schema.columns k
+		              WHERE k.table_schema = 'public' AND k.table_name = c.relname AND k.column_name = 'tenant_id')
+		ORDER BY 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	open, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(open) > 0 {
+		t.Errorf("tenant tables without ENABLE and FORCE row-level security: %s", strings.Join(open, ", "))
+	}
+}

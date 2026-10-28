@@ -2,7 +2,8 @@
 #   filename:  virtualkeypage.json
 
 from __future__ import annotations
-from pydantic import BaseModel, ConfigDict
+from typing import Annotated
+from pydantic import BaseModel, ConfigDict, Field
 from . import virtualkey
 
 
@@ -11,3 +12,6 @@ class VirtualKeyPage(BaseModel):
         extra="forbid",
     )
     items: list[virtualkey.VirtualKey]
+    next: Annotated[
+        str | None, Field(description="Cursor for the next page; absent on the last page.")
+    ] = None

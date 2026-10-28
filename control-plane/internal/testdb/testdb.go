@@ -143,6 +143,31 @@ func SigningKey(t *testing.T, db DB) evidence.LocalKey {
 	return key
 }
 
+// ScalarIn reads one text value as url's role in a transaction scoped to tenant (none when tenant
+// is uuid.Nil), so row-level security applies to the read.
+func ScalarIn(t *testing.T, url string, tenant uuid.UUID, query string, args ...any) string {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	var v string
+	err = pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+		if tenant != uuid.Nil {
+			if _, err := tx.Exec(ctx, `SELECT set_config('muistamo.tenant_id', $1, true)`, tenant.String()); err != nil {
+				return err
+			}
+		}
+		return tx.QueryRow(ctx, query, args...).Scan(&v)
+	})
+	if err != nil {
+		t.Fatalf("%s: %v", query, err)
+	}
+	return v
+}
+
 // ExecIn runs one statement against url in a transaction scoped to tenant and commits it, so
 // fixtures can be written as the role under test (row-level security applies).
 func ExecIn(t *testing.T, url string, tenant uuid.UUID, sql string, args ...any) {

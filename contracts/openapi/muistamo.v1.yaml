@@ -459,6 +459,11 @@ paths:
           required: false
           schema:
             type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Keys.

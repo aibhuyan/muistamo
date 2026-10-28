@@ -15,7 +15,7 @@ class VirtualKeyIssued(BaseModel):
     secret: Annotated[
         str,
         Field(
-            description="mvk_<key id>_<secret>. Send as a bearer token to the gateway.",
-            pattern="^mvk_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_[A-Za-z0-9_-]{43}$",
+            description="mvk_<key id>_<43 base64url characters encoding 32 random bytes>. Send as a bearer token to the gateway. Muistamo stores SHA-256 of the 32 decoded bytes.",
+            pattern="^mvk_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
         ),
     ]
