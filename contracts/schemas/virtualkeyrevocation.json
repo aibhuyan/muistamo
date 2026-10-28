@@ -10,10 +10,9 @@
   ],
   "properties": {
     "reason": {
-      "description": "A fixed reason code or text free of personal data: erasure cannot clean free text.",
+      "description": "A fixed reason code; personal data and secrets must never enter retained revocation records.",
       "type": "string",
-      "minLength": 1,
-      "maxLength": 2000
+      "enum": ["operator", "compromised", "rotation", "leaver"]
     }
   }
 }

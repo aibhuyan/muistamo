@@ -59,7 +59,7 @@
       "type": "string"
     },
     "revokeReason": {
-      "description": "A fixed reason code or text free of personal data.",
+      "description": "A fixed revocation reason code; never free text.",
       "type": "string"
     }
   }

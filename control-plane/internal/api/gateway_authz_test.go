@@ -3,6 +3,7 @@
 package api_test
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 
@@ -65,5 +66,28 @@ func TestAuthzGatewayRecordsAreTenantScoped(t *testing.T) {
 	}
 	if n := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM virtual_keys WHERE tenant_id = $1 AND status = 'active'`, a); n != 1 {
 		t.Errorf("A's active keys = %d, want 1", n)
+	}
+}
+
+// Tenant B's gateway admin, with the very same identity, attacks tenant A's virtual keys.
+func TestAuthzVirtualKeysAreTenantScoped(t *testing.T) {
+	h := newHarness(t, api.InsecureDevHeaders{})
+	a, b := keyTenant(t, h, "tenant-a"), keyTenant(t, h, "tenant-b")
+	issued := h.call(t, a, http.MethodPost, "/v1/virtual-keys", keyRequest("analyst-intern-person-a", "reasoning-default", ""), as(gatewayAdmin)...)
+	if issued.status != http.StatusCreated {
+		t.Fatalf("issue in A = %d: %s", issued.status, issued.raw)
+	}
+	id := issued.body["key"].(map[string]any)["id"].(string)
+	if got := h.call(t, b, http.MethodGet, "/v1/virtual-keys/"+id, "", as(gatewayAdmin)...); got.status != http.StatusNotFound {
+		t.Errorf("B reads A's key = %d, want 404", got.status)
+	}
+	if got := h.call(t, b, http.MethodPost, "/v1/virtual-keys/"+id+"/revocation", `{"reason":"operator"}`, as(gatewayAdmin)...); got.status != http.StatusNotFound {
+		t.Errorf("B revokes A's key = %d, want 404", got.status)
+	}
+	if got := h.call(t, b, http.MethodGet, "/v1/virtual-keys", "", as(gatewayAdmin)...); len(got.body["items"].([]any)) != 0 {
+		t.Errorf("B lists A's keys: %s", got.raw)
+	}
+	if got := h.call(t, a, http.MethodGet, "/v1/virtual-keys/"+id, "", as(gatewayAdmin)...); got.body["status"] != "active" {
+		t.Errorf("A's key after B's attempts = %v, want active", got.body["status"])
 	}
 }

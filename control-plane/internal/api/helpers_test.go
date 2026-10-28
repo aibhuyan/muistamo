@@ -35,6 +35,12 @@ func newHarness(t *testing.T, resolver api.TenantResolver) harness {
 
 // newHarnessWithHR serves HR events through the real intake with dispatcher (nil: HR disabled).
 func newHarnessWithHR(t *testing.T, resolver api.TenantResolver, dispatcher lifecycle.Dispatcher) harness {
+	return newHarnessLogging(t, resolver, dispatcher, io.Discard)
+}
+
+// newHarnessLogging is newHarnessWithHR with the server's log written to logs, so tests can
+// prove what is and is not logged.
+func newHarnessLogging(t *testing.T, resolver api.TenantResolver, dispatcher lifecycle.Dispatcher, logs io.Writer) harness {
 	t.Helper()
 	db := testdb.New(t)
 	conn, err := store.Open(context.Background(), db.AppURL)
@@ -47,7 +53,7 @@ func newHarnessWithHR(t *testing.T, resolver api.TenantResolver, dispatcher life
 	if dispatcher != nil {
 		hr = &lifecycle.Intake{DB: conn, Signer: key, Dispatcher: dispatcher}
 	}
-	srv := httptest.NewServer(api.Handler(registry.New(conn, key), resolver, hr, slog.New(slog.DiscardHandler)))
+	srv := httptest.NewServer(api.Handler(registry.New(conn, key), resolver, hr, slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))))
 	t.Cleanup(srv.Close)
 	return harness{db: db, key: key, url: srv.URL}
 }
@@ -112,10 +118,11 @@ func (h harness) tenant(t *testing.T, name string) uuid.UUID {
 }
 
 type response struct {
-	status int
-	etag   string
-	body   map[string]any
-	raw    string
+	status       int
+	etag         string
+	body         map[string]any
+	raw          string
+	cacheControl string
 }
 
 // call sends a request as tenant (no auth headers when tenant is uuid.Nil).
@@ -139,7 +146,7 @@ func (h harness) call(t *testing.T, tenant uuid.UUID, method, path, body string,
 	}
 	defer func() { _ = res.Body.Close() }()
 	raw, _ := io.ReadAll(res.Body)
-	out := response{status: res.StatusCode, etag: res.Header.Get("ETag"), raw: string(raw)}
+	out := response{status: res.StatusCode, etag: res.Header.Get("ETag"), raw: string(raw), cacheControl: res.Header.Get("Cache-Control")}
 	_ = json.Unmarshal(raw, &out.body)
 	return out
 }

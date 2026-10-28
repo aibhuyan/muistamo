@@ -34,7 +34,7 @@ var PersonalDataTables = []string{
 	"catalogue_approvals", "policy_documents", "privacy_officers", "erasure_requests", "agent_clones",
 	"model_catalogue", "model_aliases", "rollouts", "evidence_events",
 	"entra_bindings", "instance_identities", "identity_operations",
-	"virtual_keys", "gateway_calls",
+	"virtual_keys", "gateway_calls", "gateway_admins",
 }
 
 type retention = struct {

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://muistamo.dev/schemas/v1/virtualkeyrequest.json",
   "title": "VirtualKeyRequest",
-  "description": "Issue a gateway virtual key to an agent instance (FR-702, E6.1). Only the instance's owner or sponsor may. The secret is shown once in the response and never stored.",
+  "description": "Issue a gateway virtual key to an active agent instance (FR-702, E6.1). MVP: only operator-appointed gateway administrators may manage keys. Verified owner/sponsor self-service is deferred. The secret is shown once in the response and never stored.",
   "type": "object",
   "additionalProperties": false,
   "required": [

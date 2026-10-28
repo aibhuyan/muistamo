@@ -325,47 +325,55 @@ func (s *Service) SyncClone(ctx context.Context, actor Actor, name string) (muis
 func (s *Service) EffectiveSpec(ctx context.Context, actor Actor, instance string) (muistamov1.EffectiveAgentSpec, error) {
 	var out muistamov1.EffectiveAgentSpec
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
-		inst, err := scanInstance(tx.QueryRow(ctx, instanceColumns+` WHERE name = $1`, instance), instance)
-		if err != nil {
-			return err
-		}
-		ref := inst.Document.Spec.TemplateRef
-		out = muistamov1.EffectiveAgentSpec{Instance: instance, Template: ref.Name}
-		if inst.Document.Spec.CloneRef == nil {
-			if _, err := fmt.Sscan(ref.Version, &out.Version); err != nil {
-				return fmt.Errorf("instance %q has version %q: %w", instance, ref.Version, ErrInvalid)
-			}
-			tv, _, err := templateVersion(ctx, tx, ref.Name, out.Version)
-			out.Spec = tv.Document.Spec
-			return err
-		}
-		cloneName := *inst.Document.Spec.CloneRef
-		c, err := scanClone(tx.QueryRow(ctx, cloneColumns+` WHERE name = $1`, cloneName), cloneName)
-		if err != nil {
-			return err
-		}
-		if c.doc.Spec.Template != ref.Name {
-			return fmt.Errorf("clone %q is not a clone of %s: %w", cloneName, ref.Name, ErrConflict)
-		}
-		r, err := resolveClone(ctx, tx, c)
-		if err != nil {
-			return err
-		}
-		if r.version == nil {
-			return fmt.Errorf("clone %q cannot resolve a template version (%s): %w", cloneName, r.reason, ErrConflict)
-		}
-		tv, _, err := templateVersion(ctx, tx, ref.Name, *r.version)
-		if err != nil {
-			return err
-		}
-		spec, err := applyOverlay(tv.Document.Spec, c.doc)
-		if err != nil {
-			return err
-		}
-		out.Version, out.Clone, out.Spec = *r.version, &cloneName, spec
-		return nil
+		var err error
+		out, err = effectiveSpec(ctx, tx, instance)
+		return err
 	})
 	return out, err
+}
+
+// effectiveSpec is EffectiveSpec inside a caller's transaction.
+func effectiveSpec(ctx context.Context, tx pgx.Tx, instance string) (muistamov1.EffectiveAgentSpec, error) {
+	var out muistamov1.EffectiveAgentSpec
+	inst, err := scanInstance(tx.QueryRow(ctx, instanceColumns+` WHERE name = $1`, instance), instance)
+	if err != nil {
+		return out, err
+	}
+	ref := inst.Document.Spec.TemplateRef
+	out = muistamov1.EffectiveAgentSpec{Instance: instance, Template: ref.Name}
+	if inst.Document.Spec.CloneRef == nil {
+		if _, err := fmt.Sscan(ref.Version, &out.Version); err != nil {
+			return out, fmt.Errorf("instance %q has version %q: %w", instance, ref.Version, ErrInvalid)
+		}
+		tv, _, err := templateVersion(ctx, tx, ref.Name, out.Version)
+		out.Spec = tv.Document.Spec
+		return out, err
+	}
+	cloneName := *inst.Document.Spec.CloneRef
+	c, err := scanClone(tx.QueryRow(ctx, cloneColumns+` WHERE name = $1`, cloneName), cloneName)
+	if err != nil {
+		return out, err
+	}
+	if c.doc.Spec.Template != ref.Name {
+		return out, fmt.Errorf("clone %q is not a clone of %s: %w", cloneName, ref.Name, ErrConflict)
+	}
+	r, err := resolveClone(ctx, tx, c)
+	if err != nil {
+		return out, err
+	}
+	if r.version == nil {
+		return out, fmt.Errorf("clone %q cannot resolve a template version (%s): %w", cloneName, r.reason, ErrConflict)
+	}
+	tv, _, err := templateVersion(ctx, tx, ref.Name, *r.version)
+	if err != nil {
+		return out, err
+	}
+	spec, err := applyOverlay(tv.Document.Spec, c.doc)
+	if err != nil {
+		return out, err
+	}
+	out.Version, out.Clone, out.Spec = *r.version, &cloneName, spec
+	return out, nil
 }
 
 // applyOverlay merges a clone's overlay into a template spec: knowledge packs added (the

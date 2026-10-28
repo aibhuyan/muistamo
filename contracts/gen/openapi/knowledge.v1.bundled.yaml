@@ -4222,7 +4222,7 @@ components:
         revokedBy:
           type: string
         revokeReason:
-          description: A fixed reason code or text free of personal data.
+          description: A fixed revocation reason code; never free text.
           type: string
     VirtualKeyIssued:
       title: VirtualKeyIssued
@@ -4259,9 +4259,10 @@ components:
           type: string
     VirtualKeyRequest:
       title: VirtualKeyRequest
-      description: Issue a gateway virtual key to an agent instance (FR-702, E6.1).
-        Only the instance's owner or sponsor may. The secret is shown once in the
-        response and never stored.
+      description: 'Issue a gateway virtual key to an active agent instance (FR-702,
+        E6.1). MVP: only operator-appointed gateway administrators may manage keys.
+        Verified owner/sponsor self-service is deferred. The secret is shown once
+        in the response and never stored.'
       type: object
       additionalProperties: false
       required:
@@ -4298,8 +4299,11 @@ components:
       - reason
       properties:
         reason:
-          description: 'A fixed reason code or text free of personal data: erasure
-            cannot clean free text.'
+          description: A fixed reason code; personal data and secrets must never enter
+            retained revocation records.
           type: string
-          minLength: 1
-          maxLength: 2000
+          enum:
+          - operator
+          - compromised
+          - rotation
+          - leaver

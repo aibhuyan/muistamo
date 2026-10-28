@@ -1614,6 +1614,30 @@ func (e VirtualKeyStatus) Valid() bool {
 	}
 }
 
+// Defines values for VirtualKeyRevocationReason.
+const (
+	VirtualKeyRevocationReasonCompromised VirtualKeyRevocationReason = "compromised"
+	VirtualKeyRevocationReasonLeaver      VirtualKeyRevocationReason = "leaver"
+	VirtualKeyRevocationReasonOperator    VirtualKeyRevocationReason = "operator"
+	VirtualKeyRevocationReasonRotation    VirtualKeyRevocationReason = "rotation"
+)
+
+// Valid indicates whether the value is a known member of the VirtualKeyRevocationReason enum.
+func (e VirtualKeyRevocationReason) Valid() bool {
+	switch e {
+	case VirtualKeyRevocationReasonCompromised:
+		return true
+	case VirtualKeyRevocationReasonLeaver:
+		return true
+	case VirtualKeyRevocationReasonOperator:
+		return true
+	case VirtualKeyRevocationReasonRotation:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListCatalogueRequestsParamsState.
 const (
 	ListCatalogueRequestsParamsStatePending    ListCatalogueRequestsParamsState = "pending"
@@ -3229,7 +3253,7 @@ type VirtualKey struct {
 	// MonthlyBudget An exact amount. A decimal string, never a binary float, so billed costs and budgets are exact (invariant 7). EUR only while model price sheets are EUR only.
 	MonthlyBudget Money `json:"monthlyBudget"`
 
-	// RevokeReason A fixed reason code or text free of personal data.
+	// RevokeReason A fixed revocation reason code; never free text.
 	RevokeReason *string    `json:"revokeReason,omitempty"`
 	RevokedAt    *time.Time `json:"revokedAt,omitempty"`
 	RevokedBy    *string    `json:"revokedBy,omitempty"`
@@ -3258,7 +3282,7 @@ type VirtualKeyPage struct {
 	Next *string `json:"next,omitempty"`
 }
 
-// VirtualKeyRequest Issue a gateway virtual key to an agent instance (FR-702, E6.1). Only the instance's owner or sponsor may. The secret is shown once in the response and never stored.
+// VirtualKeyRequest Issue a gateway virtual key to an active agent instance (FR-702, E6.1). MVP: only operator-appointed gateway administrators may manage keys. Verified owner/sponsor self-service is deferred. The secret is shown once in the response and never stored.
 type VirtualKeyRequest struct {
 	// Aliases Model aliases the key may call; each must be one the instance's template allows.
 	Aliases   []string   `json:"aliases"`
@@ -3271,9 +3295,12 @@ type VirtualKeyRequest struct {
 
 // VirtualKeyRevocation Revoke a key. Final: a revoked key never becomes active again.
 type VirtualKeyRevocation struct {
-	// Reason A fixed reason code or text free of personal data: erasure cannot clean free text.
-	Reason string `json:"reason"`
+	// Reason A fixed reason code; personal data and secrets must never enter retained revocation records.
+	Reason VirtualKeyRevocationReason `json:"reason"`
 }
+
+// VirtualKeyRevocationReason A fixed reason code; personal data and secrets must never enter retained revocation records.
+type VirtualKeyRevocationReason string
 
 // Cursor defines model for Cursor.
 type Cursor = string
@@ -3882,14 +3909,14 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/virtual-keys (the `ListVirtualKeys` operationId).
 	ListVirtualKeys(ctx context.Context, params *ListVirtualKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// IssueVirtualKeyWithBody Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	// IssueVirtualKeyWithBody Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /v1/virtual-keys (the `IssueVirtualKey` operationId).
 	IssueVirtualKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// IssueVirtualKey Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	// IssueVirtualKey Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4976,7 +5003,7 @@ func (c *Client) ListVirtualKeys(ctx context.Context, params *ListVirtualKeysPar
 	return c.Client.Do(req)
 }
 
-// IssueVirtualKeyWithBody Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+// IssueVirtualKeyWithBody Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
 //
 // Takes any type of body and a specified content type.
 //
@@ -4993,7 +5020,7 @@ func (c *Client) IssueVirtualKeyWithBody(ctx context.Context, contentType string
 	return c.Client.Do(req)
 }
 
-// IssueVirtualKey Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+// IssueVirtualKey Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7725,14 +7752,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/virtual-keys (the `ListVirtualKeys` operationId).
 	ListVirtualKeysWithResponse(ctx context.Context, params *ListVirtualKeysParams, reqEditors ...RequestEditorFn) (*ListVirtualKeysResponse, error)
 
-	// IssueVirtualKeyWithBodyWithResponse Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	// IssueVirtualKeyWithBodyWithResponse Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /v1/virtual-keys (the `IssueVirtualKey` operationId).
 	IssueVirtualKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueVirtualKeyResponse, error)
 
-	// IssueVirtualKeyWithResponse Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	// IssueVirtualKeyWithResponse Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10272,6 +10299,11 @@ func (r ListVirtualKeysResponse) ContentType() string {
 	return ""
 }
 
+// IssueVirtualKeyResponse201Headers the declared response headers of an HTTP 201 response for IssueVirtualKey
+type IssueVirtualKeyResponse201Headers struct {
+	CacheControl string
+}
+
 type IssueVirtualKeyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10279,6 +10311,8 @@ type IssueVirtualKeyResponse struct {
 	JSON201 *VirtualKeyIssued
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *IssueVirtualKeyResponse201Headers
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -11278,7 +11312,7 @@ func (c *ClientWithResponses) ListVirtualKeysWithResponse(ctx context.Context, p
 	return ParseListVirtualKeysResponse(rsp)
 }
 
-// IssueVirtualKeyWithBodyWithResponse Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+// IssueVirtualKeyWithBodyWithResponse Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -11291,7 +11325,7 @@ func (c *ClientWithResponses) IssueVirtualKeyWithBodyWithResponse(ctx context.Co
 	return ParseIssueVirtualKeyResponse(rsp)
 }
 
-// IssueVirtualKeyWithResponse Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+// IssueVirtualKeyWithResponse Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13251,6 +13285,19 @@ func ParseIssueVirtualKeyResponse(rsp *http.Response) (*IssueVirtualKeyResponse,
 
 	}
 
+	switch {
+	case rsp.StatusCode == 201:
+		var headers IssueVirtualKeyResponse201Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = value
+		}
+		response.Headers201 = &headers
+	}
+
 	return response, nil
 }
 
@@ -13469,7 +13516,7 @@ type ServerInterface interface {
 	// ListVirtualKeys Virtual keys the caller may see, newest first, never with secrets
 	// (GET /v1/virtual-keys)
 	ListVirtualKeys(w http.ResponseWriter, r *http.Request, params ListVirtualKeysParams)
-	// IssueVirtualKey Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	// IssueVirtualKey Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
 	// (POST /v1/virtual-keys)
 	IssueVirtualKey(w http.ResponseWriter, r *http.Request)
 
@@ -17191,15 +17238,23 @@ type IssueVirtualKeyResponseObject interface {
 	VisitIssueVirtualKeyResponse(w http.ResponseWriter) error
 }
 
-type IssueVirtualKey201JSONResponse VirtualKeyIssued
+type IssueVirtualKey201ResponseHeaders struct {
+	CacheControl string
+}
+
+type IssueVirtualKey201JSONResponse struct {
+	Body    VirtualKeyIssued
+	Headers IssueVirtualKey201ResponseHeaders
+}
 
 func (response IssueVirtualKey201JSONResponse) VisitIssueVirtualKeyResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
 	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
@@ -17450,7 +17505,7 @@ type StrictServerInterface interface {
 	// ListVirtualKeys Virtual keys the caller may see, newest first, never with secrets
 	// (GET /v1/virtual-keys)
 	ListVirtualKeys(ctx context.Context, request ListVirtualKeysRequestObject) (ListVirtualKeysResponseObject, error)
-	// IssueVirtualKey Issue a gateway virtual key to an instance (its owner or sponsor only); the secret is returned once
+	// IssueVirtualKey Issue a gateway virtual key to an active instance (gateway administrators only); the secret is returned once
 	// (POST /v1/virtual-keys)
 	IssueVirtualKey(ctx context.Context, request IssueVirtualKeyRequestObject) (IssueVirtualKeyResponseObject, error)
 
