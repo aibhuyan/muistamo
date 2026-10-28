@@ -217,30 +217,50 @@ func TestGatewayKeyWritesHoldTheErasureFence(t *testing.T) {
 
 func TestGatewayKeyIssuanceSerializesWithSuspension(t *testing.T) {
 	f, req := gatewayFixture(t)
-	gate := &identityGateSigner{LocalKey: f.key, entered: make(chan struct{}), release: make(chan struct{})}
-	svc := registry.New(f.conn, gate)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	issued := make(chan error, 1)
-	go func() { _, err := svc.IssueKey(ctx, f.actor, req); issued <- err }()
-	select {
-	case <-gate.entered:
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-	suspended := make(chan error, 1)
-	go func() { _, err := f.svc.TransitionTo(ctx, f.actor, req.Instance, "suspended"); suspended <- err }()
 	monitor, err := pgx.Connect(ctx, f.db.OwnerURL)
 	if err != nil {
-		close(gate.release)
 		t.Fatal(err)
 	}
 	defer func() { _ = monitor.Close(context.Background()) }()
+	gate, err := monitor.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = gate.Rollback(context.Background()) }()
+	observer, err := pgx.Connect(ctx, f.db.OwnerURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = observer.Close(context.Background()) }()
+	// Block compliance lookup after the active-state read, BEFORE key INSERT acquires its
+	// implicit FK lock. A signer gate after INSERT would mask a missing explicit instance lock.
+	if _, err := gate.Exec(ctx, `LOCK TABLE model_catalogue IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	issued := make(chan error, 1)
+	go func() { _, err := f.svc.IssueKey(ctx, f.actor, req); issued <- err }()
+	checking := false
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		if err := observer.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database()
+			AND wait_event_type='Lock' AND query LIKE '%model_catalogue%' AND pid<>pg_backend_pid())`).Scan(&checking); err != nil {
+			t.Fatal(err)
+		}
+		if checking {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !checking {
+		t.Fatal("issuer never reached the pre-insert compliance gate")
+	}
+	suspended := make(chan error, 1)
+	go func() { _, err := f.svc.TransitionTo(ctx, f.actor, req.Instance, "suspended"); suspended <- err }()
 	waited := false
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		if err := monitor.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database()
+		if err := observer.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database()
 			AND wait_event_type='Lock' AND query LIKE '%agent_instances%FOR UPDATE%')`).Scan(&waited); err != nil {
-			close(gate.release)
 			t.Fatal(err)
 		}
 		if waited {
@@ -248,7 +268,9 @@ func TestGatewayKeyIssuanceSerializesWithSuspension(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	close(gate.release)
+	if err := gate.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if err := <-issued; err != nil {
 		t.Fatal(err)
 	}
