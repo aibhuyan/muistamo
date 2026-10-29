@@ -140,21 +140,29 @@ func TestLeaverRevocationWithoutEvidenceRevokesNothing(t *testing.T) {
 	}
 }
 
-// Revocation refuses an instance that is still active: IssueKey could otherwise mint a key right
-// after it commits. The leaver suspends first.
-func TestLeaverRevocationRequiresASuspendedInstance(t *testing.T) {
+// Revocation does not wait for suspension: if a leaver could not suspend the instance, its keys
+// are revoked anyway, and the evidence records that the instance was still active.
+func TestLeaverRevocationRevokesKeysEvenWhileTheInstanceIsActive(t *testing.T) {
 	f, req := gatewayFixture(t)
 	issued, err := f.svc.IssueKey(t.Context(), f.actor, req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	workflow := registry.Actor{Tenant: f.actor.Tenant, Name: "workflow:leaver-test", RequestID: "hr-event:test"}
-	before := f.events(t)
-	if got, err := f.svc.RevokeInstanceKeys(t.Context(), workflow, req.Instance); !errors.Is(err, registry.ErrConflict) || got != nil {
-		t.Fatalf("revocation of an active instance = %v, %v; want a conflict", got, err)
+	got, err := f.svc.RevokeInstanceKeys(t.Context(), workflow, req.Instance)
+	if err != nil || len(got) != 1 || got[0] != issued.Key.Id {
+		t.Fatalf("revocation of an active instance = %v, %v; want its key revoked", got, err)
 	}
-	if key, _ := f.svc.GetKey(t.Context(), f.actor, issued.Key.Id); key.Status != "active" || f.events(t) != before {
-		t.Fatalf("refused revocation changed state: %+v", key)
+	if key, _ := f.svc.GetKey(t.Context(), f.actor, issued.Key.Id); key.Status != "revoked" {
+		t.Fatalf("key after revocation = %+v", key)
+	}
+	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM evidence_events WHERE action = 'gateway.key.revoked'
+		AND after->>'instanceState' = 'active'`); n != 1 {
+		t.Fatalf("evidence naming the active instance = %d events, want 1", n)
+	}
+	call, route := modelCall()
+	if d, err := f.svc.AuthorizeGateway(t.Context(), f.actor.Tenant, issued.Secret, call, &route); err != nil || d.Allowed {
+		t.Fatalf("a revoked key of an unsuspended instance was allowed: %+v, %v", d, err)
 	}
 }
 
