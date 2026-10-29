@@ -163,7 +163,7 @@ func TestAdapterLiveRehireRevokesKeysTheLeaverMissed(t *testing.T) {
 	}
 }
 
-// A revocation the registry refuses (here: the instance was never suspended) is permanent, so the
+// A revocation the registry refuses (here: an instance that does not exist) is permanent, so the
 // live leaver fails fast rather than retrying it for an hour.
 func TestAdapterLiveRevokeRefusalIsNotRetried(t *testing.T) {
 	f := setupAdapter(t)
@@ -176,9 +176,9 @@ func TestAdapterLiveRevokeRefusalIsNotRetried(t *testing.T) {
 		}
 	}
 	seedAdapterHR(t, f.conn, f.key, f.actor, "leave", "leaver", 2)
-	err := acts.EntraRevoke(ctx, adapterLifecycleRef(t, f, "leave"), f.name)
+	err := acts.EntraRevoke(ctx, adapterLifecycleRef(t, f, "leave"), "no-such-instance")
 	var app *temporal.ApplicationError
 	if !errors.As(err, &app) || !app.NonRetryable() {
-		t.Fatalf("revocation of an unsuspended instance = %v, want a non-retryable refusal", err)
+		t.Fatalf("revocation of an unknown instance = %v, want a non-retryable refusal", err)
 	}
 }
