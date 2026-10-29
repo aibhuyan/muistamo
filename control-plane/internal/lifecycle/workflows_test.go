@@ -296,3 +296,23 @@ func TestLeaverAttemptsEveryInstanceBeforeFailing(t *testing.T) {
 		}
 	}
 }
+
+// A leaver recorded before the fan-out (no version marker) keeps its original behaviour, stopping
+// at the first failure, so its history replays deterministically.
+func TestLeaverBeforeFanOutStopsAtTheFirstFailure(t *testing.T) {
+	env := newEnv(t)
+	var got steps
+	env.OnGetVersion("leaver-fan-out", workflow.DefaultVersion, workflow.Version(1)).Return(workflow.DefaultVersion)
+	env.OnActivity(a.PersonInstances, mock.Anything, scope, person.ID).Return([]string{"one", "two"}, nil)
+	env.OnActivity(a.SetState, mock.Anything, scope, "one", muistamov1.InstanceStateSuspended).Return(errors.New("registry unavailable")).Run(got.add("suspend-one"))
+	env.OnActivity(a.SetState, mock.Anything, scope, "two", muistamov1.InstanceStateSuspended).Return(nil).Maybe().Run(got.add("suspend-two"))
+
+	env.ExecuteWorkflow(Leaver, LeaverInput{Scope: scope, Person: person})
+
+	if err := env.GetWorkflowError(); err == nil || strings.Contains(err.Error(), "requires reconciliation") {
+		t.Fatalf("pre-fan-out leaver error = %v, want the first failure unchanged", err)
+	}
+	if slices.Contains(got, "suspend-two") {
+		t.Fatalf("steps = %v: a pre-fan-out history went on past the first failure", got)
+	}
+}

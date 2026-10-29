@@ -117,16 +117,24 @@ func Leaver(ctx workflow.Context, in LeaverInput) (LeaverResult, error) {
 	// Revocation first and for everyone: it is the safety-critical step. One instance's failure
 	// must never leave the person's other instances active, so every instance is attempted and
 	// the failures are reported together, as in the Entra leaver. Each step is retried first.
+	// Versioned so histories recorded by the earlier stop-at-first-failure code still replay.
+	fanOut := workflow.GetVersion(ctx, "leaver-fan-out", workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	var failures []error
 	for _, name := range instances {
 		if err := workflow.ExecuteActivity(ctx, a.SetState, in.Scope, name, muistamov1.InstanceStateSuspended).Get(ctx, nil); err != nil {
+			if !fanOut {
+				return result, err
+			}
 			// An instance that could not be suspended is not revoked: while it is active, new
-			// keys can be issued and calls authorized, so revocation could not hold (the gateway
-			// revoker refuses an active instance outright). It is reported for reconciliation.
+			// keys can be issued and calls authorized, so a revocation could not hold. It is
+			// reported for reconciliation.
 			failures = append(failures, fmt.Errorf("suspend %s: %w", name, err))
 			continue
 		}
 		if err := workflow.ExecuteActivity(ctx, a.RevokeCredentials, in.Scope, name).Get(ctx, nil); err != nil {
+			if !fanOut {
+				return result, err
+			}
 			failures = append(failures, fmt.Errorf("revoke credentials of %s: %w", name, err))
 		}
 	}
