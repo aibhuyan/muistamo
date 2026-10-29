@@ -31,6 +31,10 @@ const keyPrefix = "mvk_"
 // secretBytes is the key's entropy: 256 bits.
 const secretBytes = 32
 
+// DefaultMaxCallsWithoutUsage is a key's monthly allowance of calls that ran without a usage
+// report, when issuance names none (matches the column default in 00016).
+const DefaultMaxCallsWithoutUsage = 3
+
 // ParseKey splits a presented key into its id and decoded secret. It never says which part was
 // wrong: a caller learns only that the key is not valid.
 func ParseKey(presented string) (uuid.UUID, []byte, error) {
@@ -76,13 +80,13 @@ func requireGatewayAdmin(ctx context.Context, tx pgx.Tx, actor Actor, what strin
 }
 
 const keyColumns = `SELECT id, instance, aliases, budget_amount::text, budget_currency, expires_at, status,
-	created_at, created_by, revoked_at, revoked_by, revoke_reason FROM virtual_keys`
+	created_at, created_by, revoked_at, revoked_by, revoke_reason, max_calls_without_usage FROM virtual_keys`
 
 func scanKey(row pgx.Row, now time.Time) (muistamov1.VirtualKey, error) {
 	var k muistamov1.VirtualKey
 	var amount, currency, status string
 	if err := row.Scan(&k.Id, &k.Instance, &k.Aliases, &amount, &currency, &k.ExpiresAt, &status,
-		&k.CreatedAt, &k.CreatedBy, &k.RevokedAt, &k.RevokedBy, &k.RevokeReason); err != nil {
+		&k.CreatedAt, &k.CreatedBy, &k.RevokedAt, &k.RevokedBy, &k.RevokeReason, &k.MaxCallsWithoutUsage); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return k, fmt.Errorf("virtual key: %w", ErrNotFound)
 		}
@@ -115,6 +119,14 @@ func (s *Service) IssueKey(ctx context.Context, actor Actor, req muistamov1.Virt
 	now := time.Now()
 	if req.ExpiresAt != nil && !req.ExpiresAt.After(now) {
 		return out, fmt.Errorf("expiresAt must be in the future: %w", ErrInvalid)
+	}
+	// Calls without a usage report (aborted streams) a key may make per UTC month (00016).
+	maxWithoutUsage := DefaultMaxCallsWithoutUsage
+	if req.MaxCallsWithoutUsage != nil {
+		maxWithoutUsage = *req.MaxCallsWithoutUsage
+	}
+	if maxWithoutUsage < 0 || maxWithoutUsage > 1000 {
+		return out, fmt.Errorf("maxCallsWithoutUsage must be 0 to 1000: %w", ErrInvalid)
 	}
 	secret := make([]byte, secretBytes)
 	if _, err := rand.Read(secret); err != nil {
@@ -161,9 +173,10 @@ func (s *Service) IssueKey(ctx context.Context, actor Actor, req muistamov1.Virt
 			}
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO virtual_keys (tenant_id, id, instance, aliases, budget_amount,
-			budget_currency, expires_at, secret_sha256, created_by) VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, $8, $9)`,
+			budget_currency, expires_at, secret_sha256, created_by, max_calls_without_usage)
+			VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, $8, $9, $10)`,
 			actor.Tenant, id, req.Instance, req.Aliases, req.MonthlyBudget.Amount, string(req.MonthlyBudget.Currency),
-			req.ExpiresAt, hash[:], actor.Name); err != nil {
+			req.ExpiresAt, hash[:], actor.Name, maxWithoutUsage); err != nil {
 			return fmt.Errorf("store virtual key: %w", err)
 		}
 		key, err := scanKey(tx.QueryRow(ctx, keyColumns+` WHERE id = $1`, id), time.Now())
@@ -173,7 +186,8 @@ func (s *Service) IssueKey(ctx context.Context, actor Actor, req muistamov1.Virt
 		out.Key = key
 		// Evidence names the key, never its secret or hash.
 		return recordEvidence(ctx, tx, s.signer, actor, "gateway.key.issued", "VirtualKey", id.String(), nil,
-			map[string]any{"instance": key.Instance, "aliases": key.Aliases, "monthlyBudget": key.MonthlyBudget, "expiresAt": key.ExpiresAt})
+			map[string]any{"instance": key.Instance, "aliases": key.Aliases, "monthlyBudget": key.MonthlyBudget, "expiresAt": key.ExpiresAt,
+				"maxCallsWithoutUsage": key.MaxCallsWithoutUsage})
 	})
 	if err != nil {
 		return muistamov1.VirtualKeyIssued{}, err

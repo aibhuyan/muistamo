@@ -55,7 +55,7 @@ func usageCmd(opts *options) *cobra.Command {
 				return err
 			}
 			totals := map[muistamov1.MoneyCurrency]*big.Rat{}
-			calls, notMetered := 0, 0
+			calls, notMetered, withoutUsage := 0, 0, 0
 			for {
 				res, err := client.ListUsageWithResponse(cmd.Context(), params)
 				if err != nil {
@@ -67,7 +67,10 @@ func usageCmd(opts *options) *cobra.Command {
 				for _, r := range res.JSON200.Items {
 					calls++
 					cmd.Println(usageLine(r, time.Now()))
-					if r.Metered != nil && !*r.Metered && !pending(r, time.Now()) {
+					switch {
+					case r.UsageMissing != nil && *r.UsageMissing:
+						withoutUsage++
+					case r.Metered != nil && !*r.Metered && !pending(r, time.Now()):
 						notMetered++
 					}
 					if r.Cost != nil {
@@ -97,7 +100,7 @@ func usageCmd(opts *options) *cobra.Command {
 				total := totals[muistamov1.MoneyCurrency(currency)]
 				cmd.Println(fmt.Sprintf("total %s %s at provider cost", strings.TrimRight(strings.TrimRight(total.FloatString(12), "0"), "."), currency))
 			}
-			cmd.Println(fmt.Sprintf("%d calls, %d unmetered", calls, notMetered))
+			cmd.Println(fmt.Sprintf("%d calls, %d unmetered, %d ran without a usage report", calls, notMetered, withoutUsage))
 			return nil
 		},
 	}
@@ -118,6 +121,8 @@ func pending(r muistamov1.UsageRecord, now time.Time) bool {
 func usageLine(r muistamov1.UsageRecord, now time.Time) string {
 	cost := "unmetered: cost unknown, may have been incurred"
 	switch {
+	case r.Metered != nil && !*r.Metered && r.UsageMissing != nil && *r.UsageMissing:
+		cost = "ran, no usage reported: cost unknown, likely incurred"
 	case r.Metered != nil && !*r.Metered && pending(r, now):
 		cost = "pending: usage not yet received"
 	case r.Metered == nil:
@@ -133,8 +138,8 @@ func keyLine(k muistamov1.VirtualKey) string {
 	if k.ExpiresAt != nil {
 		expires = k.ExpiresAt.UTC().Format(time.RFC3339)
 	}
-	return fmt.Sprintf("%s\t%s\t%s\taliases %s\tbudget %s %s/month\texpires %s",
-		k.Id, k.Instance, k.Status, strings.Join(k.Aliases, ","), k.MonthlyBudget.Amount, k.MonthlyBudget.Currency, expires)
+	return fmt.Sprintf("%s\t%s\t%s\taliases %s\tbudget %s %s/month\twithout usage <= %d/month\texpires %s",
+		k.Id, k.Instance, k.Status, strings.Join(k.Aliases, ","), k.MonthlyBudget.Amount, k.MonthlyBudget.Currency, k.MaxCallsWithoutUsage, expires)
 }
 
 func keysListCmd(opts *options) *cobra.Command {
@@ -201,8 +206,9 @@ func keysGetCmd(opts *options) *cobra.Command {
 
 func keysIssueCmd(opts *options) *cobra.Command {
 	var instance, alias, budget, expires string
+	maxWithoutUsage := -1
 	c := &cobra.Command{
-		Use:   "issue --instance NAME --alias ALIAS --budget EUR [--expires RFC3339]",
+		Use:   "issue --instance NAME --alias ALIAS --budget EUR [--expires RFC3339] [--max-calls-without-usage N]",
 		Short: "Issue a virtual key; its secret is printed once and can never be shown again",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -210,6 +216,9 @@ func keysIssueCmd(opts *options) *cobra.Command {
 				Instance:      instance,
 				Aliases:       []string{alias},
 				MonthlyBudget: muistamov1.Money{Amount: budget, Currency: muistamov1.MoneyCurrencyEUR},
+			}
+			if maxWithoutUsage >= 0 {
+				req.MaxCallsWithoutUsage = &maxWithoutUsage
 			}
 			if expires != "" {
 				at, err := time.Parse(time.RFC3339, expires)
@@ -239,6 +248,7 @@ func keysIssueCmd(opts *options) *cobra.Command {
 	c.Flags().StringVar(&alias, "alias", "", "the model alias the key may call")
 	c.Flags().StringVar(&budget, "budget", "", "monthly budget in EUR, e.g. 25.50")
 	c.Flags().StringVar(&expires, "expires", "", "expiry time (RFC 3339)")
+	c.Flags().IntVar(&maxWithoutUsage, "max-calls-without-usage", -1, "calls per month that may run without a usage report, e.g. aborted streams (default 3; 0 refuses after the first)")
 	for _, f := range []string{"instance", "alias", "budget"} {
 		_ = c.MarkFlagRequired(f)
 	}

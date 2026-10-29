@@ -1383,7 +1383,7 @@ export interface components {
         GatewayAuthorizationDecision: {
             allowed: boolean;
             /** @enum {string} */
-            reason: "allowed" | "invalid-request" | "invalid-key" | "inactive-key" | "inactive-instance" | "identity-not-ready" | "person-not-established" | "alias-not-allowed" | "route-not-current" | "budget-reached" | "mcp-not-integrated";
+            reason: "allowed" | "invalid-request" | "invalid-key" | "inactive-key" | "inactive-instance" | "identity-not-ready" | "person-not-established" | "alias-not-allowed" | "route-not-current" | "budget-reached" | "calls-without-usage-limit" | "mcp-not-integrated";
             /** Format: uuid */
             requestId: string;
             /** Format: uuid */
@@ -2416,6 +2416,8 @@ export interface components {
             authorizedAt: string;
             /** @description Model calls only: false while no usage record exists. Within 15 minutes of authorization this is normal (usage is still arriving); after that the call is unmetered: its cost is unknown and may have been incurred (it may not have run, may have run without reporting usage, or its usage was lost in export or refused by ingest). Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens. */
             metered?: boolean;
+            /** @description Model calls only: true when the gateway reported that the call ran but sent no usage (for example a stream the client aborted). Its cost is unknown and was likely incurred; it counts toward the key's maxCallsWithoutUsage allowance. */
+            usageMissing?: boolean;
             inputTokens?: number;
             cachedInputTokens?: number;
             outputTokens?: number;
@@ -2466,6 +2468,8 @@ export interface components {
             /** Format: date-time */
             revokedAt?: string;
             revokedBy?: string;
+            /** @description How many calls authorized in the current UTC month may run without a usage report; once more have, calls are refused. */
+            maxCallsWithoutUsage: number;
             /** @description A fixed revocation reason code, never free text: operator, compromised, rotation or leaver (administrators), leaver (the leaver workflow), or reactivation (keys from before a suspension, revoked when the instance becomes active again). */
             revokeReason?: string;
         };
@@ -2499,6 +2503,11 @@ export interface components {
             monthlyBudget: components["schemas"]["Money"];
             /** Format: date-time */
             expiresAt?: string;
+            /**
+             * @description How many calls authorized in the current UTC month may run without a usage report (for example a stream the client aborted: the provider bills it, but the gateway reports no usage). Once more have, calls are refused. Default 3; 0 refuses the key after the first such call. Fixed at issuance.
+             * @default 3
+             */
+            maxCallsWithoutUsage: number;
         };
         /**
          * VirtualKeyRevocation

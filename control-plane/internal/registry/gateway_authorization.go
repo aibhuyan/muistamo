@@ -165,6 +165,25 @@ func (s *Service) AuthorizeGateway(ctx context.Context, tenant uuid.UUID, presen
 		if !within {
 			return deny("budget-reached")
 		}
+		// Calls that ran without a usage report (aborted streams) are billed by the provider but
+		// invisible to the budget: a key is refused once it has more of them this UTC month than
+		// its allowance (0: refused after the first).
+		// Calls whose usage did arrive no longer count. HUMAN REVIEW REQUIRED.
+		var underCap bool
+		err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM calls_without_usage w
+			JOIN gateway_calls c USING (tenant_id, request_id)
+			WHERE c.tenant_id = k.tenant_id AND c.key_id = k.id
+			AND c.authorized_at >= (date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+			AND c.authorized_at < ((date_trunc('month', now() AT TIME ZONE 'UTC') + interval '1 month') AT TIME ZONE 'UTC')
+			AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id)
+			) <= k.max_calls_without_usage
+			FROM virtual_keys k WHERE k.id = $1`, keyID).Scan(&underCap)
+		if err != nil {
+			return err
+		}
+		if !underCap {
+			return deny("calls-without-usage-limit")
+		}
 		set, err := compileStored(ctx, tx)
 		if err != nil {
 			return err

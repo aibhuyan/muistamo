@@ -39,6 +39,12 @@ class UsageRecord(BaseModel):
             description="Model calls only: false while no usage record exists. Within 15 minutes of authorization this is normal (usage is still arriving); after that the call is unmetered: its cost is unknown and may have been incurred (it may not have run, may have run without reporting usage, or its usage was lost in export or refused by ingest). Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens."
         ),
     ] = None
+    usageMissing: Annotated[
+        bool | None,
+        Field(
+            description="Model calls only: true when the gateway reported that the call ran but sent no usage (for example a stream the client aborted). Its cost is unknown and was likely incurred; it counts toward the key's maxCallsWithoutUsage allowance."
+        ),
+    ] = None
     inputTokens: Annotated[int | None, Field(ge=0)] = None
     cachedInputTokens: Annotated[int | None, Field(ge=0)] = None
     outputTokens: Annotated[int | None, Field(ge=0)] = None

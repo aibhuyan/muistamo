@@ -203,3 +203,18 @@ func TestIngestDoesNotAskForRetriesOfInvalidBatches(t *testing.T) {
 		t.Fatalf("invalid batch = %v, want InvalidArgument", err)
 	}
 }
+
+// An authorized, successful call whose record carries no usage at all (an aborted stream) is
+// recorded as having run without usage, never priced; partial usage stays malformed.
+func TestIngestRecordsCallsThatRanWithoutUsage(t *testing.T) {
+	r := &usageRecorder{}
+	aborted := uuid.New()
+	_, err := ingest(t, r).Export(authed("Bearer "+ingestToken), export(record(aborted, func(a map[string]any) {
+		delete(a, "gen_ai.usage.input_tokens")
+		delete(a, "gen_ai.usage.output_tokens")
+		delete(a, "gen_ai.usage.cache_read.input_tokens")
+	})))
+	if err != nil || len(r.lines) != 1 || !r.lines[0].UsageMissing || r.lines[0].RequestID != aborted || r.lines[0].InputTokens != 0 {
+		t.Fatalf("lines = %+v, %v", r.lines, err)
+	}
+}

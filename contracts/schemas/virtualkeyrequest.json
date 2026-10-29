@@ -32,6 +32,13 @@
     "expiresAt": {
       "type": "string",
       "format": "date-time"
+    },
+    "maxCallsWithoutUsage": {
+      "description": "How many calls authorized in the current UTC month may run without a usage report (for example a stream the client aborted: the provider bills it, but the gateway reports no usage). Once more have, calls are refused. Default 3; 0 refuses the key after the first such call. Fixed at issuance.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 3
     }
   }
 }

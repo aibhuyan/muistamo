@@ -1989,6 +1989,7 @@ components:
           - alias-not-allowed
           - route-not-current
           - budget-reached
+          - calls-without-usage-limit
           - mcp-not-integrated
         requestId:
           type: string
@@ -4260,6 +4261,12 @@ components:
             its usage was lost in export or refused by ingest). Unmetered calls are
             reported, never estimated. Absent for MCP calls, which carry no tokens.'
           type: boolean
+        usageMissing:
+          description: 'Model calls only: true when the gateway reported that the
+            call ran but sent no usage (for example a stream the client aborted).
+            Its cost is unknown and was likely incurred; it counts toward the key''s
+            maxCallsWithoutUsage allowance.'
+          type: boolean
         inputTokens:
           type: integer
           minimum: 0
@@ -4326,6 +4333,7 @@ components:
       - instance
       - aliases
       - monthlyBudget
+      - maxCallsWithoutUsage
       - status
       - createdAt
       - createdBy
@@ -4363,6 +4371,12 @@ components:
           format: date-time
         revokedBy:
           type: string
+        maxCallsWithoutUsage:
+          description: How many calls authorized in the current UTC month may run
+            without a usage report; once more have, calls are refused.
+          type: integer
+          minimum: 0
+          maximum: 1000
         revokeReason:
           description: 'A fixed revocation reason code, never free text: operator,
             compromised, rotation or leaver (administrators), leaver (the leaver workflow),
@@ -4435,6 +4449,16 @@ components:
         expiresAt:
           type: string
           format: date-time
+        maxCallsWithoutUsage:
+          description: 'How many calls authorized in the current UTC month may run
+            without a usage report (for example a stream the client aborted: the provider
+            bills it, but the gateway reports no usage). Once more have, calls are
+            refused. Default 3; 0 refuses the key after the first such call. Fixed
+            at issuance.'
+          type: integer
+          minimum: 0
+          maximum: 1000
+          default: 3
     VirtualKeyRevocation:
       title: VirtualKeyRevocation
       description: 'Revoke a key. Final: a revoked key never becomes active again.'

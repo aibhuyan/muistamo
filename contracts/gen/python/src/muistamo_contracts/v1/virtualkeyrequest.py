@@ -30,3 +30,11 @@ class VirtualKeyRequest(BaseModel):
         ),
     ]
     expiresAt: AwareDatetime | None = None
+    maxCallsWithoutUsage: Annotated[
+        int | None,
+        Field(
+            description="How many calls authorized in the current UTC month may run without a usage report (for example a stream the client aborted: the provider bills it, but the gateway reports no usage). Once more have, calls are refused. Default 3; 0 refuses the key after the first such call. Fixed at issuance.",
+            ge=0,
+            le=1000,
+        ),
+    ] = 3

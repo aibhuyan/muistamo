@@ -34,6 +34,14 @@ class VirtualKey(BaseModel):
     createdBy: str
     revokedAt: AwareDatetime | None = None
     revokedBy: str | None = None
+    maxCallsWithoutUsage: Annotated[
+        int,
+        Field(
+            description="How many calls authorized in the current UTC month may run without a usage report; once more have, calls are refused.",
+            ge=0,
+            le=1000,
+        ),
+    ]
     revokeReason: Annotated[
         str | None,
         Field(

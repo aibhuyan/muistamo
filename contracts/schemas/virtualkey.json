@@ -10,6 +10,7 @@
     "instance",
     "aliases",
     "monthlyBudget",
+    "maxCallsWithoutUsage",
     "status",
     "createdAt",
     "createdBy"
@@ -57,6 +58,12 @@
     },
     "revokedBy": {
       "type": "string"
+    },
+    "maxCallsWithoutUsage": {
+      "description": "How many calls authorized in the current UTC month may run without a usage report; once more have, calls are refused.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
     },
     "revokeReason": {
       "description": "A fixed revocation reason code, never free text: operator, compromised, rotation or leaver (administrators), leaver (the leaver workflow), or reactivation (keys from before a suspension, revoked when the instance becomes active again).",

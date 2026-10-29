@@ -512,17 +512,18 @@ func (e ErasureProofService) Valid() bool {
 
 // Defines values for GatewayAuthorizationDecisionReason.
 const (
-	GatewayAuthorizationDecisionReasonAliasNotAllowed      GatewayAuthorizationDecisionReason = "alias-not-allowed"
-	GatewayAuthorizationDecisionReasonAllowed              GatewayAuthorizationDecisionReason = "allowed"
-	GatewayAuthorizationDecisionReasonBudgetReached        GatewayAuthorizationDecisionReason = "budget-reached"
-	GatewayAuthorizationDecisionReasonIdentityNotReady     GatewayAuthorizationDecisionReason = "identity-not-ready"
-	GatewayAuthorizationDecisionReasonInactiveInstance     GatewayAuthorizationDecisionReason = "inactive-instance"
-	GatewayAuthorizationDecisionReasonInactiveKey          GatewayAuthorizationDecisionReason = "inactive-key"
-	GatewayAuthorizationDecisionReasonInvalidKey           GatewayAuthorizationDecisionReason = "invalid-key"
-	GatewayAuthorizationDecisionReasonInvalidRequest       GatewayAuthorizationDecisionReason = "invalid-request"
-	GatewayAuthorizationDecisionReasonMcpNotIntegrated     GatewayAuthorizationDecisionReason = "mcp-not-integrated"
-	GatewayAuthorizationDecisionReasonPersonNotEstablished GatewayAuthorizationDecisionReason = "person-not-established"
-	GatewayAuthorizationDecisionReasonRouteNotCurrent      GatewayAuthorizationDecisionReason = "route-not-current"
+	GatewayAuthorizationDecisionReasonAliasNotAllowed        GatewayAuthorizationDecisionReason = "alias-not-allowed"
+	GatewayAuthorizationDecisionReasonAllowed                GatewayAuthorizationDecisionReason = "allowed"
+	GatewayAuthorizationDecisionReasonBudgetReached          GatewayAuthorizationDecisionReason = "budget-reached"
+	GatewayAuthorizationDecisionReasonCallsWithoutUsageLimit GatewayAuthorizationDecisionReason = "calls-without-usage-limit"
+	GatewayAuthorizationDecisionReasonIdentityNotReady       GatewayAuthorizationDecisionReason = "identity-not-ready"
+	GatewayAuthorizationDecisionReasonInactiveInstance       GatewayAuthorizationDecisionReason = "inactive-instance"
+	GatewayAuthorizationDecisionReasonInactiveKey            GatewayAuthorizationDecisionReason = "inactive-key"
+	GatewayAuthorizationDecisionReasonInvalidKey             GatewayAuthorizationDecisionReason = "invalid-key"
+	GatewayAuthorizationDecisionReasonInvalidRequest         GatewayAuthorizationDecisionReason = "invalid-request"
+	GatewayAuthorizationDecisionReasonMcpNotIntegrated       GatewayAuthorizationDecisionReason = "mcp-not-integrated"
+	GatewayAuthorizationDecisionReasonPersonNotEstablished   GatewayAuthorizationDecisionReason = "person-not-established"
+	GatewayAuthorizationDecisionReasonRouteNotCurrent        GatewayAuthorizationDecisionReason = "route-not-current"
 )
 
 // Valid indicates whether the value is a known member of the GatewayAuthorizationDecisionReason enum.
@@ -533,6 +534,8 @@ func (e GatewayAuthorizationDecisionReason) Valid() bool {
 	case GatewayAuthorizationDecisionReasonAllowed:
 		return true
 	case GatewayAuthorizationDecisionReasonBudgetReached:
+		return true
+	case GatewayAuthorizationDecisionReasonCallsWithoutUsageLimit:
 		return true
 	case GatewayAuthorizationDecisionReasonIdentityNotReady:
 		return true
@@ -3341,6 +3344,9 @@ type UsageRecord struct {
 	Provider     *string            `json:"provider,omitempty"`
 	RecordedAt   *time.Time         `json:"recordedAt,omitempty"`
 	RequestId    openapi_types.UUID `json:"requestId"`
+
+	// UsageMissing Model calls only: true when the gateway reported that the call ran but sent no usage (for example a stream the client aborted). Its cost is unknown and was likely incurred; it counts toward the key's maxCallsWithoutUsage allowance.
+	UsageMissing *bool `json:"usageMissing,omitempty"`
 }
 
 // UsageRecordKind defines model for UsageRecord.Kind.
@@ -3366,6 +3372,9 @@ type VirtualKey struct {
 	ExpiresAt *time.Time         `json:"expiresAt,omitempty"`
 	Id        openapi_types.UUID `json:"id"`
 	Instance  string             `json:"instance"`
+
+	// MaxCallsWithoutUsage How many calls authorized in the current UTC month may run without a usage report; once more have, calls are refused.
+	MaxCallsWithoutUsage int `json:"maxCallsWithoutUsage"`
 
 	// MonthlyBudget An exact amount. A decimal string, never a binary float, so billed costs and budgets are exact (invariant 7). EUR only while model price sheets are EUR only.
 	MonthlyBudget Money `json:"monthlyBudget"`
@@ -3405,6 +3414,9 @@ type VirtualKeyRequest struct {
 	Aliases   []string   `json:"aliases"`
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 	Instance  string     `json:"instance"`
+
+	// MaxCallsWithoutUsage How many calls authorized in the current UTC month may run without a usage report (for example a stream the client aborted: the provider bills it, but the gateway reports no usage). Once more have, calls are refused. Default 3; 0 refuses the key after the first such call. Fixed at issuance.
+	MaxCallsWithoutUsage *int `json:"maxCallsWithoutUsage,omitempty"`
 
 	// MonthlyBudget Calls are refused once the recorded spend of calls authorized in the current UTC calendar month reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden.
 	MonthlyBudget Money `json:"monthlyBudget"`

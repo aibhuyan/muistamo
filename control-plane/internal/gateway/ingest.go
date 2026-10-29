@@ -219,10 +219,18 @@ func usageLine(attrs []*common.KeyValue) (registry.UsageLine, string) {
 	if provider, _ := str("gen_ai.provider.name"); !openAISemantics[provider] {
 		return registry.UsageLine{}, "unvalidated-provider-usage"
 	}
+	_, hasIn := a["gen_ai.usage.input_tokens"]
+	_, hasOut := a["gen_ai.usage.output_tokens"]
+	if !hasIn && !hasOut {
+		// The call ran (authorized, successful) but the gateway reported no usage, as for a stream
+		// the client aborted: recorded as such and counted against the key's cap, never priced.
+		response, _ := str("gen_ai.response.model")
+		return registry.UsageLine{RequestID: id, Model: model, ResponseModel: response, UsageMissing: true}, ""
+	}
 	in, okIn := num("gen_ai.usage.input_tokens")
 	out, okOut := num("gen_ai.usage.output_tokens")
 	if !okIn || !okOut {
-		return registry.UsageLine{}, "no-usage"
+		return registry.UsageLine{}, "partial-usage"
 	}
 	cached := int64(0)
 	if _, present := a["gen_ai.usage.cache_read.input_tokens"]; present {
