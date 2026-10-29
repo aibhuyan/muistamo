@@ -168,10 +168,11 @@ func (a *EntraActivities) EntraRevoke(ctx context.Context, ref muistamov1.EntraL
 	if a.Revoker == nil {
 		return temporal.NewNonRetryableApplicationError("gateway revocation unavailable", "unconfigured", nil)
 	}
-	if err := a.Revoker.Revoke(ctx, ref.TenantId, name); err != nil {
+	report, err := a.Revoker.Revoke(ctx, liveActor(ref), name)
+	if err != nil {
 		return fmt.Errorf("revoke instance credentials: %w", err)
 	}
-	return a.Registry.RecordLifecycleEvent(ctx, liveActor(ref), "credentials.revoked", name, map[string]any{"revoker": revokerName(a.Revoker)})
+	return a.Registry.RecordLifecycleEvent(ctx, liveActor(ref), "credentials.revoked", name, report.evidence())
 }
 
 func (a *EntraActivities) EntraRecordReviewCoverage(ctx context.Context, ref muistamov1.EntraLifecycleRef) error {

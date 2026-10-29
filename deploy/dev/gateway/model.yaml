@@ -1,0 +1,16 @@
+# Development only: the fake OpenAI-compatible model behind the dev gateway (make dev-gateway).
+# Apply with mst, a privacy officer approves it as for any model, then apply alias.yaml.
+apiVersion: muistamo.dev/v1
+kind: ModelCatalogueItem
+metadata:
+  name: dev-fake-model
+  owner: platform-team
+spec:
+  provider: openai
+  model: fake-model
+  region: local-dev
+  termsRef: dev/fake-provider-no-terms
+  priceSheet:
+    currency: EUR
+    inputPerMTok: 1.00
+    outputPerMTok: 2.00

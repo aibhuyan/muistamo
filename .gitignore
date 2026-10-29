@@ -48,3 +48,7 @@ Thumbs.db
 # Local-only project docs
 /docs/
 /CLAUDE.md
+
+# Rendered per tenant by make dev-gateway
+deploy/dev/gateway/authz.json
+deploy/dev/gateway/agentgateway.yaml

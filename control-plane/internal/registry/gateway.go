@@ -220,6 +220,59 @@ func (s *Service) GetKey(ctx context.Context, actor Actor, id uuid.UUID) (muista
 	return out, err
 }
 
+// RevokeInstanceKeys revokes every active key of an instance for the leaver workflow and returns
+// their ids. Keys past expiry are still active rows, so they are made final too: a rehire never
+// resurrects them. There is no administrator check: the actor is the lifecycle workflow, never a
+// person, and the reason is the fixed code "leaver". Idempotent: a retry finds nothing active.
+//
+// The instance must already be suspended or retired: IssueKey requires an active instance under
+// the same instance lock, so no key can be minted after this commits.
+//
+// HUMAN REVIEW REQUIRED (AGENTS.md): revocation path.
+func (s *Service) RevokeInstanceKeys(ctx context.Context, actor Actor, instance string) ([]uuid.UUID, error) {
+	var revoked []uuid.UUID
+	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		// Same lock order as IssueKey and AuthorizeGateway: HR and person, instance, then keys.
+		if _, err := identityPersonLock(ctx, tx, actor.Tenant, instance); err != nil {
+			return err
+		}
+		inst, err := lockInstance(ctx, tx, instance)
+		if err != nil {
+			return err
+		}
+		if state := inst.Document.Spec.State; state != muistamov1.InstanceStateSuspended && state != muistamov1.InstanceStateRetired {
+			return fmt.Errorf("instance %q is %s; suspend it before revoking its keys: %w", instance, state, ErrConflict)
+		}
+		rows, err := tx.Query(ctx, `SELECT id FROM virtual_keys WHERE instance = $1 AND status = 'active'
+			ORDER BY id FOR UPDATE`, instance)
+		if err != nil {
+			return fmt.Errorf("lock instance keys: %w", err)
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		if err != nil {
+			return fmt.Errorf("lock instance keys: %w", err)
+		}
+		for _, id := range ids {
+			var revokedAt time.Time
+			if err := tx.QueryRow(ctx, `UPDATE virtual_keys SET status = 'revoked', revoked_by = $2, revoke_reason = 'leaver'
+				WHERE id = $1 RETURNING revoked_at`, id, actor.Name).Scan(&revokedAt); err != nil {
+				return fmt.Errorf("revoke virtual key: %w", err)
+			}
+			if err := recordEvidence(ctx, tx, s.signer, actor, "gateway.key.revoked", "VirtualKey", id.String(),
+				map[string]any{"status": "active"},
+				map[string]any{"instance": instance, "reason": "leaver", "by": "lifecycle", "revokedAt": revokedAt}); err != nil {
+				return err
+			}
+		}
+		revoked = ids
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return revoked, nil
+}
+
 // RevokeKey revokes a key. Final: the database refuses any later change to the revocation.
 func (s *Service) RevokeKey(ctx context.Context, actor Actor, id uuid.UUID, reason string) (muistamov1.VirtualKey, error) {
 	var out muistamov1.VirtualKey

@@ -102,3 +102,22 @@ func TestEntraFailedLeaverPreparationSettlesItsPersonalSetup(t *testing.T) {
 	}
 	env.AssertExpectations(t)
 }
+
+// Revocation is local and idempotent, so the leaver retries it: one transient database error must
+// not leave the instance's virtual keys active for a later rehire to reactivate.
+func TestEntraLeaverRetriesKeyRevocation(t *testing.T) {
+	env := liveEnv()
+	env.OnActivity(liveActs.EntraPrepareLeaver, mock.Anything, liveRef).Return([]string{"one"}, nil)
+	env.OnActivity(liveActs.EntraRevoke, mock.Anything, liveRef, "one").Return(errors.New("transient database error")).Once()
+	env.OnActivity(liveActs.EntraRevoke, mock.Anything, liveRef, "one").Return(nil).Once()
+	env.OnActivity(liveActs.EntraDisable, mock.Anything, liveRef, "one").Return(nil).Once()
+	env.OnActivity(liveActs.EntraRecordReviewCoverage, mock.Anything, liveRef).Return(nil)
+	env.OnActivity(liveActs.EntraSettleSetup, mock.Anything, liveRef).Return(nil)
+	env.OnActivity(liveActs.EntraRetire, mock.Anything, liveRef, "one").Return(nil).Once()
+	env.ExecuteWorkflow(EntraLeaver, liveRef)
+	var result LeaverResult
+	if err := env.GetWorkflowResult(&result); err != nil {
+		t.Fatalf("a retried revocation still needs reconciliation: %v", err)
+	}
+	env.AssertExpectations(t)
+}

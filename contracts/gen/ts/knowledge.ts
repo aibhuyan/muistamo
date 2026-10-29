@@ -1229,6 +1229,8 @@ export interface components {
             provider: string;
             model: string;
             region: string;
+            /** @description Name of the environment variable from which the gateway reads this route's provider credential at runtime. A reference only, never a value: Muistamo never stores provider credentials (NFR-08). The pinned gateway refuses to start when the variable is unset. */
+            credentialEnv?: string;
             /**
              * Format: uri
              * @description Trusted operator-pinned deployment endpoint, without credentials, query or fragment. The later renderer must emit this exact target and the matching configuration fingerprint together. Not independent provider-region verification.

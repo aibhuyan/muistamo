@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
@@ -49,6 +50,60 @@ func gatewayDigestCmd() *cobra.Command {
 	cmd.Flags().StringVar(&file, "config", "", "trusted tenant and pinned model routes")
 	_ = cmd.MarkFlagRequired("config")
 	return cmd
+}
+
+func gatewayRenderCmd() *cobra.Command {
+	var file, authzHost, readiness, out string
+	cmd := &cobra.Command{Use: "render-config --config FILE --authz-host HOST:PORT [--out FILE]", Short: "Render agentgateway's configuration from the checker's configuration; failureMode is always deny", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		cfg, err := parseGatewayConfig(raw)
+		if err != nil {
+			return err
+		}
+		rendered, err := gateway.RenderConfig(cfg, gateway.RenderOptions{AuthzHost: authzHost, ReadinessAddr: readiness})
+		if err != nil {
+			return err
+		}
+		if out == "" {
+			_, err := cmd.OutOrStdout().Write(rendered)
+			return err
+		}
+		return writeReplacing(out, rendered)
+	}}
+	cmd.Flags().StringVar(&file, "config", "", "the configuration `gateway authz` serves")
+	cmd.Flags().StringVar(&authzHost, "authz-host", "", "host:port where the gateway reaches `gateway authz`")
+	cmd.Flags().StringVar(&readiness, "readiness-addr", "", "optional gateway readiness listener, host:port")
+	cmd.Flags().StringVar(&out, "out", "", "write here, replacing the file whole; default stdout")
+	_ = cmd.MarkFlagRequired("config")
+	_ = cmd.MarkFlagRequired("authz-host")
+	return cmd
+}
+
+// writeReplacing writes through a temporary file in the same directory and renames it, so the
+// gateway never reloads a partly written configuration.
+func writeReplacing(path string, body []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".gateway-config-*")
+	if err != nil {
+		return fmt.Errorf("write gateway configuration: %w", err)
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write gateway configuration: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("write gateway configuration: %w", err)
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		return fmt.Errorf("write gateway configuration: %w", err)
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return fmt.Errorf("write gateway configuration: %w", err)
+	}
+	return nil
 }
 
 func gatewayAuthorizationCmd() *cobra.Command {

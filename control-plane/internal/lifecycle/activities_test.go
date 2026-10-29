@@ -3,7 +3,10 @@ package lifecycle_test
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
@@ -186,6 +189,12 @@ func TestJoinerAndLeaverActivitiesAgainstTheRegistry(t *testing.T) {
 		if e.Actor == "workflow:wf-test" {
 			actions = append(actions, e.Action)
 		}
+		if e.Action == "credentials.revoked" {
+			var after map[string]any
+			if err := json.Unmarshal(e.After, &after); err != nil || after["simulated"] != true {
+				t.Fatalf("simulated revocation evidence does not say it was simulated: %s", e.After)
+			}
+		}
 	}
 	want := []string{
 		"instance.created", "identity.provisioned", "instance.transitioned", "instance.transitioned",
@@ -210,5 +219,69 @@ func TestLeaverBeforeActivationSuspends(t *testing.T) {
 	}
 	if err := f.acts.SetState(ctx, f.scope, name, muistamov1.InstanceStateSuspended); err != nil {
 		t.Fatalf("requested -> suspended: %v", err)
+	}
+}
+
+// A leaver's credentials step really revokes the instance's gateway keys, and its evidence says
+// so and how many (docs/agentgateway-plan.md, step 4). HUMAN REVIEW REQUIRED.
+func TestLeaverRevokesTheInstancesVirtualKeys(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	f.acts.Revoker = lifecycle.KeyRevoker{Registry: f.svc}
+	f.template(t, "analyst-intern", "ANALYST_INTERN")
+	name, err := f.acts.EnsureInstance(ctx, f.scope, registry.TemplateVersionRef{Name: "analyst-intern", Version: 1}, person)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.acts.ProvisionIdentity(ctx, f.scope, name, person); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.acts.SetState(ctx, f.scope, name, muistamov1.InstanceStateActive); err != nil {
+		t.Fatal(err)
+	}
+	admin := registry.Actor{Tenant: f.scope.Tenant, Name: "dev:gw-admin@example.invalid", RequestID: "test"}
+	if err := registry.ConfigureGatewayAdmins(ctx, f.db.OwnerURL, admin, []string{admin.Name}, f.key); err != nil {
+		t.Fatal(err)
+	}
+	issued, err := f.svc.IssueKey(ctx, admin, muistamov1.VirtualKeyRequest{Instance: name, Aliases: []string{"reasoning-default"},
+		MonthlyBudget: muistamov1.Money{Amount: "5", Currency: "EUR"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.acts.SetState(ctx, f.scope, name, muistamov1.InstanceStateSuspended); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 { // a retried activity is harmless
+		if err := f.acts.RevokeCredentials(ctx, f.scope, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	key, err := f.svc.GetKey(ctx, admin, issued.Key.Id)
+	if err != nil || key.Status != muistamov1.VirtualKeyStatusRevoked || *key.RevokeReason != "leaver" {
+		t.Fatalf("key after leaver = %+v, %v", key, err)
+	}
+	events, err := f.svc.ListEvents(ctx, admin, 0, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var counts []any
+	for _, e := range events {
+		if e.Action != "credentials.revoked" {
+			continue
+		}
+		var after map[string]any
+		if err := json.Unmarshal(e.After, &after); err != nil {
+			t.Fatal(err)
+		}
+		if after["simulated"] != false || after["revoker"] != "gateway-virtual-keys" {
+			t.Fatalf("credentials.revoked evidence = %v, want real gateway revocation", after)
+		}
+		if !strings.Contains(fmt.Sprint(after["scope"]), "in-flight responses not terminated") {
+			t.Fatalf("real revocation evidence overstates its scope: %v", after)
+		}
+		counts = append(counts, after["keysRevokedByThisCall"])
+	}
+	if !slices.Equal(counts, []any{float64(1), float64(0)}) {
+		t.Fatalf("revoked counts per attempt = %v, want [1 0]", counts)
 	}
 }

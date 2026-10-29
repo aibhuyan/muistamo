@@ -1,0 +1,9 @@
+# Development only: the alias the dev gateway serves (deploy/dev/gateway/authz.template.json).
+apiVersion: muistamo.dev/v1
+kind: ModelAlias
+metadata:
+  name: dev-gateway-default
+  owner: platform-team
+spec:
+  target: dev-fake-model
+  description: Development alias served by the dev gateway's fake provider

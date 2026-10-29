@@ -124,8 +124,9 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 			}
 			defer temporal.Close()
 
-			// Invariant 8: say plainly what is not real yet.
-			log.Warn("SIMULATED: legacy workflow identities and gateway credential revocation remain simulated and are labeled in evidence")
+			// Invariant 8: say plainly what is not real yet. Legacy identities are simulated; leaver
+			// revocation of gateway virtual keys is real (workerActivities).
+			log.Warn("SIMULATED: legacy workflow identities remain simulated and are labeled in evidence")
 			simulated := &lifecycle.Simulated{}
 			service := registry.New(db, key)
 			if len(configs) > 0 {
@@ -137,7 +138,7 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 				live.RegisterWorkflow(lifecycle.EntraHRDispatch)
 				live.RegisterWorkflow(lifecycle.EntraJoiner)
 				live.RegisterWorkflow(lifecycle.EntraLeaver)
-				live.RegisterActivity(&lifecycle.EntraActivities{Registry: service, Identity: identity, Revoker: simulated})
+				live.RegisterActivity(entraWorkerActivities(service, identity))
 				if err := live.Start(); err != nil {
 					return fmt.Errorf("start Entra lifecycle worker: %w", err)
 				}
@@ -151,7 +152,7 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 			w.RegisterWorkflow(lifecycle.Joiner)
 			w.RegisterWorkflow(lifecycle.Leaver)
 			w.RegisterWorkflow(lifecycle.HRDispatch)
-			acts := &lifecycle.Activities{Registry: registry.New(db, key), Provisioner: simulated, Revoker: simulated}
+			acts := workerActivities(service, simulated)
 			if url := os.Getenv("MUISTAMO_KNOWLEDGE_URL"); url != "" {
 				acts.Knowledge = lifecycle.NewKnowledgeClient(url)
 			} else {
@@ -165,6 +166,17 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 	cmd.Flags().StringSliceVar(&bindingPaths, "entra-binding", nil, "historical development binding JSON files, one private credential line per file")
 	cmd.Flags().BoolVar(&credentialStdin, "credential-stdin", false, "read development Entra credentials privately from redirected stdin")
 	return cmd
+}
+
+// workerActivities and entraWorkerActivities wire real leaver revocation for every tenant: the
+// gateway checks each virtual key live, so revoking it in the registry is real revocation.
+// HUMAN REVIEW REQUIRED: revocation wiring.
+func workerActivities(service *registry.Service, sim *lifecycle.Simulated) *lifecycle.Activities {
+	return &lifecycle.Activities{Registry: service, Provisioner: sim, Revoker: lifecycle.KeyRevoker{Registry: service}}
+}
+
+func entraWorkerActivities(service *registry.Service, identity lifecycle.IdentityAdapter) *lifecycle.EntraActivities {
+	return &lifecycle.EntraActivities{Registry: service, Identity: identity, Revoker: lifecycle.KeyRevoker{Registry: service}}
 }
 
 func migrateCmd() *cobra.Command {
@@ -371,7 +383,7 @@ func gatewayCmd() *cobra.Command {
 	_ = set.MarkFlagRequired("actor")
 	admins.AddCommand(set)
 	cmd.AddCommand(admins)
-	cmd.AddCommand(gatewayAuthorizationCmd(), gatewayDigestCmd())
+	cmd.AddCommand(gatewayAuthorizationCmd(), gatewayDigestCmd(), gatewayRenderCmd())
 	return cmd
 }
 

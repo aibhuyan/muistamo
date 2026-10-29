@@ -9,8 +9,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -41,6 +43,14 @@ type Authorization struct {
 	log       *slog.Logger
 }
 
+// credentialEnv matches gatewaymodelroute.json: a variable name, never a value.
+var credentialEnv = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
+
+// unrenderable reports control and line-separator characters that YAML readers may fold or drop.
+func unrenderable(c rune) bool {
+	return c < 0x20 || c == 0x7f || (c >= 0x80 && c < 0xa0) || c == 0x2028 || c == 0x2029
+}
+
 // ConfigDigest binds both sides to the same normalized route configuration. Any route or
 // revision change requires the gateway and checker to agree before more calls are allowed.
 func ConfigDigest(cfg muistamov1.GatewayAuthzConfig) string {
@@ -50,24 +60,50 @@ func ConfigDigest(cfg muistamov1.GatewayAuthzConfig) string {
 }
 
 func NewAuthorization(decisions DecisionMaker, cfg muistamov1.GatewayAuthzConfig, kind muistamov1.GatewayAuthorizationRequestKind, log *slog.Logger) (*Authorization, error) {
-	if decisions == nil || log == nil || cfg.TenantId == uuid.Nil || len(cfg.Models) == 0 || (kind != "model" && kind != "mcp") {
-		return nil, errors.New("gateway authorization requires a tenant, models, registry, logger and explicit protocol")
+	if decisions == nil || log == nil || (kind != "model" && kind != "mcp") {
+		return nil, errors.New("gateway authorization requires a registry, logger and explicit protocol")
+	}
+	if err := ValidateConfig(cfg); err != nil {
+		return nil, err
 	}
 	s := &Authorization{decisions: decisions, tenant: cfg.TenantId, kind: kind, digest: ConfigDigest(cfg), routes: map[string]muistamov1.GatewayModelRoute{}, log: log}
 	for _, route := range cfg.Models {
-		target, err := url.Parse(route.BaseUrl)
-		if err != nil || target.Opaque != "" || (target.Scheme != "http" && target.Scheme != "https") || target.Hostname() == "" || target.User != nil || target.RawQuery != "" || target.ForceQuery || target.Fragment != "" || strings.Contains(route.BaseUrl, "#") || strings.IndexFunc(route.BaseUrl, func(c rune) bool { return c < 0x20 || c == 0x7f }) >= 0 {
-			return nil, errors.New("gateway deployment URL must be HTTP(S) without credentials, query, fragment or control characters")
-		}
-		if route.Alias == "" || route.CatalogueName == "" || route.AliasRevision < 1 || route.ModelRevision < 1 || route.Provider == "" || route.Model == "" || route.Region == "" {
-			return nil, errors.New("gateway route requires an exact alias, catalogue/model revision, provider, model and region")
-		}
-		if _, duplicate := s.routes[route.Alias]; duplicate {
-			return nil, errors.New("gateway route aliases must be unique")
-		}
 		s.routes[route.Alias] = route
 	}
 	return s, nil
+}
+
+// ValidateConfig is shared by the checker and the renderer, so the gateway is never given a route
+// the checker would refuse.
+func ValidateConfig(cfg muistamov1.GatewayAuthzConfig) error {
+	if cfg.TenantId == uuid.Nil || len(cfg.Models) == 0 {
+		return errors.New("gateway configuration requires a tenant and at least one model route")
+	}
+	seen := map[string]bool{}
+	for _, route := range cfg.Models {
+		target, err := url.Parse(route.BaseUrl)
+		if err != nil || target.Opaque != "" || (target.Scheme != "http" && target.Scheme != "https") || target.Hostname() == "" || target.User != nil || target.RawQuery != "" || target.ForceQuery || target.Fragment != "" || strings.Contains(route.BaseUrl, "#") || strings.IndexFunc(route.BaseUrl, func(c rune) bool { return c < 0x20 || c == 0x7f }) >= 0 {
+			return errors.New("gateway deployment URL must be HTTP(S) without credentials, query, fragment or control characters")
+		}
+		if route.Alias == "" || route.CatalogueName == "" || route.AliasRevision < 1 || route.ModelRevision < 1 || route.Provider == "" || route.Model == "" || route.Region == "" {
+			return errors.New("gateway route requires an exact alias, catalogue/model revision, provider, model and region")
+		}
+		// The gateway and the checker must read identical values: no control characters, and no
+		// "$", which the gateway may expand from its environment (only credentialEnv is expanded).
+		for _, v := range []string{route.Alias, route.CatalogueName, route.Provider, route.Model, route.Region, route.BaseUrl} {
+			if strings.ContainsRune(v, '$') || strings.IndexFunc(v, unrenderable) >= 0 {
+				return fmt.Errorf("gateway route %q contains a control character or a dollar sign", route.Alias)
+			}
+		}
+		if route.CredentialEnv != nil && !credentialEnv.MatchString(*route.CredentialEnv) {
+			return errors.New("gateway credential reference must be an environment variable name")
+		}
+		if seen[route.Alias] {
+			return errors.New("gateway route aliases must be unique")
+		}
+		seen[route.Alias] = true
+	}
+	return nil
 }
 
 func value(req *auth.CheckRequest, namespace string) (string, bool) {

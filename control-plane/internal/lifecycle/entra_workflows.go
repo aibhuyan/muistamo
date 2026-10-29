@@ -112,10 +112,13 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 	once := workflow.WithActivityOptions(ctx, options)
 	var failures []error
 	for _, name := range result.Instances {
-		for _, step := range []any{a.EntraRevoke, a.EntraDisable} {
-			if err := workflow.ExecuteActivity(once, step, ref, name).Get(ctx, nil); err != nil {
-				failures = append(failures, err)
-			}
+		// Key revocation is a local, idempotent transaction: retry it, so a transient database
+		// error never leaves a leaver's virtual keys active for a later rehire to reactivate.
+		if err := workflow.ExecuteActivity(ctx, a.EntraRevoke, ref, name).Get(ctx, nil); err != nil {
+			failures = append(failures, err)
+		}
+		if err := workflow.ExecuteActivity(once, a.EntraDisable, ref, name).Get(ctx, nil); err != nil {
+			failures = append(failures, err)
 		}
 	}
 	if err := workflow.ExecuteActivity(ctx, a.EntraRecordReviewCoverage, ref).Get(ctx, nil); err != nil {
