@@ -165,19 +165,21 @@ func (s *Service) AuthorizeGateway(ctx context.Context, tenant uuid.UUID, presen
 		if !within {
 			return deny("budget-reached")
 		}
-		// Calls that ran without a usage report (aborted streams) are billed by the provider but
-		// invisible to the budget: a key is refused once it has more of them this UTC month than
-		// its allowance (0: refused after the first).
-		// Calls whose usage did arrive no longer count. HUMAN REVIEW REQUIRED.
+		// Calls that ran without a usage report (aborted calls) are billed by the provider but
+		// invisible to the budget. A key is refused once, within a rolling 24 hours, more of its
+		// model calls than its allowance have no usage and either were reported as having none or
+		// are still unaccounted after UnmeteredAfter (a lost or refused export): the cap fails
+		// closed. Calls whose usage did arrive no longer count. Calls in flight can overshoot it.
+		// HUMAN REVIEW REQUIRED.
 		var underCap bool
-		err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM calls_without_usage w
-			JOIN gateway_calls c USING (tenant_id, request_id)
-			WHERE c.tenant_id = k.tenant_id AND c.key_id = k.id
-			AND c.authorized_at >= (date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
-			AND c.authorized_at < ((date_trunc('month', now() AT TIME ZONE 'UTC') + interval '1 month') AT TIME ZONE 'UTC')
+		err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM gateway_calls c
+			WHERE c.tenant_id = k.tenant_id AND c.key_id = k.id AND c.kind = 'model'
+			AND c.authorized_at > now() - interval '24 hours'
 			AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id)
+			AND (EXISTS (SELECT 1 FROM calls_without_usage w WHERE w.tenant_id = c.tenant_id AND w.request_id = c.request_id)
+			     OR c.authorized_at < now() - make_interval(secs => $2))
 			) <= k.max_calls_without_usage
-			FROM virtual_keys k WHERE k.id = $1`, keyID).Scan(&underCap)
+			FROM virtual_keys k WHERE k.id = $1`, keyID, UnmeteredAfter.Seconds()).Scan(&underCap)
 		if err != nil {
 			return err
 		}

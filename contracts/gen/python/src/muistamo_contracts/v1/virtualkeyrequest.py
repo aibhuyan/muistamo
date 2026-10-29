@@ -33,8 +33,8 @@ class VirtualKeyRequest(BaseModel):
     maxCallsWithoutUsage: Annotated[
         int | None,
         Field(
-            description="How many calls authorized in the current UTC month may run without a usage report (for example a stream the client aborted: the provider bills it, but the gateway reports no usage). Once more have, calls are refused. Default 3; 0 refuses the key after the first such call. Fixed at issuance.",
+            description="How many of the key's calls within a rolling 24 hours may run without a usage report: a call the client aborted (the provider likely bills it, but the gateway reports no usage), or one still unaccounted 15 minutes after authorization. Once more have, calls are refused until enough fall out of the window. Calls in flight when the limit is reached can overshoot it. Omitted means 10; 0 refuses the key after the first such call. Fixed at issuance.",
             ge=0,
             le=1000,
         ),
-    ] = 3
+    ] = None

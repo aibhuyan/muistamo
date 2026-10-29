@@ -181,14 +181,19 @@ func recordWithoutUsage(ctx context.Context, tx pgx.Tx, l UsageLine, out *UsageI
 		out.WithoutUsage = append(out.WithoutUsage, l.RequestID)
 		return nil
 	}
-	var known bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM calls_without_usage WHERE request_id = $1)
-		OR EXISTS (SELECT 1 FROM usage_records WHERE request_id = $1)`, l.RequestID).Scan(&known); err != nil {
+	var repeated, metered bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM calls_without_usage WHERE request_id = $1),
+		EXISTS (SELECT 1 FROM usage_records WHERE request_id = $1)`, l.RequestID).Scan(&repeated, &metered); err != nil {
 		return fmt.Errorf("check call without usage %s: %w", l.RequestID, err)
 	}
-	if known {
+	switch {
+	case metered:
+		// The same call reported both with and without usage: contradictory, kept as metered.
+		out.Conflicting++
+		out.ConflictingIDs = append(out.ConflictingIDs, l.RequestID)
+	case repeated:
 		out.Duplicate++
-	} else {
+	default:
 		out.Unmatched++
 	}
 	return nil

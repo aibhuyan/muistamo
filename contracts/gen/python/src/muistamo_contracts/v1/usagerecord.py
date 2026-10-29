@@ -42,7 +42,7 @@ class UsageRecord(BaseModel):
     usageMissing: Annotated[
         bool | None,
         Field(
-            description="Model calls only: true when the gateway reported that the call ran but sent no usage (for example a stream the client aborted). Its cost is unknown and was likely incurred; it counts toward the key's maxCallsWithoutUsage allowance."
+            description="Model calls only: true when the gateway reported that the call ran but sent no usage (for example a call the client aborted). Its cost is unknown and likely incurred; it counts toward the key's maxCallsWithoutUsage allowance."
         ),
     ] = None
     inputTokens: Annotated[int | None, Field(ge=0)] = None

@@ -3345,7 +3345,7 @@ type UsageRecord struct {
 	RecordedAt   *time.Time         `json:"recordedAt,omitempty"`
 	RequestId    openapi_types.UUID `json:"requestId"`
 
-	// UsageMissing Model calls only: true when the gateway reported that the call ran but sent no usage (for example a stream the client aborted). Its cost is unknown and was likely incurred; it counts toward the key's maxCallsWithoutUsage allowance.
+	// UsageMissing Model calls only: true when the gateway reported that the call ran but sent no usage (for example a call the client aborted). Its cost is unknown and likely incurred; it counts toward the key's maxCallsWithoutUsage allowance.
 	UsageMissing *bool `json:"usageMissing,omitempty"`
 }
 
@@ -3373,7 +3373,7 @@ type VirtualKey struct {
 	Id        openapi_types.UUID `json:"id"`
 	Instance  string             `json:"instance"`
 
-	// MaxCallsWithoutUsage How many calls authorized in the current UTC month may run without a usage report; once more have, calls are refused.
+	// MaxCallsWithoutUsage How many of the key's calls within a rolling 24 hours may run without a usage report (aborted, or unaccounted after 15 minutes); once more have, calls are refused. Calls in flight can overshoot it.
 	MaxCallsWithoutUsage int `json:"maxCallsWithoutUsage"`
 
 	// MonthlyBudget An exact amount. A decimal string, never a binary float, so billed costs and budgets are exact (invariant 7). EUR only while model price sheets are EUR only.
@@ -3415,7 +3415,7 @@ type VirtualKeyRequest struct {
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 	Instance  string     `json:"instance"`
 
-	// MaxCallsWithoutUsage How many calls authorized in the current UTC month may run without a usage report (for example a stream the client aborted: the provider bills it, but the gateway reports no usage). Once more have, calls are refused. Default 3; 0 refuses the key after the first such call. Fixed at issuance.
+	// MaxCallsWithoutUsage How many of the key's calls within a rolling 24 hours may run without a usage report: a call the client aborted (the provider likely bills it, but the gateway reports no usage), or one still unaccounted 15 minutes after authorization. Once more have, calls are refused until enough fall out of the window. Calls in flight when the limit is reached can overshoot it. Omitted means 10; 0 refuses the key after the first such call. Fixed at issuance.
 	MaxCallsWithoutUsage *int `json:"maxCallsWithoutUsage,omitempty"`
 
 	// MonthlyBudget Calls are refused once the recorded spend of calls authorized in the current UTC calendar month reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden.

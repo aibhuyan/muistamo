@@ -100,7 +100,7 @@ func TestCallsWithoutUsageBeyondTheAllowanceRefuseTheKey(t *testing.T) {
 	}
 }
 
-func TestOnlyThisKeysCallsStillMissingUsageThisMonthCount(t *testing.T) {
+func TestOnlyThisKeysCallsStillMissingUsageInTheLastDayCount(t *testing.T) {
 	f, req := gatewayFixture(t)
 	zero := 0
 	issued := keyWithAllowance(t, f, req, &zero)
@@ -115,16 +115,14 @@ func TestOnlyThisKeysCallsStillMissingUsageThisMonthCount(t *testing.T) {
 		t.Fatalf("another key's call blocked this key: %s", reason)
 	}
 
-	// Last month's call without usage does not count.
+	// A call without usage more than 24 hours ago no longer counts (rolling window).
 	old := authorize(t, f, issued)
 	if _, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{missing(old)}); err != nil {
 		t.Fatal(err)
 	}
-	testdb.Exec(t, f.db.OwnerURL, `ALTER TABLE gateway_calls DISABLE TRIGGER gateway_calls_stamp`)
-	testdb.Exec(t, f.db.OwnerURL, `UPDATE gateway_calls SET authorized_at = date_trunc('month', now()) - interval '1 day' WHERE request_id = $1`, old)
-	testdb.Exec(t, f.db.OwnerURL, `ALTER TABLE gateway_calls ENABLE TRIGGER gateway_calls_stamp`)
+	backdate(t, f, old, "25 hours")
 	if ok, reason := allowed(t, f, issued); !ok {
-		t.Fatalf("last month's call without usage blocked this key: %s", reason)
+		t.Fatalf("a call without usage 25 hours ago blocked this key: %s", reason)
 	}
 
 	// A call whose usage arrives after all no longer counts.
@@ -160,17 +158,81 @@ func TestKeyAllowanceIsValidatedShownAndFixed(t *testing.T) {
 	if key, err := f.svc.GetKey(t.Context(), f.actor, issued.Key.Id); err != nil || key.MaxCallsWithoutUsage != 2 {
 		t.Fatalf("read key = %+v, %v", key, err)
 	}
-	// The documented default (contract and 00016) is 3, in the service and in the column.
+	// The documented default (contract and 00016) is 10, in the service and in the column.
 	def := keyWithAllowance(t, f, req, nil)
-	if def.Key.MaxCallsWithoutUsage != 3 || registry.DefaultMaxCallsWithoutUsage != 3 {
+	if def.Key.MaxCallsWithoutUsage != 10 || registry.DefaultMaxCallsWithoutUsage != 10 {
 		t.Fatalf("default allowance = %d", def.Key.MaxCallsWithoutUsage)
 	}
 	if d := testdb.Scalar(t, f.db.OwnerURL, `SELECT column_default FROM information_schema.columns
-		WHERE table_name = 'virtual_keys' AND column_name = 'max_calls_without_usage'`); d != "3" {
-		t.Fatalf("column default = %q, want 3", d)
+		WHERE table_name = 'virtual_keys' AND column_name = 'max_calls_without_usage'`); d != "10" {
+		t.Fatalf("column default = %q, want 10", d)
 	}
 	err := testdb.ExecErr(f.db.AppURL, f.actor.Tenant, `UPDATE virtual_keys SET max_calls_without_usage = 1000 WHERE id = $1`, issued.Key.Id)
 	if err == nil || !strings.Contains(err.Error(), "permission denied") {
 		t.Fatalf("the server role raised a key's allowance: %v", err)
+	}
+}
+
+func backdate(t *testing.T, f fixture, id uuid.UUID, ago string) {
+	t.Helper()
+	testdb.Exec(t, f.db.OwnerURL, `ALTER TABLE gateway_calls DISABLE TRIGGER gateway_calls_stamp`)
+	testdb.Exec(t, f.db.OwnerURL, `UPDATE gateway_calls SET authorized_at = now() - $2::interval WHERE request_id = $1`, id, ago)
+	testdb.Exec(t, f.db.OwnerURL, `ALTER TABLE gateway_calls ENABLE TRIGGER gateway_calls_stamp`)
+}
+
+// A call still unaccounted 15 minutes after authorization (its export was lost or refused) counts
+// like one reported without usage, so the cap fails closed; a fresh one is still in flight.
+func TestUnaccountedCallsCountAfterTheThreshold(t *testing.T) {
+	f, req := gatewayFixture(t)
+	zero := 0
+	issued := keyWithAllowance(t, f, req, &zero)
+	// An old MCP call carries no tokens and never counts.
+	mcp := uuid.New()
+	testdb.Exec(t, f.db.OwnerURL, `INSERT INTO gateway_calls (tenant_id, request_id, key_id, instance, person, kind, mcp_method)
+		VALUES ($1, $2, $3, 'analyst-intern-person-a', 'dev:person-a@example.invalid', 'mcp', 'tools/call')`, f.actor.Tenant, mcp, issued.Key.Id)
+	backdate(t, f, mcp, "16 minutes")
+	fresh := authorize(t, f, issued)
+	if ok, reason := allowed(t, f, issued); !ok {
+		t.Fatalf("a call still in flight, or an MCP call, blocked the key: %s", reason)
+	}
+	backdate(t, f, fresh, "16 minutes")
+	if ok, reason := allowed(t, f, issued); ok || reason != "calls-without-usage-limit" {
+		t.Fatalf("a call unaccounted after 16 minutes: allowed %v, reason %q", ok, reason)
+	}
+	// Its usage arriving late clears it.
+	if _, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{line(fresh, 1, 0, 1)}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, reason := allowed(t, f, issued); !ok {
+		t.Fatalf("a metered call still counts: %s", reason)
+	}
+}
+
+// A call already metered and then reported without usage is contradictory: kept as metered,
+// counted as a conflict, never counted against the cap.
+func TestAMissingUsageReportForAMeteredCallIsAConflict(t *testing.T) {
+	f, issued, id := meteredFixture(t)
+	if _, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{line(id, 10, 0, 10)}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{missing(id)})
+	if err != nil || got.Conflicting != 1 || len(got.WithoutUsage) != 0 {
+		t.Fatalf("missing usage after usage = %+v, %v", got, err)
+	}
+	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM calls_without_usage`); n != 0 {
+		t.Fatalf("a metered call was recorded as without usage")
+	}
+	_ = issued
+}
+
+// The database itself refuses to count an MCP call as having run without usage.
+func TestOnlyModelCallsCanBeRecordedWithoutUsage(t *testing.T) {
+	f, issued, _ := meteredFixture(t)
+	mcp := uuid.New()
+	testdb.Exec(t, f.db.OwnerURL, `INSERT INTO gateway_calls (tenant_id, request_id, key_id, instance, person, kind, mcp_method)
+		VALUES ($1, $2, $3, 'analyst-intern-person-a', 'dev:person-a@example.invalid', 'mcp', 'tools/call')`, f.actor.Tenant, mcp, issued.Key.Id)
+	err := testdb.ExecErr(f.db.AppURL, f.actor.Tenant, `INSERT INTO calls_without_usage (tenant_id, request_id) VALUES ($1, $2)`, f.actor.Tenant, mcp)
+	if err == nil || !strings.Contains(err.Error(), "are model calls") {
+		t.Fatalf("an MCP call was recorded without usage: %v", err)
 	}
 }

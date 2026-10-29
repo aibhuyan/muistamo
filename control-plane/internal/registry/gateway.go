@@ -31,9 +31,9 @@ const keyPrefix = "mvk_"
 // secretBytes is the key's entropy: 256 bits.
 const secretBytes = 32
 
-// DefaultMaxCallsWithoutUsage is a key's monthly allowance of calls that ran without a usage
-// report, when issuance names none (matches the column default in 00016).
-const DefaultMaxCallsWithoutUsage = 3
+// DefaultMaxCallsWithoutUsage is a key's allowance, within a rolling 24 hours, of calls that ran
+// without a usage report, when issuance names none (matches the column default in 00016).
+const DefaultMaxCallsWithoutUsage = 10
 
 // ParseKey splits a presented key into its id and decoded secret. It never says which part was
 // wrong: a caller learns only that the key is not valid.
@@ -120,7 +120,7 @@ func (s *Service) IssueKey(ctx context.Context, actor Actor, req muistamov1.Virt
 	if req.ExpiresAt != nil && !req.ExpiresAt.After(now) {
 		return out, fmt.Errorf("expiresAt must be in the future: %w", ErrInvalid)
 	}
-	// Calls without a usage report (aborted streams) a key may make per UTC month (00016).
+	// Calls without a usage report (aborted calls) a key may make within a rolling 24 hours (00016).
 	maxWithoutUsage := DefaultMaxCallsWithoutUsage
 	if req.MaxCallsWithoutUsage != nil {
 		maxWithoutUsage = *req.MaxCallsWithoutUsage

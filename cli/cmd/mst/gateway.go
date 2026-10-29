@@ -138,7 +138,7 @@ func keyLine(k muistamov1.VirtualKey) string {
 	if k.ExpiresAt != nil {
 		expires = k.ExpiresAt.UTC().Format(time.RFC3339)
 	}
-	return fmt.Sprintf("%s\t%s\t%s\taliases %s\tbudget %s %s/month\twithout usage <= %d/month\texpires %s",
+	return fmt.Sprintf("%s\t%s\t%s\taliases %s\tbudget %s %s/month\tover %d without usage in 24h refuses\texpires %s",
 		k.Id, k.Instance, k.Status, strings.Join(k.Aliases, ","), k.MonthlyBudget.Amount, k.MonthlyBudget.Currency, k.MaxCallsWithoutUsage, expires)
 }
 
@@ -217,8 +217,11 @@ func keysIssueCmd(opts *options) *cobra.Command {
 				Aliases:       []string{alias},
 				MonthlyBudget: muistamov1.Money{Amount: budget, Currency: muistamov1.MoneyCurrencyEUR},
 			}
-			if maxWithoutUsage >= 0 {
+			switch {
+			case maxWithoutUsage >= 0:
 				req.MaxCallsWithoutUsage = &maxWithoutUsage
+			case maxWithoutUsage != -1:
+				return fmt.Errorf("--max-calls-without-usage must be 0 or more")
 			}
 			if expires != "" {
 				at, err := time.Parse(time.RFC3339, expires)
@@ -248,7 +251,7 @@ func keysIssueCmd(opts *options) *cobra.Command {
 	c.Flags().StringVar(&alias, "alias", "", "the model alias the key may call")
 	c.Flags().StringVar(&budget, "budget", "", "monthly budget in EUR, e.g. 25.50")
 	c.Flags().StringVar(&expires, "expires", "", "expiry time (RFC 3339)")
-	c.Flags().IntVar(&maxWithoutUsage, "max-calls-without-usage", -1, "calls per month that may run without a usage report, e.g. aborted streams (default 3; 0 refuses after the first)")
+	c.Flags().IntVar(&maxWithoutUsage, "max-calls-without-usage", -1, "calls within 24 hours that may run without a usage report, e.g. aborted calls (default 10; 0 refuses after the first)")
 	for _, f := range []string{"instance", "alias", "budget"} {
 		_ = c.MarkFlagRequired(f)
 	}

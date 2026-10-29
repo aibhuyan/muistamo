@@ -37,7 +37,7 @@ class VirtualKey(BaseModel):
     maxCallsWithoutUsage: Annotated[
         int,
         Field(
-            description="How many calls authorized in the current UTC month may run without a usage report; once more have, calls are refused.",
+            description="How many of the key's calls within a rolling 24 hours may run without a usage report (aborted, or unaccounted after 15 minutes); once more have, calls are refused. Calls in flight can overshoot it.",
             ge=0,
             le=1000,
         ),

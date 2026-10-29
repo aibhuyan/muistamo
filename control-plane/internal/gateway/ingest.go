@@ -209,7 +209,11 @@ func usageLine(attrs []*common.KeyValue) (registry.UsageLine, string) {
 	if path, _ := str("url.path"); path != "/v1/chat/completions" {
 		return registry.UsageLine{}, "unmetered-path"
 	}
-	if code, ok := num("http.response.status_code"); !ok || code < 200 || code > 299 {
+	// An explicit provider or gateway error (4xx, 5xx) is not usage. No status at all means the
+	// client went away before the first byte (validation addendum 2026-10-29 (3)): the call ran
+	// and the provider likely bills the prompt, so it is treated like an aborted call below.
+	code, hasStatus := num("http.response.status_code")
+	if _, present := a["http.response.status_code"]; present && (!hasStatus || code < 200 || code > 299) {
 		return registry.UsageLine{}, "not-successful"
 	}
 	model, ok := str("gen_ai.request.model")
@@ -219,18 +223,14 @@ func usageLine(attrs []*common.KeyValue) (registry.UsageLine, string) {
 	if provider, _ := str("gen_ai.provider.name"); !openAISemantics[provider] {
 		return registry.UsageLine{}, "unvalidated-provider-usage"
 	}
-	_, hasIn := a["gen_ai.usage.input_tokens"]
-	_, hasOut := a["gen_ai.usage.output_tokens"]
-	if !hasIn && !hasOut {
-		// The call ran (authorized, successful) but the gateway reported no usage, as for a stream
-		// the client aborted: recorded as such and counted against the key's cap, never priced.
-		response, _ := str("gen_ai.response.model")
-		return registry.UsageLine{RequestID: id, Model: model, ResponseModel: response, UsageMissing: true}, ""
-	}
 	in, okIn := num("gen_ai.usage.input_tokens")
 	out, okOut := num("gen_ai.usage.output_tokens")
-	if !okIn || !okOut {
-		return registry.UsageLine{}, "partial-usage"
+	if !hasStatus || !okIn || !okOut {
+		// The call ran but the gateway reported no complete usage, as for a call the client
+		// aborted (before or after the first byte): recorded as such and counted against the
+		// key's cap, never priced. Partial usage fails closed the same way.
+		response, _ := str("gen_ai.response.model")
+		return registry.UsageLine{RequestID: id, Model: model, ResponseModel: response, UsageMissing: true}, ""
 	}
 	cached := int64(0)
 	if _, present := a["gen_ai.usage.cache_read.input_tokens"]; present {
