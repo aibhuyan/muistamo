@@ -571,9 +571,11 @@ paths:
           in: query
           required: false
           description: >-
-            Only model calls authorized more than 15 minutes ago with no usage record: they may
-            not have run (the gateway can reject an authorized call), or their usage export was
-            lost. Reported, never estimated.
+            Only model calls authorized more than 15 minutes ago with no usage record. Their cost
+            is unknown and may have been incurred: the call may not have run (the gateway can
+            reject an authorized call), may have run without reporting usage (an aborted stream,
+            a failed response), or its usage may have been lost in export or refused by ingest.
+            Reported, never estimated.
           schema:
             type: boolean
         - $ref: "#/components/parameters/Cursor"

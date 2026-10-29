@@ -2394,7 +2394,7 @@ export interface components {
         };
         /**
          * UsageRecord
-         * @description A call the gateway's check authorized, and what it cost. metered is false when no usage arrived from the gateway: the call may not have run (the gateway can still reject an authorized call), or its usage export was lost. Unmetered calls are reported, never estimated.
+         * @description A call the gateway's check authorized, and what it cost at provider prices. metered is false while no usage has arrived; see metered for what an unmetered call means. Unmetered calls are reported, never estimated.
          */
         UsageRecord: {
             /** Format: uuid */
@@ -2414,7 +2414,7 @@ export interface components {
             mcpTool?: string;
             /** Format: date-time */
             authorizedAt: string;
-            /** @description Model calls only: false when no usage arrived from the gateway, because the call may not have run (the gateway can reject an authorized call) or its usage export was lost. Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens. */
+            /** @description Model calls only: false while no usage record exists. Within 15 minutes of authorization this is normal (usage is still arriving); after that the call is unmetered: its cost is unknown and may have been incurred (it may not have run, may have run without reporting usage, or its usage was lost in export or refused by ingest). Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens. */
             metered?: boolean;
             inputTokens?: number;
             cachedInputTokens?: number;
@@ -3277,7 +3277,7 @@ export interface operations {
                 instance?: string;
                 from?: string;
                 to?: string;
-                /** @description Only model calls authorized more than 15 minutes ago with no usage record: they may not have run (the gateway can reject an authorized call), or their usage export was lost. Reported, never estimated. */
+                /** @description Only model calls authorized more than 15 minutes ago with no usage record. Their cost is unknown and may have been incurred: the call may not have run (the gateway can reject an authorized call), may have run without reporting usage (an aborted stream, a failed response), or its usage may have been lost in export or refused by ingest. Reported, never estimated. */
                 unmetered?: boolean;
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];

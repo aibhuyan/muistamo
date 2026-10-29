@@ -14,6 +14,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	collogs "go.opentelemetry.io/proto/otlp/collector/logs/v1"
@@ -33,6 +34,17 @@ const IngestTokenEnv = "MUISTAMO_GATEWAY_INGEST_TOKEN"
 
 // MinIngestTokenBytes is the shortest export credential the ingest server accepts.
 const MinIngestTokenBytes = 32
+
+// MaxRecordsPerExport bounds one export, so a batch is one bounded transaction and one bounded
+// evidence event. The gateway's exporter sends far smaller batches; larger ones are refused.
+const MaxRecordsPerExport = 2048
+
+// exportDeadline bounds the time one export may hold its transaction.
+const exportDeadline = 30 * time.Second
+
+// openAISemantics are the providers whose input token count includes cached tokens, the
+// convention the pricing formula assumes. Others are refused until their usage is validated.
+var openAISemantics = map[string]bool{"openai": true}
 
 // UsageRecorder is the registry boundary: it prices and records usage, with evidence.
 type UsageRecorder interface {
@@ -80,9 +92,21 @@ func (s *Ingest) Export(ctx context.Context, req *collogs.ExportLogsServiceReque
 		s.log.Warn("gateway usage export refused: unauthenticated")
 		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
 	}
+	records := 0
+	for _, rl := range req.GetResourceLogs() {
+		for _, sl := range rl.GetScopeLogs() {
+			records += len(sl.GetLogRecords())
+		}
+	}
+	if records > MaxRecordsPerExport {
+		s.log.Warn("gateway usage export refused: too many records", "tenant", s.tenant, "records", records)
+		return nil, status.Error(codes.InvalidArgument, "too many records in one export")
+	}
+	ctx, cancel := context.WithTimeout(ctx, exportDeadline)
+	defer cancel()
 	var lines []registry.UsageLine
 	invalid := map[string]int{}
-	ignored := 0
+	refused, ungoverned := 0, 0
 	for _, rl := range req.GetResourceLogs() {
 		for _, sl := range rl.GetScopeLogs() {
 			for _, r := range sl.GetLogRecords() {
@@ -90,29 +114,49 @@ func (s *Ingest) Export(ctx context.Context, req *collogs.ExportLogsServiceReque
 				switch reason {
 				case "":
 					lines = append(lines, l)
-				case "not-authorized-call":
-					ignored++
+				case "refused-call":
+					refused++
+				case "ungoverned-call":
+					ungoverned++
 				default:
 					invalid[reason]++
 				}
 			}
 		}
 	}
+	if ungoverned > 0 {
+		// The checker gives every call it allows a request id, and the gateway fails closed. A
+		// successful model call without one ran outside Muistamo's authorization: observed,
+		// not governed (invariant 8). It is never recorded as usage.
+		s.log.Warn("gateway reported successful model calls without a Muistamo authorization", "tenant", s.tenant, "calls", ungoverned)
+	}
 	var result registry.UsageIngest
 	if len(lines) > 0 {
 		var err error
 		if result, err = s.usage.RecordUsage(ctx, s.tenant, lines); err != nil {
-			// The batch is not recorded; its calls are reported as unmetered.
 			s.log.Error("gateway usage not recorded", "tenant", s.tenant, "records", len(lines), "error", err)
+			if errors.Is(err, registry.ErrInvalid) {
+				// Malformed input fails the same way every time: never ask for a retry.
+				return nil, status.Error(codes.InvalidArgument, "usage not recorded: invalid records")
+			}
+			// A transient failure: the gateway may resend; until then these calls show as unmetered.
 			return nil, status.Error(codes.Unavailable, "usage not recorded")
 		}
 	}
-	rejected := result.Conflicting + result.Unmatched
+	rejected := result.Conflicting + result.Unmatched + ungoverned
 	for _, n := range invalid {
 		rejected += n
 	}
-	s.log.Info("gateway usage ingested", "tenant", s.tenant, "accepted", len(result.Accepted), "duplicate", result.Duplicate,
-		"conflicting", result.Conflicting, "unmatched", result.Unmatched, "invalid", invalid, "ignored", ignored)
+	if result.Conflicting > 0 {
+		s.log.Warn("gateway reported different usage for already metered calls; the first record is kept",
+			"tenant", s.tenant, "requests", result.ConflictingIDs)
+	}
+	level := slog.LevelInfo
+	if rejected > 0 {
+		level = slog.LevelWarn
+	}
+	s.log.Log(ctx, level, "gateway usage ingested", "tenant", s.tenant, "accepted", len(result.Accepted), "duplicate", result.Duplicate,
+		"conflicting", result.Conflicting, "unmatched", result.Unmatched, "invalid", invalid, "refused_calls", refused, "ungoverned_calls", ungoverned)
 	resp := &collogs.ExportLogsServiceResponse{}
 	if rejected > 0 {
 		resp.PartialSuccess = &collogs.ExportLogsPartialSuccess{RejectedLogRecords: int64(rejected),
@@ -146,7 +190,13 @@ func usageLine(attrs []*common.KeyValue) (registry.UsageLine, string) {
 	}
 	raw, ok := str("muistamo.request_id")
 	if !ok || raw == "" {
-		return registry.UsageLine{}, "not-authorized-call"
+		// Calls the checker refused get no request id. A successful model call without one is
+		// not refused: it ran ungoverned.
+		code, _ := num("http.response.status_code")
+		if p, _ := str("protocol"); p == "llm" && code >= 200 && code <= 299 {
+			return registry.UsageLine{}, "ungoverned-call"
+		}
+		return registry.UsageLine{}, "refused-call"
 	}
 	id, err := uuid.Parse(raw)
 	if err != nil || id.String() != raw {
@@ -166,6 +216,9 @@ func usageLine(attrs []*common.KeyValue) (registry.UsageLine, string) {
 	if !ok || model == "" {
 		return registry.UsageLine{}, "no-model"
 	}
+	if provider, _ := str("gen_ai.provider.name"); !openAISemantics[provider] {
+		return registry.UsageLine{}, "unvalidated-provider-usage"
+	}
 	in, okIn := num("gen_ai.usage.input_tokens")
 	out, okOut := num("gen_ai.usage.output_tokens")
 	if !okIn || !okOut {
@@ -177,7 +230,7 @@ func usageLine(attrs []*common.KeyValue) (registry.UsageLine, string) {
 			return registry.UsageLine{}, "invalid-tokens"
 		}
 	}
-	if in < 0 || out < 0 || cached < 0 || cached > in {
+	if in < 0 || out < 0 || cached < 0 || cached > in || in > registry.MaxTokens || out > registry.MaxTokens {
 		return registry.UsageLine{}, "invalid-tokens"
 	}
 	response, _ := str("gen_ai.response.model")

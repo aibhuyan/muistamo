@@ -1,7 +1,9 @@
 package registry_test
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -63,6 +65,12 @@ func TestUsageIsPricedExactlyFromTheAuthorizationSnapshot(t *testing.T) {
 		AND actor = 'gateway:ingest' AND after->'requestIds' ? $1 AND after->'costAtProviderPrices'->>'EUR' = '0.005292'`, id.String()); n != 1 {
 		t.Fatalf("batch evidence = %d events, want 1", n)
 	}
+	// The signed digest binds each call to its tokens and cost: recomputable from the usage rows.
+	line := id.String() + "|1000|400|250|0.005292000000 EUR"
+	want := fmt.Sprintf("%x", sha256.Sum256([]byte(line)))
+	if got := testdb.Scalar(t, f.db.OwnerURL, `SELECT after->>'linesSha256' FROM evidence_events WHERE action = 'gateway.usage.ingested'`); got != want {
+		t.Fatalf("lines digest = %s, want %s over %q", got, want, line)
+	}
 }
 
 func TestUsageIngestRefusesLinesWithoutAnAuthorizedModelCall(t *testing.T) {
@@ -81,7 +89,8 @@ func TestUsageIngestRefusesLinesWithoutAnAuthorizedModelCall(t *testing.T) {
 	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM usage_records`); n != 0 || f.events(t) != before {
 		t.Fatalf("forged lines recorded %d usage rows or wrote evidence", n)
 	}
-	for _, bad := range []registry.UsageLine{line(id, -1, 0, 1), line(id, 1, 0, -1), line(id, 1, 2, 1)} {
+	for _, bad := range []registry.UsageLine{line(id, -1, 0, 1), line(id, 1, 0, -1), line(id, 1, 2, 1),
+		line(id, registry.MaxTokens+1, 0, 1), line(id, 1, 0, registry.MaxTokens+1)} {
 		if _, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{bad}); !errors.Is(err, registry.ErrInvalid) {
 			t.Errorf("invalid counts %+v accepted: %v", bad, err)
 		}
@@ -94,8 +103,10 @@ func TestUsageIngestIsIdempotentAndKeepsTheFirstRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := f.events(t)
-	got, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{line(id, 1000, 0, 0), line(id, 5000, 0, 0)})
-	if err != nil || len(got.Accepted) != 0 || got.Duplicate != 1 || got.Conflicting != 1 || f.events(t) != before {
+	otherModel := line(id, 1000, 0, 0)
+	otherModel.ResponseModel = "another-response-model"
+	got, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{line(id, 1000, 0, 0), line(id, 5000, 0, 0), otherModel})
+	if err != nil || len(got.Accepted) != 0 || got.Duplicate != 1 || got.Conflicting != 2 || len(got.ConflictingIDs) != 2 || f.events(t) != before {
 		t.Fatalf("replayed usage = %+v, %v, evidence delta %d", got, err, f.events(t)-before)
 	}
 	if amount := testdb.Scalar(t, f.db.OwnerURL, `SELECT cost_amount::text FROM usage_records`); amount != "0.002800000000" {

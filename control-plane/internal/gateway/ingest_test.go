@@ -3,6 +3,7 @@ package gateway_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -72,7 +73,7 @@ func attr(k string, v any) *common.KeyValue {
 // record is the gateway's access-log record for an authorized, successful model call.
 func record(id uuid.UUID, change func(map[string]any)) *logs.LogRecord {
 	a := map[string]any{
-		"muistamo.request_id": id.String(), "protocol": "llm", "url.path": "/v1/chat/completions",
+		"muistamo.request_id": id.String(), "protocol": "llm", "url.path": "/v1/chat/completions", "gen_ai.provider.name": "openai",
 		"http.response.status_code": 200, "gen_ai.request.model": "test-model", "gen_ai.response.model": "test-model",
 		"gen_ai.usage.input_tokens": 7, "gen_ai.usage.cache_read.input_tokens": 4, "gen_ai.usage.output_tokens": 3,
 	}
@@ -129,6 +130,12 @@ func TestIngestRecordsOnlyAuthorizedSuccessfulModelUsage(t *testing.T) {
 		"cached as text": func(a map[string]any) { a["gen_ai.usage.cache_read.input_tokens"] = "4" },
 		"uppercase id":   func(a map[string]any) { a["muistamo.request_id"] = "ABCDEF00-0000-4000-8000-000000000000" },
 		"not an id":      func(a map[string]any) { a["muistamo.request_id"] = "req-1" },
+		"huge input":     func(a map[string]any) { a["gen_ai.usage.input_tokens"] = registry.MaxTokens + 1 },
+		"huge output":    func(a map[string]any) { a["gen_ai.usage.output_tokens"] = registry.MaxTokens + 1 },
+		"other provider": func(a map[string]any) { a["gen_ai.provider.name"] = "anthropic" },
+		"no provider":    func(a map[string]any) { delete(a, "gen_ai.provider.name") },
+		// A successful model call the checker never authorized: ungoverned, never usage.
+		"ungoverned": func(a map[string]any) { delete(a, "muistamo.request_id") },
 	}
 	records := []*logs.LogRecord{record(good, nil), refused}
 	for _, change := range bad {
@@ -175,5 +182,24 @@ func TestIngestReportsAnUnrecordedBatch(t *testing.T) {
 func TestIngestRequiresALongToken(t *testing.T) {
 	if _, err := gateway.NewIngest(&usageRecorder{}, renderFixture(), []byte("short-fake-token"), slog.Default()); err == nil {
 		t.Fatal("a short ingest token was accepted")
+	}
+}
+
+func TestIngestRefusesOversizedExports(t *testing.T) {
+	r := &usageRecorder{}
+	records := make([]*logs.LogRecord, gateway.MaxRecordsPerExport+1)
+	for i := range records {
+		records[i] = record(uuid.New(), nil)
+	}
+	if _, err := ingest(t, r).Export(authed("Bearer "+ingestToken), export(records...)); status.Code(err) != codes.InvalidArgument || r.calls != 0 {
+		t.Fatalf("oversized export = %v, recorder called %d times", err, r.calls)
+	}
+}
+
+// Invalid input fails the same way on every retry, so it is never answered as retryable.
+func TestIngestDoesNotAskForRetriesOfInvalidBatches(t *testing.T) {
+	r := &usageRecorder{err: fmt.Errorf("bad line: %w", registry.ErrInvalid)}
+	if _, err := ingest(t, r).Export(authed("Bearer "+ingestToken), export(record(uuid.New(), nil))); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("invalid batch = %v, want InvalidArgument", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,15 +34,18 @@ func usageCmd(opts *options) *cobra.Command {
 			if instance != "" {
 				params.Instance = &instance
 			}
-			for flag, dst := range map[string]**time.Time{from: &params.From, to: &params.To} {
-				if flag == "" {
+			for _, f := range []struct {
+				value string
+				dst   **time.Time
+			}{{from, &params.From}, {to, &params.To}} {
+				if f.value == "" {
 					continue
 				}
-				at, err := time.Parse(time.RFC3339, flag)
+				at, err := time.Parse(time.RFC3339, f.value)
 				if err != nil {
-					return fmt.Errorf("time %q: %w", flag, err)
+					return fmt.Errorf("time %q: %w", f.value, err)
 				}
-				*dst = &at
+				*f.dst = &at
 			}
 			if unmetered {
 				params.Unmetered = &unmetered
@@ -62,8 +66,8 @@ func usageCmd(opts *options) *cobra.Command {
 				}
 				for _, r := range res.JSON200.Items {
 					calls++
-					cmd.Println(usageLine(r))
-					if r.Metered != nil && !*r.Metered {
+					cmd.Println(usageLine(r, time.Now()))
+					if r.Metered != nil && !*r.Metered && !pending(r, time.Now()) {
 						notMetered++
 					}
 					if r.Cost != nil {
@@ -84,7 +88,13 @@ func usageCmd(opts *options) *cobra.Command {
 				params.Cursor = &next
 			}
 			// Totals at provider prices, exactly; unmetered calls are counted, never estimated.
-			for currency, total := range totals {
+			currencies := make([]string, 0, len(totals))
+			for currency := range totals {
+				currencies = append(currencies, string(currency))
+			}
+			slices.Sort(currencies)
+			for _, currency := range currencies {
+				total := totals[muistamov1.MoneyCurrency(currency)]
 				cmd.Println(fmt.Sprintf("total %s %s at provider cost", strings.TrimRight(strings.TrimRight(total.FloatString(12), "0"), "."), currency))
 			}
 			cmd.Println(fmt.Sprintf("%d calls, %d unmetered", calls, notMetered))
@@ -98,9 +108,18 @@ func usageCmd(opts *options) *cobra.Command {
 	return c
 }
 
-func usageLine(r muistamov1.UsageRecord) string {
-	cost := "unmetered"
+// unmeteredAfter matches the server's threshold: until then a call without usage is pending.
+const unmeteredAfter = 15 * time.Minute
+
+func pending(r muistamov1.UsageRecord, now time.Time) bool {
+	return now.Sub(r.AuthorizedAt) < unmeteredAfter
+}
+
+func usageLine(r muistamov1.UsageRecord, now time.Time) string {
+	cost := "unmetered: cost unknown, may have been incurred"
 	switch {
+	case r.Metered != nil && !*r.Metered && pending(r, now):
+		cost = "pending: usage not yet received"
 	case r.Metered == nil:
 		cost = "no tokens (" + string(r.Kind) + ")"
 	case *r.Metered && r.Cost != nil:
