@@ -120,7 +120,9 @@ func Leaver(ctx workflow.Context, in LeaverInput) (LeaverResult, error) {
 	var failures []error
 	for _, name := range instances {
 		if err := workflow.ExecuteActivity(ctx, a.SetState, in.Scope, name, muistamov1.InstanceStateSuspended).Get(ctx, nil); err != nil {
-			// Revocation requires a suspended instance; the failure is reported below.
+			// An instance that could not be suspended is not revoked: while it is active, new
+			// keys can be issued and calls authorized, so revocation could not hold (the gateway
+			// revoker refuses an active instance outright). It is reported for reconciliation.
 			failures = append(failures, fmt.Errorf("suspend %s: %w", name, err))
 			continue
 		}
@@ -129,6 +131,11 @@ func Leaver(ctx workflow.Context, in LeaverInput) (LeaverResult, error) {
 		}
 	}
 	if len(failures) > 0 {
+		// Release the HR setup fence (erasure waits for it), as the Entra leaver does. The
+		// personal-layer review and the grace period wait for reconciliation.
+		if err := settleHRSetup(ctx, in.Scope); err != nil {
+			failures = append(failures, fmt.Errorf("settle HR setup: %w", err))
+		}
 		return result, fmt.Errorf("leaver requires reconciliation: %w", errors.Join(failures...))
 	}
 	var review ReviewOpened
