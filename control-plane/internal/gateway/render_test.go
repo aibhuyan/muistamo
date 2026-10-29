@@ -48,7 +48,7 @@ llm:
 `
 
 func TestRenderedGatewayConfigMatchesGolden(t *testing.T) {
-	out, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{AuthzHost: "authz:18081", ReadinessAddr: "0.0.0.0:19001"})
+	out, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{Plaintext: true, AuthzHost: "authz:18081", ReadinessAddr: "0.0.0.0:19001"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestRenderedGatewayConfigFailsClosedAndBindsTheChecker(t *testing.T) {
 	second := cfg.Models[0]
 	second.Alias, second.CredentialEnv = "fast-default", nil
 	cfg.Models = append(cfg.Models, second)
-	out, err := gateway.RenderConfig(cfg, gateway.RenderOptions{AuthzHost: "authz:18081"})
+	out, err := gateway.RenderConfig(cfg, gateway.RenderOptions{Plaintext: true, AuthzHost: "authz:18081"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,22 +119,39 @@ func TestRenderedGatewayConfigFailsClosedAndBindsTheChecker(t *testing.T) {
 func TestRenderRefusesWhatTheCheckerWouldRefuse(t *testing.T) {
 	for name, mutate := range map[string]func(*muistamov1.GatewayAuthzConfig, *gateway.RenderOptions){
 		"unvalidated provider": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].Provider = "anthropic" },
-		"credential value":     func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { v := "sk-fake-not-a-name"; c.Models[0].CredentialEnv = &v },
-		"lowercase reference":  func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { v := "openai_key"; c.Models[0].CredentialEnv = &v },
-		"another secret":       func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { v := "OTLP_TOKEN"; c.Models[0].CredentialEnv = &v },
-		"url with credentials": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].BaseUrl = "http://u:p@provider/v1" },
-		"duplicate alias":      func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models = append(c.Models, c.Models[0]) },
-		"no tenant":            func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.TenantId = uuid.Nil },
-		"no authz host":        func(_ *muistamov1.GatewayAuthzConfig, o *gateway.RenderOptions) { o.AuthzHost = "" },
-		"authz host injection": func(_ *muistamov1.GatewayAuthzConfig, o *gateway.RenderOptions) { o.AuthzHost = "authz:1\nfailureMode: allow" },
-		"bad readiness":        func(_ *muistamov1.GatewayAuthzConfig, o *gateway.RenderOptions) { o.ReadinessAddr = "0.0.0.0" },
-		"tab in alias":         func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].Alias = "x\ty" },
-		"newline in model":     func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].Model = "m\nmcp: {}" },
-		"line separator":       func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].Region = "eu\u2028x" },
-		"dollar in base url":   func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].BaseUrl = "http://p/$SECRET" },
-		"dollar in model":      func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].Model = "$OTHER_KEY" },
+		"credential value": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) {
+			v := "sk-fake-not-a-name"
+			c.Models[0].CredentialEnv = &v
+		},
+		"lowercase reference": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) {
+			v := "openai_key"
+			c.Models[0].CredentialEnv = &v
+		},
+		"another secret": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) {
+			v := "OTLP_TOKEN"
+			c.Models[0].CredentialEnv = &v
+		},
+		"url with credentials": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) {
+			c.Models[0].BaseUrl = "http://u:p@provider/v1"
+		},
+		"duplicate alias": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) {
+			c.Models = append(c.Models, c.Models[0])
+		},
+		"no tenant":     func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.TenantId = uuid.Nil },
+		"no authz host": func(_ *muistamov1.GatewayAuthzConfig, o *gateway.RenderOptions) { o.AuthzHost = "" },
+		"authz host injection": func(_ *muistamov1.GatewayAuthzConfig, o *gateway.RenderOptions) {
+			o.AuthzHost = "authz:1\nfailureMode: allow"
+		},
+		"bad readiness":    func(_ *muistamov1.GatewayAuthzConfig, o *gateway.RenderOptions) { o.ReadinessAddr = "0.0.0.0" },
+		"tab in alias":     func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].Alias = "x\ty" },
+		"newline in model": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].Model = "m\nmcp: {}" },
+		"line separator":   func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].Region = "eu\u2028x" },
+		"dollar in base url": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) {
+			c.Models[0].BaseUrl = "http://p/$SECRET"
+		},
+		"dollar in model": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].Model = "$OTHER_KEY" },
 	} {
-		cfg, opts := renderFixture(), gateway.RenderOptions{AuthzHost: "authz:18081"}
+		cfg, opts := renderFixture(), gateway.RenderOptions{Plaintext: true, AuthzHost: "authz:18081"}
 		mutate(&cfg, &opts)
 		if out, err := gateway.RenderConfig(cfg, opts); err == nil {
 			t.Errorf("%s: rendered\n%s", name, out)
@@ -146,7 +163,7 @@ func TestRenderRefusesWhatTheCheckerWouldRefuse(t *testing.T) {
 func TestRenderedValuesCannotInjectConfiguration(t *testing.T) {
 	cfg := renderFixture()
 	cfg.Models[0].Model = "m'} failureMode: allow, mcp: {port: 4001}, x: !!binary *a #"
-	out, err := gateway.RenderConfig(cfg, gateway.RenderOptions{AuthzHost: "authz:18081"})
+	out, err := gateway.RenderConfig(cfg, gateway.RenderOptions{Plaintext: true, AuthzHost: "authz:18081"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +183,7 @@ func TestRenderedValuesCannotInjectConfiguration(t *testing.T) {
 // With an ingest host, every request's access log goes to Muistamo's ingest with the credential
 // the gateway reads from its environment, and the checker's request id.
 func TestRenderedGatewayConfigExportsUsageToIngest(t *testing.T) {
-	out, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{AuthzHost: "authz:18081", IngestHost: "ingest:4317"})
+	out, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{Plaintext: true, AuthzHost: "authz:18081", IngestHost: "ingest:4317"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,14 +197,66 @@ func TestRenderedGatewayConfigExportsUsageToIngest(t *testing.T) {
 	if otlp["host"] != "ingest:4317" || key != "$MUISTAMO_GATEWAY_INGEST_TOKEN" || field != `request.headers["x-muistamo-request-id"]` {
 		t.Fatalf("otlp = %v", otlp)
 	}
-	if _, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{AuthzHost: "authz:18081", IngestHost: "ingest"}); err == nil {
+	if _, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{Plaintext: true, AuthzHost: "authz:18081", IngestHost: "ingest"}); err == nil {
 		t.Fatal("an ingest host without a port was rendered")
 	}
-	plain, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{AuthzHost: "authz:18081"})
+	plain, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{Plaintext: true, AuthzHost: "authz:18081"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := yaml.Unmarshal(plain, &doc); err != nil || doc["frontendPolicies"] != nil {
 		t.Fatalf("usage export rendered without an ingest host: %v", err)
+	}
+}
+
+func gatewayTLS() *gateway.GatewayTLS {
+	return &gateway.GatewayTLS{Root: "/etc/muistamo/tls/ca.pem", Cert: "/etc/muistamo/tls/gateway.pem", Key: "/etc/muistamo/tls/gateway.key",
+		AuthzServerName: "gateway-authz", IngestServerName: "gateway-ingest"}
+}
+
+// With TLS, both connections carry the gateway's client certificate and verify the endpoint's
+// name against the operator's CA. HUMAN REVIEW REQUIRED.
+func TestRenderedGatewayConfigUsesMutualTLSToBothEndpoints(t *testing.T) {
+	out, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{AuthzHost: "gateway-authz:18081", IngestHost: "gateway-ingest:4317", TLS: gatewayTLS()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(out, &doc); err != nil {
+		t.Fatal(err)
+	}
+	authz := doc["llm"].(map[string]any)["policies"].(map[string]any)["extAuthz"].(map[string]any)["policies"].(map[string]any)["backendTLS"].(map[string]any)
+	ingest := doc["frontendPolicies"].(map[string]any)["accessLog"].(map[string]any)["otlp"].(map[string]any)["policies"].(map[string]any)
+	for name, tls := range map[string]map[string]any{"authz": authz, "ingest": ingest["backendTLS"].(map[string]any)} {
+		if tls["root"] != "/etc/muistamo/tls/ca.pem" || tls["cert"] != "/etc/muistamo/tls/gateway.pem" || tls["key"] != "/etc/muistamo/tls/gateway.key" {
+			t.Errorf("%s backendTLS = %v", name, tls)
+		}
+	}
+	if authz["hostname"] != "gateway-authz" || ingest["backendTLS"].(map[string]any)["hostname"] != "gateway-ingest" {
+		t.Fatalf("server names: authz %v, ingest %v", authz["hostname"], ingest["backendTLS"])
+	}
+	if ingest["backendAuth"] == nil {
+		t.Fatal("the ingest bearer was dropped with TLS")
+	}
+}
+
+func TestRenderRefusesPlaintextUnlessAskedAndHalfSecuredConfigs(t *testing.T) {
+	bad := func(change func(*gateway.GatewayTLS)) *gateway.GatewayTLS {
+		tls := gatewayTLS()
+		change(tls)
+		return tls
+	}
+	for name, opts := range map[string]gateway.RenderOptions{
+		"plaintext not asked for": {AuthzHost: "gateway-authz:18081"},
+		"both plaintext and TLS":  {AuthzHost: "gateway-authz:18081", TLS: gatewayTLS(), Plaintext: true},
+		"relative path":           {AuthzHost: "gateway-authz:18081", TLS: bad(func(t *gateway.GatewayTLS) { t.Key = "gateway.key" })},
+		"path with $":             {AuthzHost: "gateway-authz:18081", TLS: bad(func(t *gateway.GatewayTLS) { t.Cert = "/etc/$HOME/gateway.pem" })},
+		"path with a newline":     {AuthzHost: "gateway-authz:18081", TLS: bad(func(t *gateway.GatewayTLS) { t.Root = "/etc/ca.pem\nfailureMode: allow" })},
+		"bad authz server name":   {AuthzHost: "gateway-authz:18081", TLS: bad(func(t *gateway.GatewayTLS) { t.AuthzServerName = "gateway authz" })},
+		"ingest without its name": {AuthzHost: "gateway-authz:18081", IngestHost: "gateway-ingest:4317", TLS: bad(func(t *gateway.GatewayTLS) { t.IngestServerName = "" })},
+	} {
+		if out, err := gateway.RenderConfig(renderFixture(), opts); err == nil {
+			t.Errorf("%s: rendered\n%s", name, out)
+		}
 	}
 }
