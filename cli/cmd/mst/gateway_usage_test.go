@@ -22,3 +22,11 @@ func TestUsageLineSaysPendingThenUnmetered(t *testing.T) {
 		t.Errorf("old call = %q, want an honest unmetered statement", got)
 	}
 }
+
+func TestUsageLineSaysWhenACallRanWithoutUsage(t *testing.T) {
+	no, yes := false, true
+	r := muistamov1.UsageRecord{AuthorizedAt: time.Now(), Kind: "model", Metered: &no, UsageMissing: &yes}
+	if got := usageLine(r, time.Now()); !strings.Contains(got, "ran, no usage reported: cost unknown, likely incurred") {
+		t.Errorf("aborted call = %q", got)
+	}
+}

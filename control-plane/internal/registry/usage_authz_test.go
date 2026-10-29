@@ -24,9 +24,13 @@ func TestAuthzUsageIsTenantScoped(t *testing.T) {
 	if err := registry.ConfigureGatewayAdmins(t.Context(), f.db.OwnerURL, b, []string{b.Name}, f.key); err != nil {
 		t.Fatal(err)
 	}
-	got, err := f.svc.RecordUsage(t.Context(), tenantB, []registry.UsageLine{line(id, 1000, 0, 1000)})
-	if err != nil || len(got.Accepted) != 0 || got.Unmatched != 1 {
-		t.Fatalf("B metered A's call: %+v, %v", got, err)
+	got, err := f.svc.RecordUsage(t.Context(), tenantB, []registry.UsageLine{line(id, 1000, 0, 1000),
+		{RequestID: id, Model: "test-model", UsageMissing: true}})
+	if err != nil || len(got.Accepted) != 0 || len(got.WithoutUsage) != 0 || got.Unmatched != 2 {
+		t.Fatalf("B metered A's call or spent A's allowance: %+v, %v", got, err)
+	}
+	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM calls_without_usage`); n != 0 {
+		t.Fatalf("B's ingest recorded %d calls without usage", n)
 	}
 	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM usage_records`); n != 0 {
 		t.Fatalf("B's ingest recorded %d usage rows", n)

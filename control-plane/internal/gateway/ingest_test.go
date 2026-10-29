@@ -122,9 +122,6 @@ func TestIngestRecordsOnlyAuthorizedSuccessfulModelUsage(t *testing.T) {
 		"failed":         func(a map[string]any) { a["http.response.status_code"] = 500 },
 		"status as text": func(a map[string]any) { a["http.response.status_code"] = "200" },
 		"no model":       func(a map[string]any) { delete(a, "gen_ai.request.model") },
-		"no input":       func(a map[string]any) { delete(a, "gen_ai.usage.input_tokens") },
-		"no output":      func(a map[string]any) { delete(a, "gen_ai.usage.output_tokens") },
-		"text tokens":    func(a map[string]any) { a["gen_ai.usage.output_tokens"] = "3" },
 		"negative":       func(a map[string]any) { a["gen_ai.usage.input_tokens"] = -1 },
 		"cached > input": func(a map[string]any) { a["gen_ai.usage.cache_read.input_tokens"] = 8 },
 		"cached as text": func(a map[string]any) { a["gen_ai.usage.cache_read.input_tokens"] = "4" },
@@ -201,5 +198,44 @@ func TestIngestDoesNotAskForRetriesOfInvalidBatches(t *testing.T) {
 	r := &usageRecorder{err: fmt.Errorf("bad line: %w", registry.ErrInvalid)}
 	if _, err := ingest(t, r).Export(authed("Bearer "+ingestToken), export(record(uuid.New(), nil))); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("invalid batch = %v, want InvalidArgument", err)
+	}
+}
+
+// An authorized, successful call whose record carries no usage at all (an aborted stream) is
+// recorded as having run without usage, never priced; partial usage stays malformed.
+func TestIngestRecordsCallsThatRanWithoutUsage(t *testing.T) {
+	r := &usageRecorder{}
+	aborted := uuid.New()
+	_, err := ingest(t, r).Export(authed("Bearer "+ingestToken), export(record(aborted, func(a map[string]any) {
+		delete(a, "gen_ai.usage.input_tokens")
+		delete(a, "gen_ai.usage.output_tokens")
+		delete(a, "gen_ai.usage.cache_read.input_tokens")
+	})))
+	if err != nil || len(r.lines) != 1 || !r.lines[0].UsageMissing || r.lines[0].RequestID != aborted || r.lines[0].InputTokens != 0 {
+		t.Fatalf("lines = %+v, %v", r.lines, err)
+	}
+}
+
+// Partial usage, or no status at all (the client left before the first byte), fails closed: the
+// call is recorded as having run without usage, counted against the cap, never priced.
+func TestIngestTreatsIncompleteRecordsAsRunWithoutUsage(t *testing.T) {
+	for name, change := range map[string]func(map[string]any){
+		"no status": func(a map[string]any) {
+			delete(a, "http.response.status_code")
+			delete(a, "gen_ai.usage.input_tokens")
+			delete(a, "gen_ai.usage.output_tokens")
+		},
+		// Without a status the call cannot be trusted to have completed, even if tokens appear.
+		"no status, usage": func(a map[string]any) { delete(a, "http.response.status_code") },
+		"no input":         func(a map[string]any) { delete(a, "gen_ai.usage.input_tokens") },
+		"no output":        func(a map[string]any) { delete(a, "gen_ai.usage.output_tokens") },
+		"text tokens":      func(a map[string]any) { a["gen_ai.usage.output_tokens"] = "3" },
+	} {
+		r := &usageRecorder{}
+		id := uuid.New()
+		if _, err := ingest(t, r).Export(authed("Bearer "+ingestToken), export(record(id, change))); err != nil || len(r.lines) != 1 ||
+			!r.lines[0].UsageMissing || r.lines[0].InputTokens != 0 || r.lines[0].OutputTokens != 0 {
+			t.Errorf("%s: lines %+v, err %v", name, r.lines, err)
+		}
 	}
 }

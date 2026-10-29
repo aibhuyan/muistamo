@@ -34,6 +34,14 @@ class VirtualKey(BaseModel):
     createdBy: str
     revokedAt: AwareDatetime | None = None
     revokedBy: str | None = None
+    maxCallsWithoutUsage: Annotated[
+        int,
+        Field(
+            description="How many of the key's calls within a rolling 24 hours may run without a usage report (aborted, or unaccounted after 15 minutes); once more have, calls are refused. Calls in flight can overshoot it.",
+            ge=0,
+            le=1000,
+        ),
+    ]
     revokeReason: Annotated[
         str | None,
         Field(

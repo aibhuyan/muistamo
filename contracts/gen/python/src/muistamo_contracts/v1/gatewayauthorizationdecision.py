@@ -20,6 +20,7 @@ class Reason(StrEnum):
     alias_not_allowed = "alias-not-allowed"
     route_not_current = "route-not-current"
     budget_reached = "budget-reached"
+    calls_without_usage_limit = "calls-without-usage-limit"
     mcp_not_integrated = "mcp-not-integrated"
 
 

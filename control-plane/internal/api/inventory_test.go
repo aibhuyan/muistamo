@@ -22,6 +22,7 @@ var noPersonalData = map[string]string{
 	"identity_enrollments":      "the tenant's Entra binding version",
 	"knowledge_service_secrets": "the tenant's service-call secret",
 	"usage_records":             "token counts and cost per request id; the person is in gateway_calls",
+	"calls_without_usage":       "request id and time of calls that reported no usage; the person is in gateway_calls",
 }
 
 func TestEveryTenantTableIsClassifiedForPrivacy(t *testing.T) {

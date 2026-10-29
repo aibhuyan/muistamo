@@ -9,6 +9,7 @@ call, never headers or bodies, so `docker compose logs fake-provider` counts ups
 import http.server
 import json
 import os
+import time
 
 PROVIDER_KEY = os.environ["MUISTAMO_PROVIDER_KEY_FAKE"]
 
@@ -30,12 +31,15 @@ REPLY = {
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("content-length") or 0)
-        self.rfile.read(length)
+        request = json.loads(self.rfile.read(length) or b"{}")
         if self.path != "/v1/chat/completions":
             self.send_error(404)
             return
         if self.headers.get("authorization") != "Bearer " + PROVIDER_KEY:
             self.send_error(401)
+            return
+        if request.get("stream"):
+            self.stream(bool((request.get("stream_options") or {}).get("include_usage")))
             return
         body = json.dumps(REPLY).encode()
         self.send_response(200)
@@ -43,6 +47,38 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("content-length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def stream(self, include_usage: bool) -> None:
+        """Six chunks a second apart, then usage last, so a client can abort mid-stream."""
+        self.send_response(200)
+        self.send_header("content-type", "text/event-stream")
+        self.end_headers()
+        try:
+            for i in range(6):
+                delta = {"index": 0, "delta": {"content": f"word{i} "}}
+                chunk = {
+                    "id": "chatcmpl-dev",
+                    "object": "chat.completion.chunk",
+                    "model": "fake-model",
+                    "choices": [delta],
+                }
+                self.wfile.write(b"data: " + json.dumps(chunk).encode() + b"\n\n")
+                self.wfile.flush()
+                time.sleep(1)
+            if include_usage:
+                last = {
+                    "id": "chatcmpl-dev",
+                    "object": "chat.completion.chunk",
+                    "model": "fake-model",
+                    "choices": [],
+                    "usage": REPLY["usage"],
+                }
+                self.wfile.write(b"data: " + json.dumps(last).encode() + b"\n\n")
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+            print("upstream stream completed", flush=True)
+        except (BrokenPipeError, ConnectionResetError):
+            print("upstream stream aborted by the gateway", flush=True)
 
     def log_message(self, format: str, *args: object) -> None:
         print(

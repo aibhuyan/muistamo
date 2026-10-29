@@ -40,6 +40,10 @@ type UsageLine struct {
 	InputTokens       int64
 	CachedInputTokens int64
 	OutputTokens      int64
+	// UsageMissing marks a call the gateway reports as run but without usage (for example an
+	// aborted stream). It is recorded in calls_without_usage, never priced, and its token
+	// counts must be zero.
+	UsageMissing bool
 }
 
 // UsageIngest counts what RecordUsage did with a batch.
@@ -50,6 +54,8 @@ type UsageIngest struct {
 	Unmatched   int // no authorized model call with that id and model in this tenant
 	// ConflictingIDs names the calls whose usage was reported differently again.
 	ConflictingIDs []uuid.UUID
+	// WithoutUsage are the calls newly recorded as run without a usage report.
+	WithoutUsage []uuid.UUID
 }
 
 // ingestActor is the evidence actor for usage the gateway reported.
@@ -62,7 +68,8 @@ const ingestActor = "gateway:ingest"
 func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []UsageLine) (UsageIngest, error) {
 	for _, l := range lines {
 		if l.InputTokens < 0 || l.CachedInputTokens < 0 || l.OutputTokens < 0 || l.CachedInputTokens > l.InputTokens ||
-			l.InputTokens > MaxTokens || l.OutputTokens > MaxTokens {
+			l.InputTokens > MaxTokens || l.OutputTokens > MaxTokens ||
+			(l.UsageMissing && (l.InputTokens != 0 || l.CachedInputTokens != 0 || l.OutputTokens != 0)) {
 			return UsageIngest{}, fmt.Errorf("usage line %s: invalid token counts: %w", l.RequestID, ErrInvalid)
 		}
 	}
@@ -74,6 +81,12 @@ func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []Usa
 	err := s.db.InTenant(ctx, tenant, func(tx pgx.Tx) error {
 		out = UsageIngest{}
 		for _, l := range lines {
+			if l.UsageMissing {
+				if err := recordWithoutUsage(ctx, tx, l, &out); err != nil {
+					return err
+				}
+				continue
+			}
 			// Same formula and rounding as usage_is_priced_at_cost; the trigger re-checks it.
 			tag, err := tx.Exec(ctx, `INSERT INTO usage_records (tenant_id, request_id, input_tokens, cached_input_tokens,
 				output_tokens, response_model, cost_amount, cost_currency)
@@ -109,7 +122,7 @@ func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []Usa
 				out.ConflictingIDs = append(out.ConflictingIDs, l.RequestID)
 			}
 		}
-		if len(out.Accepted) == 0 {
+		if len(out.Accepted) == 0 && len(out.WithoutUsage) == 0 {
 			return nil
 		}
 		rows, err := tx.Query(ctx, `SELECT cost_currency, sum(cost_amount)::text FROM usage_records
@@ -132,6 +145,10 @@ func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []Usa
 		for i, id := range out.Accepted {
 			ids[i] = id.String()
 		}
+		without := make([]string, len(out.WithoutUsage))
+		for i, id := range out.WithoutUsage {
+			without[i] = id.String()
+		}
 		digest, err := usageLinesDigest(ctx, tx, out.Accepted)
 		if err != nil {
 			return err
@@ -140,12 +157,46 @@ func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []Usa
 		return recordEvidence(ctx, tx, s.signer, actor, "gateway.usage.ingested", "UsageBatch", batch.String(), nil,
 			map[string]any{"requestIds": ids, "accepted": len(ids), "duplicate": out.Duplicate,
 				"conflicting": out.Conflicting, "unmatched": out.Unmatched, "costAtProviderPrices": cost,
-				"linesSha256": digest})
+				"linesSha256": digest, "withoutUsage": without})
 	})
 	if err != nil {
 		return UsageIngest{}, err
 	}
 	return out, nil
+}
+
+// recordWithoutUsage records an authorized model call that ran but reported no usage, once, and
+// only for a model call in this tenant whose snapshot model matches. A call that already has
+// usage is not counted. HUMAN REVIEW REQUIRED: these calls count toward the key's cap.
+func recordWithoutUsage(ctx context.Context, tx pgx.Tx, l UsageLine, out *UsageIngest) error {
+	tag, err := tx.Exec(ctx, `INSERT INTO calls_without_usage (tenant_id, request_id)
+		SELECT c.tenant_id, c.request_id FROM gateway_calls c
+		 WHERE c.request_id = $1 AND c.kind = 'model' AND c.model = $2
+		   AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id)
+		ON CONFLICT (tenant_id, request_id) DO NOTHING`, l.RequestID, l.Model)
+	if err != nil {
+		return fmt.Errorf("record call without usage %s: %w", l.RequestID, err)
+	}
+	if tag.RowsAffected() == 1 {
+		out.WithoutUsage = append(out.WithoutUsage, l.RequestID)
+		return nil
+	}
+	var repeated, metered bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM calls_without_usage WHERE request_id = $1),
+		EXISTS (SELECT 1 FROM usage_records WHERE request_id = $1)`, l.RequestID).Scan(&repeated, &metered); err != nil {
+		return fmt.Errorf("check call without usage %s: %w", l.RequestID, err)
+	}
+	switch {
+	case metered:
+		// The same call reported both with and without usage: contradictory, kept as metered.
+		out.Conflicting++
+		out.ConflictingIDs = append(out.ConflictingIDs, l.RequestID)
+	case repeated:
+		out.Duplicate++
+	default:
+		out.Unmatched++
+	}
+	return nil
 }
 
 // usageLinesDigest is SHA-256 over the accepted lines as recorded, one per line in request id
@@ -205,7 +256,8 @@ func (s *Service) ListUsage(ctx context.Context, actor Actor, f UsageFilter) (mu
 		rows, err := tx.Query(ctx, `SELECT c.request_id, c.key_id, c.instance, c.person, c.cost_centre, c.kind, c.alias,
 			       c.provider, c.model, c.mcp_method, c.mcp_tool, c.authorized_at,
 			       u.request_id IS NOT NULL, u.input_tokens, u.cached_input_tokens, u.output_tokens,
-			       u.cost_amount::text, u.cost_currency, u.recorded_at
+			       u.cost_amount::text, u.cost_currency, u.recorded_at,
+			       EXISTS (SELECT 1 FROM calls_without_usage w WHERE w.tenant_id = c.tenant_id AND w.request_id = c.request_id)
 			  FROM gateway_calls c LEFT JOIN usage_records u USING (tenant_id, request_id)
 			 WHERE ($1 OR c.person = $2)
 			   AND ($3 = '' OR c.instance = $3)
@@ -226,14 +278,18 @@ func (s *Service) ListUsage(ctx context.Context, actor Actor, f UsageFilter) (mu
 			var metered bool
 			var in, cached, outTok *int64
 			var amount, currency *string
+			var missing bool
 			if err := rows.Scan(&r.RequestId, &r.KeyId, &r.Instance, &r.Person, &r.CostCentre, &kind, &r.Alias,
 				&r.Provider, &r.Model, &r.McpMethod, &r.McpTool, &r.AuthorizedAt,
-				&metered, &in, &cached, &outTok, &amount, &currency, &r.RecordedAt); err != nil {
+				&metered, &in, &cached, &outTok, &amount, &currency, &r.RecordedAt, &missing); err != nil {
 				return fmt.Errorf("scan usage: %w", err)
 			}
 			r.Kind = muistamov1.UsageRecordKind(kind)
 			if r.Kind == muistamov1.UsageRecordKindModel {
 				r.Metered = &metered
+				if !metered {
+					r.UsageMissing = &missing
+				}
 			}
 			if metered {
 				r.InputTokens, r.CachedInputTokens, r.OutputTokens = intPtr(in), intPtr(cached), intPtr(outTok)
