@@ -2,6 +2,8 @@ package lifecycle
 
 import (
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -253,4 +255,65 @@ func equal(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// One instance failing must not leave the person's other instances active: every instance is
+// suspended and revoked, and the workflow still fails so the failure is reconciled.
+func TestLeaverAttemptsEveryInstanceBeforeFailing(t *testing.T) {
+	env := newEnv(t)
+	var got steps
+	live := scope
+	live.Generation = 1 // a current HR generation, whose setup fence must be released
+	env.OnActivity(a.PersonInstances, mock.Anything, live, person.ID).Return([]string{"one", "two", "three"}, nil)
+	env.OnActivity(a.SetState, mock.Anything, live, "one", muistamov1.InstanceStateSuspended).Return(errors.New("registry unavailable")).Run(got.add("suspend-one"))
+	env.OnActivity(a.RevokeCredentials, mock.Anything, live, "one").Return(nil).Run(got.add("revoke-one"))
+	env.OnActivity(a.SetState, mock.Anything, live, "two", muistamov1.InstanceStateSuspended).Return(nil).Run(got.add("suspend-two"))
+	env.OnActivity(a.RevokeCredentials, mock.Anything, live, "two").Return(errors.New("evidence unavailable")).Run(got.add("revoke-two"))
+	env.OnActivity(a.SetState, mock.Anything, live, "three", muistamov1.InstanceStateSuspended).Return(nil).Run(got.add("suspend-three"))
+	env.OnActivity(a.RevokeCredentials, mock.Anything, live, "three").Return(nil).Run(got.add("revoke-three"))
+	env.OnActivity(a.SettleHRSetup, mock.Anything, live).Return(nil).Run(got.add("settle"))
+	env.OnActivity(a.OpenPersonalLayerReview, mock.Anything, live, person, mock.Anything).Return(ReviewOpened{}, nil).Maybe().Run(got.add("review"))
+
+	env.ExecuteWorkflow(Leaver, LeaverInput{Scope: live, Person: person})
+
+	err := env.GetWorkflowError()
+	if err == nil || !strings.Contains(err.Error(), "requires reconciliation") {
+		t.Fatalf("workflow error = %v, want reconciliation", err)
+	}
+	for _, want := range []string{"suspend one", "revoke credentials of two"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("workflow error %q does not report %q", err, want)
+		}
+	}
+	// The instance that could not be suspended is still revoked: revocation never waits.
+	for _, step := range []string{"revoke-one", "suspend-two", "suspend-three", "revoke-three", "settle"} {
+		if !slices.Contains(got, step) {
+			t.Errorf("steps = %v: %s never ran after another instance failed", got, step)
+		}
+	}
+	for _, step := range []string{"review"} {
+		if slices.Contains(got, step) {
+			t.Errorf("steps = %v: %s ran despite the failure", got, step)
+		}
+	}
+}
+
+// A leaver recorded before the fan-out (no version marker) keeps its original behaviour, stopping
+// at the first failure, so its history replays deterministically.
+func TestLeaverBeforeFanOutStopsAtTheFirstFailure(t *testing.T) {
+	env := newEnv(t)
+	var got steps
+	env.OnGetVersion("leaver-fan-out", workflow.DefaultVersion, workflow.Version(1)).Return(workflow.DefaultVersion)
+	env.OnActivity(a.PersonInstances, mock.Anything, scope, person.ID).Return([]string{"one", "two"}, nil)
+	env.OnActivity(a.SetState, mock.Anything, scope, "one", muistamov1.InstanceStateSuspended).Return(errors.New("registry unavailable")).Run(got.add("suspend-one"))
+	env.OnActivity(a.SetState, mock.Anything, scope, "two", muistamov1.InstanceStateSuspended).Return(nil).Maybe().Run(got.add("suspend-two"))
+
+	env.ExecuteWorkflow(Leaver, LeaverInput{Scope: scope, Person: person})
+
+	if err := env.GetWorkflowError(); err == nil || strings.Contains(err.Error(), "requires reconciliation") {
+		t.Fatalf("pre-fan-out leaver error = %v, want the first failure unchanged", err)
+	}
+	if slices.Contains(got, "suspend-two") {
+		t.Fatalf("steps = %v: a pre-fan-out history went on past the first failure", got)
+	}
 }
