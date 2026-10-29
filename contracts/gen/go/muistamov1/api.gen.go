@@ -2358,7 +2358,7 @@ type GatewayModelRoute struct {
 	BaseUrl       string `json:"baseUrl"`
 	CatalogueName string `json:"catalogueName"`
 
-	// CredentialEnv Name of the environment variable from which the gateway reads this route's provider credential at runtime. A reference only, never a value: Muistamo never stores provider credentials (NFR-08). The pinned gateway refuses to start when the variable is unset.
+	// CredentialEnv Name of the environment variable from which the gateway reads this route's provider credential at runtime. A reference only, never a value: Muistamo never stores provider credentials (NFR-08). Only MUISTAMO_PROVIDER_KEY_* names, so a configuration can never send another gateway secret upstream. The pinned gateway refuses to start when the variable is unset.
 	CredentialEnv *string `json:"credentialEnv,omitempty"`
 	Model         string  `json:"model"`
 	ModelRevision int     `json:"modelRevision"`
@@ -3370,7 +3370,7 @@ type VirtualKey struct {
 	// MonthlyBudget An exact amount. A decimal string, never a binary float, so billed costs and budgets are exact (invariant 7). EUR only while model price sheets are EUR only.
 	MonthlyBudget Money `json:"monthlyBudget"`
 
-	// RevokeReason A fixed revocation reason code; never free text.
+	// RevokeReason A fixed revocation reason code, never free text: operator, compromised, rotation or leaver (administrators), leaver (the leaver workflow), or reactivation (keys from before a suspension, revoked when the instance becomes active again).
 	RevokeReason *string    `json:"revokeReason,omitempty"`
 	RevokedAt    *time.Time `json:"revokedAt,omitempty"`
 	RevokedBy    *string    `json:"revokedBy,omitempty"`

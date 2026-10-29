@@ -279,9 +279,10 @@ func TestLeaverRevokesTheInstancesVirtualKeys(t *testing.T) {
 		if !strings.Contains(fmt.Sprint(after["scope"]), "in-flight responses not terminated") {
 			t.Fatalf("real revocation evidence overstates its scope: %v", after)
 		}
-		counts = append(counts, after["keysRevokedByThisCall"])
+		counts = append(counts, after["keysRevoked"])
 	}
-	if !slices.Equal(counts, []any{float64(1), float64(0)}) {
-		t.Fatalf("revoked counts per attempt = %v, want [1 0]", counts)
+	// A retry reports the same key the first attempt revoked, never zero.
+	if !slices.Equal(counts, []any{float64(1), float64(1)}) {
+		t.Fatalf("revoked counts per attempt = %v, want [1 1]", counts)
 	}
 }

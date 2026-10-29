@@ -55,7 +55,7 @@ func TestEntraLeaverAttemptsEveryDisableAfterLocalSuspension(t *testing.T) {
 	env.OnActivity(liveActs.EntraRecordReviewCoverage, mock.Anything, liveRef).Return(nil).Run(got.add("coverage"))
 	env.OnActivity(liveActs.EntraSettleSetup, mock.Anything, liveRef).Return(nil).Run(got.add("settle"))
 	env.ExecuteWorkflow(EntraLeaver, liveRef)
-	if env.GetWorkflowError() == nil || !equal(got, []string{"suspend-all", "revoke-one", "disable-one", "revoke-two", "disable-two", "coverage", "settle"}) {
+	if env.GetWorkflowError() == nil || !equal(got, []string{"suspend-all", "disable-one", "disable-two", "revoke-one", "revoke-two", "coverage", "settle"}) {
 		t.Fatalf("leaver skipped remaining instances: %v %v", got, env.GetWorkflowError())
 	}
 	env.AssertExpectations(t)

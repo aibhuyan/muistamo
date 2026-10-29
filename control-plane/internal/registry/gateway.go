@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
+	"muistamo.dev/muistamo/control-plane/internal/evidence"
 	"muistamo.dev/muistamo/control-plane/internal/store"
 )
 
@@ -225,8 +226,11 @@ func (s *Service) GetKey(ctx context.Context, actor Actor, id uuid.UUID) (muista
 // resurrects them. There is no administrator check: the actor is the lifecycle workflow, never a
 // person, and the reason is the fixed code "leaver". Idempotent: a retry finds nothing active.
 //
-// The instance must already be suspended or retired: IssueKey requires an active instance under
-// the same instance lock, so no key can be minted after this commits.
+// The instance must already be suspended, quarantined or retired: IssueKey requires an active
+// instance under the same instance lock, so no key can be minted after this commits.
+//
+// It returns every key this actor (one leaver workflow) has revoked for the instance, including
+// on an earlier attempt, so a retried activity reports the same keys.
 //
 // HUMAN REVIEW REQUIRED (AGENTS.md): revocation path.
 func (s *Service) RevokeInstanceKeys(ctx context.Context, actor Actor, instance string) ([]uuid.UUID, error) {
@@ -240,37 +244,86 @@ func (s *Service) RevokeInstanceKeys(ctx context.Context, actor Actor, instance 
 		if err != nil {
 			return err
 		}
-		if state := inst.Document.Spec.State; state != muistamov1.InstanceStateSuspended && state != muistamov1.InstanceStateRetired {
-			return fmt.Errorf("instance %q is %s; suspend it before revoking its keys: %w", instance, state, ErrConflict)
+		switch inst.Document.Spec.State {
+		case muistamov1.InstanceStateSuspended, muistamov1.InstanceStateQuarantined, muistamov1.InstanceStateRetired:
+		default:
+			return fmt.Errorf("instance %q is %s; suspend it before revoking its keys: %w", instance, inst.Document.Spec.State, ErrConflict)
 		}
-		rows, err := tx.Query(ctx, `SELECT id FROM virtual_keys WHERE instance = $1 AND status = 'active'
-			ORDER BY id FOR UPDATE`, instance)
+		if _, err := revokeActiveKeys(ctx, tx, s.signer, actor, instance, "leaver"); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `SELECT id FROM virtual_keys WHERE instance = $1 AND revoke_reason = 'leaver'
+			AND revoked_by = $2 ORDER BY id`, instance, actor.Name)
 		if err != nil {
-			return fmt.Errorf("lock instance keys: %w", err)
+			return fmt.Errorf("list revoked keys: %w", err)
 		}
-		ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		revoked, err = pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
 		if err != nil {
-			return fmt.Errorf("lock instance keys: %w", err)
+			return fmt.Errorf("list revoked keys: %w", err)
 		}
-		for _, id := range ids {
-			var revokedAt time.Time
-			if err := tx.QueryRow(ctx, `UPDATE virtual_keys SET status = 'revoked', revoked_by = $2, revoke_reason = 'leaver'
-				WHERE id = $1 RETURNING revoked_at`, id, actor.Name).Scan(&revokedAt); err != nil {
-				return fmt.Errorf("revoke virtual key: %w", err)
-			}
-			if err := recordEvidence(ctx, tx, s.signer, actor, "gateway.key.revoked", "VirtualKey", id.String(),
-				map[string]any{"status": "active"},
-				map[string]any{"instance": instance, "reason": "leaver", "by": "lifecycle", "revokedAt": revokedAt}); err != nil {
-				return err
-			}
-		}
-		revoked = ids
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return revoked, nil
+}
+
+// revokeActiveKeys revokes the instance's active keys with a fixed system reason code, one signed
+// event each, in the caller's transaction. The caller holds the instance lock. HUMAN REVIEW REQUIRED.
+func revokeActiveKeys(ctx context.Context, tx pgx.Tx, signer evidence.Signer, actor Actor, instance, reason string) ([]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, `SELECT id FROM virtual_keys WHERE instance = $1 AND status = 'active'
+		ORDER BY id FOR UPDATE`, instance)
+	if err != nil {
+		return nil, fmt.Errorf("lock instance keys: %w", err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		return nil, fmt.Errorf("lock instance keys: %w", err)
+	}
+	for _, id := range ids {
+		var revokedAt time.Time
+		if err := tx.QueryRow(ctx, `UPDATE virtual_keys SET status = 'revoked', revoked_by = $2, revoke_reason = $3
+			WHERE id = $1 RETURNING revoked_at`, id, actor.Name, reason).Scan(&revokedAt); err != nil {
+			return nil, fmt.Errorf("revoke virtual key: %w", err)
+		}
+		if err := recordEvidence(ctx, tx, signer, actor, "gateway.key.revoked", "VirtualKey", id.String(),
+			map[string]any{"status": "active"},
+			map[string]any{"instance": instance, "reason": reason, "by": "lifecycle", "revokedAt": revokedAt}); err != nil {
+			return nil, err
+		}
+	}
+	return ids, nil
+}
+
+// revokeBeforeReactivation keeps keys issued before a suspension from surviving reinstatement:
+// when a suspended instance becomes active again, its still-active keys are revoked in the same
+// transaction (reason "reactivation"). A leaver normally revoked them already; this closes the
+// gap when that revocation never succeeded. The caller holds the instance lock.
+// HUMAN REVIEW REQUIRED (AGENTS.md): revocation path.
+func revokeBeforeReactivation(ctx context.Context, tx pgx.Tx, signer evidence.Signer, actor Actor, current muistamov1.AgentInstanceRecord, to muistamov1.InstanceState) error {
+	if current.Document.Spec.State != muistamov1.InstanceStateSuspended || to != muistamov1.InstanceStateActive {
+		return nil
+	}
+	_, err := revokeActiveKeys(ctx, tx, signer, actor, current.Document.Metadata.Name, "reactivation")
+	return err
+}
+
+// refuseReactivationWithKeys is updateInstance's backstop: a suspended instance never becomes
+// active while it still has active keys, whichever path changes its state (fail closed).
+func refuseReactivationWithKeys(ctx context.Context, tx pgx.Tx, current muistamov1.AgentInstanceRecord, next muistamov1.AgentInstance) error {
+	if current.Document.Spec.State != muistamov1.InstanceStateSuspended || next.Spec.State != muistamov1.InstanceStateActive {
+		return nil
+	}
+	var active bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM virtual_keys WHERE instance = $1 AND status = 'active')`,
+		next.Metadata.Name).Scan(&active); err != nil {
+		return fmt.Errorf("check keys before reactivation: %w", err)
+	}
+	if active {
+		return fmt.Errorf("instance %q still has active keys from before its suspension: %w", next.Metadata.Name, ErrConflict)
+	}
+	return nil
 }
 
 // RevokeKey revokes a key. Final: the database refuses any later change to the revocation.

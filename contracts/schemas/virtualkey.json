@@ -59,7 +59,7 @@
       "type": "string"
     },
     "revokeReason": {
-      "description": "A fixed revocation reason code; never free text.",
+      "description": "A fixed revocation reason code, never free text: operator, compromised, rotation or leaver (administrators), leaver (the leaver workflow), or reactivation (keys from before a suspension, revoked when the instance becomes active again).",
       "type": "string"
     }
   }

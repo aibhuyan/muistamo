@@ -25,8 +25,9 @@ type Revoker interface {
 	Revoke(ctx context.Context, actor registry.Actor, instance string) (RevocationReport, error)
 }
 
-// RevocationReport says what one Revoke call did. VirtualKeys lists the keys this call revoked;
-// a retry after success revokes none, and each revocation has its own gateway.key.revoked event.
+// RevocationReport says what Revoke did. VirtualKeys lists every key this leaver revoked for the
+// instance, including on an earlier attempt, so a retry reports the same keys. Each revocation
+// also has its own gateway.key.revoked event.
 type RevocationReport struct {
 	Simulated   bool
 	VirtualKeys []uuid.UUID
@@ -45,7 +46,7 @@ func (r RevocationReport) evidence() map[string]any {
 	// the next authorization. Responses already in flight are not cut off.
 	return map[string]any{"revoker": "gateway-virtual-keys", "simulated": false,
 		"scope":                 "gateway virtual keys; next authorization refused; in-flight responses not terminated",
-		"keysRevokedByThisCall": len(ids), "keyIds": ids}
+		"keysRevoked": len(ids), "keyIds": ids}
 }
 
 // KeyRevoker revokes every active gateway virtual key of an instance. The gateway checks keys

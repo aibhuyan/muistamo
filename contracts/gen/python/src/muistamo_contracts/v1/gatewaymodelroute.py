@@ -20,8 +20,8 @@ class GatewayModelRoute(BaseModel):
     credentialEnv: Annotated[
         str | None,
         Field(
-            description="Name of the environment variable from which the gateway reads this route's provider credential at runtime. A reference only, never a value: Muistamo never stores provider credentials (NFR-08). The pinned gateway refuses to start when the variable is unset.",
-            pattern="^[A-Z][A-Z0-9_]{0,63}$",
+            description="Name of the environment variable from which the gateway reads this route's provider credential at runtime. A reference only, never a value: Muistamo never stores provider credentials (NFR-08). Only MUISTAMO_PROVIDER_KEY_* names, so a configuration can never send another gateway secret upstream. The pinned gateway refuses to start when the variable is unset.",
+            pattern="^MUISTAMO_PROVIDER_KEY_[A-Z0-9_]{1,40}$",
         ),
     ] = None
     baseUrl: Annotated[

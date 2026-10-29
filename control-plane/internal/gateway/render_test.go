@@ -15,7 +15,7 @@ import (
 // plan.md, step 4). HUMAN REVIEW REQUIRED: failureMode and the credential reference.
 
 func renderFixture() muistamov1.GatewayAuthzConfig {
-	env := "FAKE_PROVIDER_KEY"
+	env := "MUISTAMO_PROVIDER_KEY_FAKE"
 	return muistamov1.GatewayAuthzConfig{TenantId: uuid.MustParse("6f19b972-b333-446e-802b-d8145231a2ac"), Models: []muistamov1.GatewayModelRoute{{
 		Alias: "reasoning-default", AliasRevision: 1, CatalogueName: "fake-model", ModelRevision: 1, Provider: "openai",
 		Model: "test-model", Region: "eu-test", BaseUrl: "http://provider:18080/v1", CredentialEnv: &env,
@@ -23,7 +23,7 @@ func renderFixture() muistamov1.GatewayAuthzConfig {
 }
 
 const golden = `# Rendered by ` + "`control-plane gateway render-config`" + `; do not edit. The checker must serve the
-# same configuration (digest e2428ec7f09d0bd349e62ca50afff3ccb20699801b7b01d9b53e98911abc9019).
+# same configuration (digest b7a635f4257571a33544d00634c0682a61574f21579b15d72358da08e4e5022a).
 # No MCP listener: MCP calls stay refused until person-specific rights exist.
 config:
   readinessAddr: 0.0.0.0:19001
@@ -37,13 +37,13 @@ llm:
         grpc:
           metadata:
             muistamo.model: "{\"value\": json(request.body).model}"
-            muistamo.config: "{\"value\": \"e2428ec7f09d0bd349e62ca50afff3ccb20699801b7b01d9b53e98911abc9019\"}"
+            muistamo.config: "{\"value\": \"b7a635f4257571a33544d00634c0682a61574f21579b15d72358da08e4e5022a\"}"
   models:
   - name: reasoning-default
     provider: openAI
     params:
       model: test-model
-      apiKey: $FAKE_PROVIDER_KEY
+      apiKey: $MUISTAMO_PROVIDER_KEY_FAKE
       baseUrl: http://provider:18080/v1
 `
 
@@ -111,7 +111,7 @@ func TestRenderedGatewayConfigFailsClosedAndBindsTheChecker(t *testing.T) {
 	if _, ok := params["apiKey"]; ok {
 		t.Fatal("a route without a credential reference was given an apiKey")
 	}
-	if got := models[0].(map[string]any)["params"].(map[string]any)["apiKey"]; got != "$FAKE_PROVIDER_KEY" {
+	if got := models[0].(map[string]any)["params"].(map[string]any)["apiKey"]; got != "$MUISTAMO_PROVIDER_KEY_FAKE" {
 		t.Fatalf("credential = %v, want a reference only", got)
 	}
 }
@@ -121,6 +121,7 @@ func TestRenderRefusesWhatTheCheckerWouldRefuse(t *testing.T) {
 		"unvalidated provider": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].Provider = "anthropic" },
 		"credential value":     func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { v := "sk-fake-not-a-name"; c.Models[0].CredentialEnv = &v },
 		"lowercase reference":  func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { v := "openai_key"; c.Models[0].CredentialEnv = &v },
+		"another secret":       func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { v := "OTLP_TOKEN"; c.Models[0].CredentialEnv = &v },
 		"url with credentials": func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models[0].BaseUrl = "http://u:p@provider/v1" },
 		"duplicate alias":      func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.Models = append(c.Models, c.Models[0]) },
 		"no tenant":            func(c *muistamov1.GatewayAuthzConfig, _ *gateway.RenderOptions) { c.TenantId = uuid.Nil },

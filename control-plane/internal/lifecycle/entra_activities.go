@@ -170,7 +170,8 @@ func (a *EntraActivities) EntraRevoke(ctx context.Context, ref muistamov1.EntraL
 	}
 	report, err := a.Revoker.Revoke(ctx, liveActor(ref), name)
 	if err != nil {
-		return fmt.Errorf("revoke instance credentials: %w", err)
+		// A refusal (for example an instance that is not suspended) is permanent: fail fast.
+		return liveError(fmt.Errorf("revoke instance credentials: %w", err))
 	}
 	return a.Registry.RecordLifecycleEvent(ctx, liveActor(ref), "credentials.revoked", name, report.evidence())
 }

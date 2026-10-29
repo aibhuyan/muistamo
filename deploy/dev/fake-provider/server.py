@@ -1,12 +1,16 @@
 """Fake OpenAI-compatible provider for the dev gateway profile. Development only.
 
-Answers POST /v1/chat/completions with a fixed reply and usage. It checks no credential and logs
-only the method, path and status of each call, never headers or bodies, so `docker compose logs
-fake-provider` counts upstream calls.
+Answers POST /v1/chat/completions with a fixed reply and usage. It requires the provider key the
+gateway injects from MUISTAMO_PROVIDER_KEY_FAKE and refuses anything else, including a Muistamo
+virtual key the gateway should have stripped. It logs only the method, path and status of each
+call, never headers or bodies, so `docker compose logs fake-provider` counts upstream calls.
 """
 
 import http.server
 import json
+import os
+
+PROVIDER_KEY = os.environ["MUISTAMO_PROVIDER_KEY_FAKE"]
 
 REPLY = {
     "id": "chatcmpl-dev",
@@ -29,6 +33,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.rfile.read(length)
         if self.path != "/v1/chat/completions":
             self.send_error(404)
+            return
+        if self.headers.get("authorization") != "Bearer " + PROVIDER_KEY:
+            self.send_error(401)
             return
         body = json.dumps(REPLY).encode()
         self.send_response(200)

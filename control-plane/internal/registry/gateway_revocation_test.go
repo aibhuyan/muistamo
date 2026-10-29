@@ -88,10 +88,10 @@ func TestLeaverRevocationRevokesEveryActiveKeyOfTheInstanceOnly(t *testing.T) {
 		t.Errorf("leaver revocation evidence = %d events, want %d", n, len(mine))
 	}
 
-	// A retry finds nothing active and records nothing.
+	// A retry revokes and records nothing more, and reports the same keys.
 	before = f.events(t)
-	if again, err := f.svc.RevokeInstanceKeys(t.Context(), workflow, req.Instance); err != nil || len(again) != 0 || f.events(t) != before {
-		t.Fatalf("retry revoked %v, err %v, evidence delta %d", again, err, f.events(t)-before)
+	if again, err := f.svc.RevokeInstanceKeys(t.Context(), workflow, req.Instance); err != nil || !slices.Equal(again, mine) || f.events(t) != before {
+		t.Fatalf("retry reported %v, err %v, evidence delta %d", again, err, f.events(t)-before)
 	}
 }
 
@@ -197,3 +197,63 @@ func TestLeaverRevocationRacesIssuanceWithoutSurvivors(t *testing.T) {
 	}
 }
 
+
+// Keys issued before a suspension never survive reinstatement, even when the leaver's own
+// revocation never succeeded: reactivation revokes them first, with evidence.
+func TestReactivationRevokesKeysThatSurvivedASuspension(t *testing.T) {
+	f, req := gatewayFixture(t)
+	issued, err := f.svc.IssueKey(t.Context(), f.actor, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.TransitionTo(t.Context(), f.actor, req.Instance, "suspended"); err != nil {
+		t.Fatal(err)
+	}
+	// No leaver revocation ran (it failed every retry). The instance is rehired.
+	if _, err := f.svc.TransitionTo(t.Context(), f.actor, req.Instance, "active"); err != nil {
+		t.Fatal(err)
+	}
+	key, err := f.svc.GetKey(t.Context(), f.actor, issued.Key.Id)
+	if err != nil || key.Status != "revoked" || key.RevokeReason == nil || *key.RevokeReason != "reactivation" {
+		t.Fatalf("key after reactivation = %+v, %v; want revoked for reactivation", key, err)
+	}
+	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM evidence_events WHERE action='gateway.key.revoked'
+		AND subject_name=$1 AND after->>'reason'='reactivation'`, issued.Key.Id.String()); n != 1 {
+		t.Fatalf("reactivation revocation evidence = %d events, want 1", n)
+	}
+	call, route := modelCall()
+	if d, err := f.svc.AuthorizeGateway(t.Context(), f.actor.Tenant, issued.Secret, call, &route); err != nil || d.Allowed {
+		t.Fatalf("a key from before the suspension was allowed after reactivation: %+v, %v", d, err)
+	}
+	// A key issued after reactivation is unaffected.
+	fresh, err := f.svc.IssueKey(t.Context(), f.actor, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, err := f.svc.AuthorizeGateway(t.Context(), f.actor.Tenant, fresh.Secret, call, &route); err != nil || !d.Allowed {
+		t.Fatalf("a key issued after reactivation was refused: %+v, %v", d, err)
+	}
+}
+
+// A retried leaver reports every key it revoked, not only those of the latest attempt.
+func TestLeaverRevocationReportsTheSameKeysOnRetry(t *testing.T) {
+	f, req := gatewayFixture(t)
+	issued, err := f.svc.IssueKey(t.Context(), f.actor, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.TransitionTo(t.Context(), f.actor, req.Instance, "suspended"); err != nil {
+		t.Fatal(err)
+	}
+	workflow := registry.Actor{Tenant: f.actor.Tenant, Name: "workflow:leaver-test", RequestID: "hr-event:test"}
+	for attempt := range 2 {
+		got, err := f.svc.RevokeInstanceKeys(t.Context(), workflow, req.Instance)
+		if err != nil || len(got) != 1 || got[0] != issued.Key.Id {
+			t.Fatalf("attempt %d reported %v, %v; want the revoked key", attempt+1, got, err)
+		}
+	}
+	other := registry.Actor{Tenant: f.actor.Tenant, Name: "workflow:another-leaver", RequestID: "hr-event:other"}
+	if got, err := f.svc.RevokeInstanceKeys(t.Context(), other, req.Instance); err != nil || len(got) != 0 {
+		t.Fatalf("another workflow claimed this leaver's revocations: %v, %v", got, err)
+	}
+}

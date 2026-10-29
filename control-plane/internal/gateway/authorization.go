@@ -43,8 +43,9 @@ type Authorization struct {
 	log       *slog.Logger
 }
 
-// credentialEnv matches gatewaymodelroute.json: a variable name, never a value.
-var credentialEnv = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
+// credentialEnv matches gatewaymodelroute.json: a provider-key variable name, never a value, and
+// never another of the gateway's secrets (such as its OTLP token).
+var credentialEnv = regexp.MustCompile(`^MUISTAMO_PROVIDER_KEY_[A-Z0-9_]{1,40}$`)
 
 // unrenderable reports control and line-separator characters that YAML readers may fold or drop.
 func unrenderable(c rune) bool {

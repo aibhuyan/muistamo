@@ -293,6 +293,9 @@ func (s *Service) Transition(ctx context.Context, actor Actor, name string, to m
 		if err := checkIdentityTransition(ctx, tx, current, to, person); err != nil {
 			return err
 		}
+		if err := revokeBeforeReactivation(ctx, tx, s.signer, actor, current, to); err != nil {
+			return err
+		}
 		next := current.Document
 		next.Spec.State = to
 		rec, err = updateInstance(ctx, tx, current, next)
@@ -411,6 +414,9 @@ func createInstanceWithIdentity(ctx context.Context, tx pgx.Tx, signer evidence.
 }
 
 func updateInstance(ctx context.Context, tx pgx.Tx, current muistamov1.AgentInstanceRecord, next muistamov1.AgentInstance) (muistamov1.AgentInstanceRecord, error) {
+	if err := refuseReactivationWithKeys(ctx, tx, current, next); err != nil {
+		return muistamov1.AgentInstanceRecord{}, err
+	}
 	body, err := json.Marshal(next)
 	if err != nil {
 		return muistamov1.AgentInstanceRecord{}, fmt.Errorf("encode instance: %w", err)

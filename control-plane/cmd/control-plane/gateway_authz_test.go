@@ -62,7 +62,7 @@ func TestGatewayDatabaseRoleCannotBypassRLS(t *testing.T) {
 func TestGatewayRenderWritesTheCheckersDigestAndReplacesWhole(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath, out := filepath.Join(dir, "authz.json"), filepath.Join(dir, "agentgateway.yaml")
-	raw := `{"tenantId":"6f19b972-b333-446e-802b-d8145231a2ac","models":[{"alias":"reasoning-default","aliasRevision":1,"catalogueName":"fake-model","modelRevision":1,"provider":"openai","model":"test-model","region":"eu-test","baseUrl":"http://provider:18080/v1","credentialEnv":"FAKE_PROVIDER_KEY"}]}`
+	raw := `{"tenantId":"6f19b972-b333-446e-802b-d8145231a2ac","models":[{"alias":"reasoning-default","aliasRevision":1,"catalogueName":"fake-model","modelRevision":1,"provider":"openai","model":"test-model","region":"eu-test","baseUrl":"http://provider:18080/v1","credentialEnv":"MUISTAMO_PROVIDER_KEY_FAKE"}]}`
 	if err := os.WriteFile(cfgPath, []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}

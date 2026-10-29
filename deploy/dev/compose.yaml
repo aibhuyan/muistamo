@@ -51,6 +51,8 @@ services:
     profiles: [gateway]
     image: python:3.12-slim
     command: ["python", "-u", "/srv/server.py"]
+    environment:
+      MUISTAMO_PROVIDER_KEY_FAKE: fake-provider-key-not-a-secret
     volumes:
       - ./fake-provider:/srv:ro
 
@@ -77,7 +79,7 @@ services:
     image: cr.agentgateway.dev/agentgateway@sha256:9d3e6044ddcdc0878b1787f77bd401252b95e22684203fb5e874c4c42d2ed90c
     command: ["-f", "/etc/agentgateway/config.yaml"]
     environment:
-      FAKE_PROVIDER_KEY: fake-provider-key-not-a-secret
+      MUISTAMO_PROVIDER_KEY_FAKE: fake-provider-key-not-a-secret
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-4000}:4000"
     # A named volume, not a bind mount: Docker Desktop bind mounts deliver no file events, so

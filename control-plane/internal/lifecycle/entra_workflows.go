@@ -106,18 +106,22 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 	if err := workflow.ExecuteActivity(ctx, a.EntraPrepareLeaver, ref).Get(ctx, &result.Instances); err != nil {
 		return result, err
 	}
-	// A failed or uncertain remote call must not delay another instance's first attempt.
+	// Disabling an identity is a remote call: a failed or uncertain one must not delay another
+	// instance's first attempt, so it runs once. All disables go first; suspension has already
+	// shut the gateway to these instances.
 	options := workflow.GetActivityOptions(ctx)
 	options.RetryPolicy = &temporal.RetryPolicy{MaximumAttempts: 1}
 	once := workflow.WithActivityOptions(ctx, options)
 	var failures []error
 	for _, name := range result.Instances {
-		// Key revocation is a local, idempotent transaction: retry it, so a transient database
-		// error never leaves a leaver's virtual keys active for a later rehire to reactivate.
-		if err := workflow.ExecuteActivity(ctx, a.EntraRevoke, ref, name).Get(ctx, nil); err != nil {
+		if err := workflow.ExecuteActivity(once, a.EntraDisable, ref, name).Get(ctx, nil); err != nil {
 			failures = append(failures, err)
 		}
-		if err := workflow.ExecuteActivity(once, a.EntraDisable, ref, name).Get(ctx, nil); err != nil {
+	}
+	// Key revocation is a local, idempotent transaction: retry it, so a transient database error
+	// does not leave a leaver's keys active. Reactivation also revokes any that survive.
+	for _, name := range result.Instances {
+		if err := workflow.ExecuteActivity(ctx, a.EntraRevoke, ref, name).Get(ctx, nil); err != nil {
 			failures = append(failures, err)
 		}
 	}

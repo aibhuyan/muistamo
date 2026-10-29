@@ -35,5 +35,8 @@ class VirtualKey(BaseModel):
     revokedAt: AwareDatetime | None = None
     revokedBy: str | None = None
     revokeReason: Annotated[
-        str | None, Field(description="A fixed revocation reason code; never free text.")
+        str | None,
+        Field(
+            description="A fixed revocation reason code, never free text: operator, compromised, rotation or leaver (administrators), leaver (the leaver workflow), or reactivation (keys from before a suspension, revoked when the instance becomes active again)."
+        ),
     ] = None
