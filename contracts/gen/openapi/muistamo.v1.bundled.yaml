@@ -556,14 +556,20 @@ paths:
         schema:
           type: string
           format: date-time
-      - name: cursor
+      - name: unmetered
         in: query
         required: false
+        description: 'Only model calls authorized more than 15 minutes ago with no
+          usage record: they may not have run (the gateway can reject an authorized
+          call), or their usage export was lost. Reported, never estimated.'
         schema:
-          type: string
+          type: boolean
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: Calls, newest first.
+          description: Calls, newest first. Gateway administrators see the tenant's
+            calls; anyone else sees only calls made for them.
           content:
             application/json:
               schema:

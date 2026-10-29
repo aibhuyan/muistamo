@@ -197,7 +197,6 @@ func TestLeaverRevocationRacesIssuanceWithoutSurvivors(t *testing.T) {
 	}
 }
 
-
 // Keys issued before a suspension never survive reinstatement, even when the leaver's own
 // revocation never succeeded: reactivation revokes them first, with evidence.
 func TestReactivationRevokesKeysThatSurvivedASuspension(t *testing.T) {

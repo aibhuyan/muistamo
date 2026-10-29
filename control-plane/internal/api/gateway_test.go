@@ -240,11 +240,15 @@ func TestGatewayKeyTenantLookupRevealsOnlyTheTenant(t *testing.T) {
 	}
 }
 
-func TestUsageEndpointSaysItIsNotBuiltYet(t *testing.T) {
+func TestUsageEndpointListsCallsAndRefusesBadCursors(t *testing.T) {
 	h := newHarness(t, api.InsecureDevHeaders{})
 	a := h.tenant(t, "tenant-a")
-	got := h.call(t, a, http.MethodGet, "/v1/usage", "")
-	if got.status != http.StatusNotImplemented || !strings.Contains(got.raw, "agentgateway-plan") {
-		t.Errorf("GET /v1/usage = %d: %s, want an honest 501", got.status, got.raw)
+	for _, path := range []string{"/v1/usage", "/v1/usage?unmetered=true&limit=10"} {
+		if got := h.call(t, a, http.MethodGet, path, ""); got.status != http.StatusOK || !strings.Contains(got.raw, `"items":[]`) {
+			t.Errorf("GET %s = %d: %s, want an empty page", path, got.status, got.raw)
+		}
+	}
+	if got := h.call(t, a, http.MethodGet, "/v1/usage?cursor=%21%21", ""); got.status != http.StatusBadRequest && got.status != http.StatusUnprocessableEntity {
+		t.Errorf("GET /v1/usage with a bad cursor = %d: %s", got.status, got.raw)
 	}
 }

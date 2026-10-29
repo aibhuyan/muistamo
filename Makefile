@@ -78,13 +78,15 @@ dev-down:
 # deploy/dev/gateway/authz.template.json, then starts or refreshes the gateway profile. Rerun
 # after an alias or model change. EVIDENCE_KEY is a key from `control-plane evidence keygen`;
 # MUISTAMO_DEV_GATEWAY_DB names another database than the dev one.
+DEV_GATEWAY_ENV = MUISTAMO_DEV_EVIDENCE_KEY="$(abspath $(EVIDENCE_KEY))" MUISTAMO_DEV_INGEST_TOKEN="$$(cat deploy/dev/gateway/ingest-token)"
 dev-gateway:
 	@test -n "$(TENANT)" && test -f "$(EVIDENCE_KEY)" || { echo "usage: make dev-gateway TENANT=<tenant uuid> EVIDENCE_KEY=<evidence key file>" >&2; exit 1; }
 	sed 's/@TENANT@/$(TENANT)/' deploy/dev/gateway/authz.template.json > deploy/dev/gateway/authz.json
+	@test -s deploy/dev/gateway/ingest-token || printf 'fake-dev-ingest-token-%s' "$$(openssl rand -hex 16)" > deploy/dev/gateway/ingest-token
 	go run ./control-plane/cmd/control-plane gateway render-config --config deploy/dev/gateway/authz.json \
-		--authz-host gateway-authz:18081 --out deploy/dev/gateway/agentgateway.yaml
-	$(COMPOSE) --profile gateway build gateway-authz
-	MUISTAMO_DEV_EVIDENCE_KEY="$(abspath $(EVIDENCE_KEY))" $(COMPOSE) --profile gateway up -d --wait --no-start agentgateway
+		--authz-host gateway-authz:18081 --ingest-host gateway-ingest:4317 --out deploy/dev/gateway/agentgateway.yaml
+	$(COMPOSE) --profile gateway build gateway-authz gateway-ingest
+	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --wait --no-start agentgateway
 	$(COMPOSE) --profile gateway cp deploy/dev/gateway/agentgateway.yaml agentgateway:/etc/agentgateway/config.yaml
-	MUISTAMO_DEV_EVIDENCE_KEY="$(abspath $(EVIDENCE_KEY))" $(COMPOSE) --profile gateway up -d --force-recreate --no-deps gateway-authz
-	MUISTAMO_DEV_EVIDENCE_KEY="$(abspath $(EVIDENCE_KEY))" $(COMPOSE) --profile gateway up -d --wait
+	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --force-recreate --no-deps gateway-authz gateway-ingest
+	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --wait

@@ -162,3 +162,32 @@ func TestRenderedValuesCannotInjectConfiguration(t *testing.T) {
 		t.Fatalf("model round trip = %q", model)
 	}
 }
+
+// With an ingest host, every request's access log goes to Muistamo's ingest with the credential
+// the gateway reads from its environment, and the checker's request id.
+func TestRenderedGatewayConfigExportsUsageToIngest(t *testing.T) {
+	out, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{AuthzHost: "authz:18081", IngestHost: "ingest:4317"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(out, &doc); err != nil {
+		t.Fatal(err)
+	}
+	otlp := doc["frontendPolicies"].(map[string]any)["accessLog"].(map[string]any)["otlp"].(map[string]any)
+	key := otlp["policies"].(map[string]any)["backendAuth"].(map[string]any)["key"]
+	field := otlp["fields"].(map[string]any)["add"].(map[string]any)["muistamo.request_id"]
+	if otlp["host"] != "ingest:4317" || key != "$MUISTAMO_GATEWAY_INGEST_TOKEN" || field != `request.headers["x-muistamo-request-id"]` {
+		t.Fatalf("otlp = %v", otlp)
+	}
+	if _, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{AuthzHost: "authz:18081", IngestHost: "ingest"}); err == nil {
+		t.Fatal("an ingest host without a port was rendered")
+	}
+	plain, err := gateway.RenderConfig(renderFixture(), gateway.RenderOptions{AuthzHost: "authz:18081"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal(plain, &doc); err != nil || doc["frontendPolicies"] != nil {
+		t.Fatalf("usage export rendered without an ingest host: %v", err)
+	}
+}

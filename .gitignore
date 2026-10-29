@@ -52,3 +52,4 @@ Thumbs.db
 # Rendered per tenant by make dev-gateway
 deploy/dev/gateway/authz.json
 deploy/dev/gateway/agentgateway.yaml
+deploy/dev/gateway/ingest-token

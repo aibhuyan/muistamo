@@ -3484,7 +3484,11 @@ type ListUsageParams struct {
 	Instance *string    `form:"instance,omitempty" json:"instance,omitempty"`
 	From     *time.Time `form:"from,omitempty" json:"from,omitempty"`
 	To       *time.Time `form:"to,omitempty" json:"to,omitempty"`
-	Cursor   *string    `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Unmetered Only model calls authorized more than 15 minutes ago with no usage record: they may not have run (the gateway can reject an authorized call), or their usage export was lost. Reported, never estimated.
+	Unmetered *bool   `form:"unmetered,omitempty" json:"unmetered,omitempty"`
+	Cursor    *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit     *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListVirtualKeysParams defines parameters for ListVirtualKeys.
@@ -7146,9 +7150,33 @@ func NewListUsageRequest(server string, params *ListUsageParams) (*http.Request,
 
 		}
 
+		if params.Unmetered != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "unmetered", *params.Unmetered, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Cursor != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -14888,6 +14916,19 @@ func (siw *ServerInterfaceWrapper) ListUsage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "unmetered" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unmetered", r.URL.Query(), &params.Unmetered, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unmetered"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unmetered", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "cursor" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -14897,6 +14938,19 @@ func (siw *ServerInterfaceWrapper) ListUsage(w http.ResponseWriter, r *http.Requ
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
 	}

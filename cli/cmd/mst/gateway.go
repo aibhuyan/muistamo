@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -16,8 +17,96 @@ func gatewayCmd(opts *options) *cobra.Command {
 	cmd := &cobra.Command{Use: "gateway", Short: "Work with the model and tool gateway"}
 	keys := &cobra.Command{Use: "keys", Short: "Issue, list and revoke virtual keys (gateway administrators)"}
 	keys.AddCommand(keysListCmd(opts), keysGetCmd(opts), keysIssueCmd(opts), keysRevokeCmd(opts))
-	cmd.AddCommand(keys)
+	cmd.AddCommand(keys, usageCmd(opts))
 	return cmd
+}
+
+func usageCmd(opts *options) *cobra.Command {
+	var instance, from, to string
+	var unmetered bool
+	c := &cobra.Command{
+		Use:   "usage [--instance NAME] [--from RFC3339] [--to RFC3339] [--unmetered]",
+		Short: "Authorized gateway calls at provider cost; administrators see all, others their own",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			params := &muistamov1.ListUsageParams{}
+			if instance != "" {
+				params.Instance = &instance
+			}
+			for flag, dst := range map[string]**time.Time{from: &params.From, to: &params.To} {
+				if flag == "" {
+					continue
+				}
+				at, err := time.Parse(time.RFC3339, flag)
+				if err != nil {
+					return fmt.Errorf("time %q: %w", flag, err)
+				}
+				*dst = &at
+			}
+			if unmetered {
+				params.Unmetered = &unmetered
+			}
+			client, err := opts.client()
+			if err != nil {
+				return err
+			}
+			totals := map[muistamov1.MoneyCurrency]*big.Rat{}
+			calls, notMetered := 0, 0
+			for {
+				res, err := client.ListUsageWithResponse(cmd.Context(), params)
+				if err != nil {
+					return err
+				}
+				if res.StatusCode() != http.StatusOK {
+					return problem(res.StatusCode(), res.Body)
+				}
+				for _, r := range res.JSON200.Items {
+					calls++
+					cmd.Println(usageLine(r))
+					if r.Metered != nil && !*r.Metered {
+						notMetered++
+					}
+					if r.Cost != nil {
+						amount, ok := new(big.Rat).SetString(r.Cost.Amount)
+						if !ok {
+							return fmt.Errorf("cost %q of %s is not a decimal", r.Cost.Amount, r.RequestId)
+						}
+						if totals[r.Cost.Currency] == nil {
+							totals[r.Cost.Currency] = new(big.Rat)
+						}
+						totals[r.Cost.Currency].Add(totals[r.Cost.Currency], amount)
+					}
+				}
+				if res.JSON200.Next == nil {
+					break
+				}
+				next := muistamov1.Cursor(*res.JSON200.Next)
+				params.Cursor = &next
+			}
+			// Totals at provider prices, exactly; unmetered calls are counted, never estimated.
+			for currency, total := range totals {
+				cmd.Println(fmt.Sprintf("total %s %s at provider cost", strings.TrimRight(strings.TrimRight(total.FloatString(12), "0"), "."), currency))
+			}
+			cmd.Println(fmt.Sprintf("%d calls, %d unmetered", calls, notMetered))
+			return nil
+		},
+	}
+	c.Flags().StringVar(&instance, "instance", "", "only this instance's calls")
+	c.Flags().StringVar(&from, "from", "", "calls authorized at or after this time (RFC 3339)")
+	c.Flags().StringVar(&to, "to", "", "calls authorized before this time (RFC 3339)")
+	c.Flags().BoolVar(&unmetered, "unmetered", false, "only model calls with no usage 15 minutes after authorization")
+	return c
+}
+
+func usageLine(r muistamov1.UsageRecord) string {
+	cost := "unmetered"
+	switch {
+	case r.Metered == nil:
+		cost = "no tokens (" + string(r.Kind) + ")"
+	case *r.Metered && r.Cost != nil:
+		cost = fmt.Sprintf("%s %s (in %d, cached %d, out %d)", r.Cost.Amount, r.Cost.Currency, *r.InputTokens, *r.CachedInputTokens, *r.OutputTokens)
+	}
+	return strings.Join([]string{r.AuthorizedAt.UTC().Format(time.RFC3339), r.RequestId.String(), r.Instance, r.Person, cost}, "\t")
 }
 
 func keyLine(k muistamov1.VirtualKey) string {

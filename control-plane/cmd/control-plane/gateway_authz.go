@@ -9,10 +9,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/spf13/cobra"
+	collogs "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	"google.golang.org/grpc"
 
 	"muistamo.dev/muistamo/contracts"
@@ -53,7 +55,7 @@ func gatewayDigestCmd() *cobra.Command {
 }
 
 func gatewayRenderCmd() *cobra.Command {
-	var file, authzHost, readiness, out string
+	var file, authzHost, ingestHost, readiness, out string
 	cmd := &cobra.Command{Use: "render-config --config FILE --authz-host HOST:PORT [--out FILE]", Short: "Render agentgateway's configuration from the checker's configuration; failureMode is always deny", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		raw, err := os.ReadFile(file)
 		if err != nil {
@@ -63,7 +65,7 @@ func gatewayRenderCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		rendered, err := gateway.RenderConfig(cfg, gateway.RenderOptions{AuthzHost: authzHost, ReadinessAddr: readiness})
+		rendered, err := gateway.RenderConfig(cfg, gateway.RenderOptions{AuthzHost: authzHost, IngestHost: ingestHost, ReadinessAddr: readiness})
 		if err != nil {
 			return err
 		}
@@ -75,6 +77,7 @@ func gatewayRenderCmd() *cobra.Command {
 	}}
 	cmd.Flags().StringVar(&file, "config", "", "the configuration `gateway authz` serves")
 	cmd.Flags().StringVar(&authzHost, "authz-host", "", "host:port where the gateway reaches `gateway authz`")
+	cmd.Flags().StringVar(&ingestHost, "ingest-host", "", "host:port where the gateway exports usage to `gateway ingest`; the gateway reads its credential from "+gateway.IngestTokenEnv)
 	cmd.Flags().StringVar(&readiness, "readiness-addr", "", "optional gateway readiness listener, host:port")
 	cmd.Flags().StringVar(&out, "out", "", "write here, replacing the file whole; default stdout")
 	_ = cmd.MarkFlagRequired("config")
@@ -104,6 +107,68 @@ func writeReplacing(path string, body []byte) error {
 		return fmt.Errorf("write gateway configuration: %w", err)
 	}
 	return nil
+}
+
+func gatewayIngestCmd() *cobra.Command {
+	var file, address string
+	var development bool
+	cmd := &cobra.Command{Use: "ingest --config FILE --insecure-development", Short: "Receive the gateway's usage export and record it at provider cost", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		// Like authorization, this bounded slice has no production transport: the export arrives
+		// in plaintext on an isolated network. TLS/mTLS is a later plan.
+		if !development {
+			return errors.New("usage ingest currently requires --insecure-development on an isolated local/test network; production transport is not integrated")
+		}
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		cfg, err := parseGatewayConfig(raw)
+		if err != nil {
+			return err
+		}
+		token, err := os.ReadFile(requireEnv("MUISTAMO_GATEWAY_INGEST_TOKEN_FILE"))
+		if err != nil {
+			return fmt.Errorf("read ingest token: %w", err)
+		}
+		token = []byte(strings.TrimSpace(string(token)))
+		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		db, err := store.Open(ctx, requireEnv("MUISTAMO_DATABASE_URL"))
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		if err := db.RequireApplicationRole(ctx); err != nil {
+			return err
+		}
+		key, err := loadSigner(ctx, db, requireEnv("MUISTAMO_EVIDENCE_KEY_FILE"))
+		if err != nil {
+			return err
+		}
+		log := slog.Default()
+		service, err := gateway.NewIngest(registry.New(db, key), cfg, token, log)
+		if err != nil {
+			return err
+		}
+		listener, err := net.Listen("tcp", address)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = listener.Close() }()
+		server := grpc.NewServer(grpc.MaxRecvMsgSize(4*1024*1024), grpc.MaxConcurrentStreams(16))
+		collogs.RegisterLogsServiceServer(server, service)
+		go func() { <-ctx.Done(); server.Stop() }()
+		log.Warn("development gateway usage ingest: isolate this plaintext endpoint", "tenant", cfg.TenantId, "config_digest", gateway.ConfigDigest(cfg))
+		if err := server.Serve(listener); err != nil && ctx.Err() == nil {
+			return fmt.Errorf("serve gateway usage ingest: %w", err)
+		}
+		return nil
+	}}
+	cmd.Flags().StringVar(&file, "config", "", "the configuration `gateway authz` serves")
+	cmd.Flags().StringVar(&address, "listen", "127.0.0.1:4317", "OTLP/gRPC listener on the isolated development network")
+	cmd.Flags().BoolVar(&development, "insecure-development", false, "acknowledge plaintext development transport; no production authentication")
+	_ = cmd.MarkFlagRequired("config")
+	return cmd
 }
 
 func gatewayAuthorizationCmd() *cobra.Command {

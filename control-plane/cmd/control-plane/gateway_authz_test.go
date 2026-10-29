@@ -107,3 +107,11 @@ func TestWorkerRevokesRealKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestGatewayIngestRequiresExplicitDevelopmentMode(t *testing.T) {
+	cmd := gatewayIngestCmd()
+	cmd.SetArgs([]string{"--config", "unused.json"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "requires --insecure-development") {
+		t.Fatalf("unapproved production ingest started or development gate was skipped: %v", err)
+	}
+}

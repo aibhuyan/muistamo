@@ -3277,7 +3277,10 @@ export interface operations {
                 instance?: string;
                 from?: string;
                 to?: string;
-                cursor?: string;
+                /** @description Only model calls authorized more than 15 minutes ago with no usage record: they may not have run (the gateway can reject an authorized call), or their usage export was lost. Reported, never estimated. */
+                unmetered?: boolean;
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
             };
             header?: never;
             path?: never;
@@ -3285,7 +3288,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Calls, newest first. */
+            /** @description Calls, newest first. Gateway administrators see the tenant's calls; anyone else sees only calls made for them. */
             200: {
                 headers: {
                     [name: string]: unknown;
