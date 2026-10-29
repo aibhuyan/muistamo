@@ -85,6 +85,20 @@ func (db *DB) InTenant(ctx context.Context, tenant uuid.UUID, fn func(pgx.Tx) er
 
 // Migrate applies all pending migrations. url must connect as the table owner.
 func Migrate(ctx context.Context, url string) error {
+	return migrate(ctx, url, 0)
+}
+
+// MigrateTo applies pending migrations up to and including version. Tests use it to build a
+// database as an earlier release left it, with data, and then upgrade it with Migrate.
+func MigrateTo(ctx context.Context, url string, version int64) error {
+	if version < 1 {
+		return fmt.Errorf("migrate to version %d: versions start at 1", version)
+	}
+	return migrate(ctx, url, version)
+}
+
+// migrate applies pending migrations up to version, or all of them when version is 0.
+func migrate(ctx context.Context, url string, version int64) error {
 	config, err := pgx.ParseConfig(url)
 	if err != nil {
 		return fmt.Errorf("parse migrate url: %w", err)
@@ -96,7 +110,12 @@ func Migrate(ctx context.Context, url string) error {
 	if err != nil {
 		return fmt.Errorf("load migrations: %w", err)
 	}
-	if _, err := provider.Up(ctx); err != nil {
+	if version == 0 {
+		_, err = provider.Up(ctx)
+	} else {
+		_, err = provider.UpTo(ctx, version)
+	}
+	if err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
 	return nil

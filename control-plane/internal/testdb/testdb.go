@@ -39,6 +39,27 @@ type DB struct {
 // New creates, migrates and (on cleanup) drops a database.
 func New(t *testing.T) DB {
 	t.Helper()
+	db := create(t)
+	if err := store.Migrate(context.Background(), db.OwnerURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	return db
+}
+
+// NewAt is New migrated only up to version, so a test can add data as an earlier release would
+// have left it and then upgrade with store.Migrate.
+func NewAt(t *testing.T, version int64) DB {
+	t.Helper()
+	db := create(t)
+	if err := store.MigrateTo(context.Background(), db.OwnerURL, version); err != nil {
+		t.Fatalf("migrate to %d: %v", version, err)
+	}
+	return db
+}
+
+// create creates an empty database and drops it on cleanup.
+func create(t *testing.T) DB {
+	t.Helper()
 	ctx := context.Background()
 	admin := os.Getenv("MUISTAMO_TEST_DATABASE_URL")
 	if admin == "" {
@@ -73,11 +94,7 @@ func New(t *testing.T) DB {
 		}
 	})
 
-	db := DB{OwnerURL: withDatabase(t, admin, name, nil), AppURL: withDatabase(t, admin, name, url.UserPassword(appUser, appPassword))}
-	if err := store.Migrate(ctx, db.OwnerURL); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return db
+	return DB{OwnerURL: withDatabase(t, admin, name, nil), AppURL: withDatabase(t, admin, name, url.UserPassword(appUser, appPassword))}
 }
 
 // ensureRoles creates the cluster-wide roles once. Test packages run in parallel, so it holds

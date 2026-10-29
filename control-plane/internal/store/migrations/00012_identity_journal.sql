@@ -76,6 +76,10 @@ ALTER TABLE instance_identities ADD CONSTRAINT identity_original_creation
 
 INSERT INTO instance_identities(tenant_id,instance_name,provider_mode,observed_state)
   SELECT tenant_id,name,'simulated','simulated' FROM agent_instances;
+-- Fire the deferred creation-marker checks the backfill queued (they pass: creation_id is NULL),
+-- or the ALTERs below fail with "pending trigger events" on any database that has instances.
+-- Corrected in place before release 1: the resulting schema is identical.
+SET CONSTRAINTS identity_original_creation IMMEDIATE;
 
 ALTER TABLE entra_bindings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE entra_bindings FORCE ROW LEVEL SECURITY;
