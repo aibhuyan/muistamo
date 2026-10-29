@@ -142,8 +142,7 @@ func (s *Authorization) Check(ctx context.Context, req *auth.CheckRequest) (*aut
 	}
 	d, err := s.decisions.AuthorizeGateway(ctx, s.tenant, token, call, route)
 	// Do not log raw headers, paths, metadata, errors carrying SQL inputs, or credentials.
-	s.log.Info("gateway authorization", "request_id", d.RequestId, "agent", d.Instance, "person", d.Person, "allowed", err == nil && d.Allowed, "reason", d.Reason,
-		"gateway_identity", PeerIdentity(ctx))
+	s.log.Info("gateway authorization", "request_id", d.RequestId, "agent", d.Instance, "person", d.Person, "allowed", err == nil && d.Allowed, "reason", d.Reason)
 	if err == nil && (d.Reason == muistamov1.GatewayAuthorizationDecisionReasonRateLimited ||
 		d.Reason == muistamov1.GatewayAuthorizationDecisionReasonTooManyInFlight) {
 		return rateLimited(d.Reason), nil

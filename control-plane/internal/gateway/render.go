@@ -141,9 +141,9 @@ func backendTLS(opts RenderOptions) (authz, ingest yaml.MapSlice, err error) {
 		return nil, nil, nil
 	}
 	t := opts.TLS
-	for name, path := range map[string]string{"root": t.Root, "cert": t.Cert, "key": t.Key} {
-		if !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "$") || strings.IndexFunc(path, unrenderable) >= 0 {
-			return nil, nil, fmt.Errorf("gateway TLS %s must be an absolute path inside the gateway, without control characters or $", name)
+	for _, f := range []struct{ name, path string }{{"root", t.Root}, {"cert", t.Cert}, {"key", t.Key}} {
+		if !strings.HasPrefix(f.path, "/") || strings.ContainsAny(f.path, "$") || strings.IndexFunc(f.path, unrenderable) >= 0 {
+			return nil, nil, fmt.Errorf("gateway TLS %s must be an absolute path inside the gateway, without control characters or $", f.name)
 		}
 	}
 	block := func(serverName string) (yaml.MapSlice, error) {
@@ -156,6 +156,9 @@ func backendTLS(opts RenderOptions) (authz, ingest yaml.MapSlice, err error) {
 	}
 	if authz, err = block(t.AuthzServerName); err != nil {
 		return nil, nil, fmt.Errorf("authz: %w", err)
+	}
+	if opts.IngestHost == "" && t.IngestServerName != "" {
+		return nil, nil, errors.New("an ingest server name was given without an ingest host")
 	}
 	if opts.IngestHost != "" {
 		if ingest, err = block(t.IngestServerName); err != nil {

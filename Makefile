@@ -95,5 +95,7 @@ dev-gateway: dev-certs
 	$(COMPOSE) --profile gateway build gateway-authz gateway-ingest
 	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --wait --no-start agentgateway
 	$(COMPOSE) --profile gateway cp deploy/dev/gateway/agentgateway.yaml agentgateway:/etc/agentgateway/config.yaml
+	# Recreated so every container mounts the current certificate files (dev-certs replaces them).
+	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --force-recreate --no-deps --no-start agentgateway
 	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --force-recreate --no-deps gateway-authz gateway-ingest
 	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --wait

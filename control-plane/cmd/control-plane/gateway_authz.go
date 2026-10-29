@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/cobra"
 	collogs "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 
 	"muistamo.dev/muistamo/contracts"
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
@@ -91,7 +90,7 @@ func gatewayRenderCmd() *cobra.Command {
 	cmd.Flags().StringVar(&tlsFiles.Key, "tls-key", "", "the gateway's client key (PEM path inside the gateway)")
 	cmd.Flags().StringVar(&tlsFiles.AuthzServerName, "authz-server-name", "", "DNS name the authorization endpoint's certificate must carry")
 	cmd.Flags().StringVar(&tlsFiles.IngestServerName, "ingest-server-name", "", "DNS name the ingest endpoint's certificate must carry")
-	cmd.Flags().BoolVar(&plaintext, "insecure-plaintext", false, "render plaintext connections to the endpoints (isolated development only)")
+	cmd.Flags().BoolVar(&plaintext, "insecure-plaintext", false, "render plaintext connections to the endpoints, which also sends the ingest bearer token in cleartext (isolated development only)")
 	cmd.Flags().StringVar(&out, "out", "", "write here, replacing the file whole; default stdout")
 	_ = cmd.MarkFlagRequired("config")
 	_ = cmd.MarkFlagRequired("authz-host")
@@ -158,7 +157,7 @@ func gatewayIngestCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		log := slog.Default()
+		log := transport.logger()
 		service, err := gateway.NewIngest(registry.New(db, key), cfg, token, log)
 		if err != nil {
 			return err
@@ -168,7 +167,7 @@ func gatewayIngestCmd() *cobra.Command {
 			return err
 		}
 		defer func() { _ = listener.Close() }()
-		server := grpc.NewServer(append(transport.options(), grpc.MaxRecvMsgSize(4*1024*1024), grpc.MaxConcurrentStreams(16))...)
+		server := grpc.NewServer(append(transport.ServerOptions(), grpc.MaxRecvMsgSize(4*1024*1024), grpc.MaxConcurrentStreams(16))...)
 		collogs.RegisterLogsServiceServer(server, service)
 		go func() { <-ctx.Done(); server.Stop() }()
 		transport.announce(log, "gateway usage ingest", "tenant", cfg.TenantId, "config_digest", gateway.ConfigDigest(cfg))
@@ -217,7 +216,7 @@ func gatewayAuthorizationCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		log := slog.Default()
+		log := transport.logger()
 		service, err := gateway.NewAuthorization(registry.New(db, key), cfg, muistamov1.GatewayAuthorizationRequestKind(kind), log)
 		if err != nil {
 			return err
@@ -227,7 +226,7 @@ func gatewayAuthorizationCmd() *cobra.Command {
 			return err
 		}
 		defer func() { _ = listener.Close() }()
-		server := grpc.NewServer(append(transport.options(), grpc.MaxRecvMsgSize(64*1024), grpc.MaxConcurrentStreams(64))...)
+		server := grpc.NewServer(append(transport.ServerOptions(), grpc.MaxRecvMsgSize(64*1024), grpc.MaxConcurrentStreams(64))...)
 		auth.RegisterAuthorizationServer(server, service)
 		go func() { <-ctx.Done(); server.Stop() }()
 		transport.announce(log, "gateway authorization (MCP disabled)", "tenant", cfg.TenantId, "kind", kind, "config_digest", gateway.ConfigDigest(cfg))
@@ -252,24 +251,23 @@ func (e *endpointTLS) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&e.cert, "tls-cert", "", "server certificate (PEM) issued by the operator's PKI")
 	cmd.Flags().StringVar(&e.key, "tls-key", "", "server private key (PEM)")
 	cmd.Flags().StringVar(&e.clientCA, "client-ca", "", "CA (PEM) that issues the gateway's client certificate")
-	cmd.Flags().StringVar(&e.clientIdentity, "client-identity", "", "the gateway certificate's required URI or DNS SAN, e.g. spiffe://example.org/agentgateway")
+	cmd.Flags().StringVar(&e.clientIdentity, "client-identity", "", "the gateway's identity: a SPIFFE id matched against the certificate's single URI SAN (spiffe://example.org/agentgateway), or a lowercase DNS name matched against its DNS SANs")
 }
 
 func (e endpointTLS) choose(development bool) (endpointTransport, error) {
-	t, err := gateway.ChooseTransport(development, e.cert, e.key, e.clientCA, e.clientIdentity)
-	return endpointTransport{ServerTransport: t, identity: e.clientIdentity}, err
+	t, err := gateway.ChooseTransport(development, e.cert, e.key, e.clientCA, e.clientIdentity, slog.Default())
+	return endpointTransport{t}, err
 }
 
-type endpointTransport struct {
-	gateway.ServerTransport
-	identity string
-}
+type endpointTransport struct{ gateway.ServerTransport }
 
-func (t endpointTransport) options() []grpc.ServerOption {
+// logger carries the gateway identity on every entry: under mutual TLS the handshake has already
+// refused any client certificate that does not name it.
+func (t endpointTransport) logger() *slog.Logger {
 	if t.TLS == nil {
-		return nil
+		return slog.Default()
 	}
-	return []grpc.ServerOption{grpc.Creds(credentials.NewTLS(t.TLS))}
+	return slog.Default().With("gateway_identity", t.Identity.String())
 }
 
 // announce logs the transport at startup; never key material.
@@ -278,5 +276,6 @@ func (t endpointTransport) announce(log *slog.Logger, what string, args ...any) 
 		log.Warn(what+": plaintext development transport with no caller certificates; isolate this endpoint", args...)
 		return
 	}
-	log.Info(what+": mutual TLS 1.3", append(args, "client_identity", t.identity)...)
+	log.Info(what+": mutual TLS 1.3", append(args, "server_certificate_not_after", gateway.ServerNotAfter(t.TLS),
+		"max_connection_age", gateway.MaxConnectionAge.String())...)
 }

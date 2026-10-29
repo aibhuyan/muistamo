@@ -249,11 +249,12 @@ func TestRenderRefusesPlaintextUnlessAskedAndHalfSecuredConfigs(t *testing.T) {
 	for name, opts := range map[string]gateway.RenderOptions{
 		"plaintext not asked for": {AuthzHost: "gateway-authz:18081"},
 		"both plaintext and TLS":  {AuthzHost: "gateway-authz:18081", TLS: gatewayTLS(), Plaintext: true},
-		"relative path":           {AuthzHost: "gateway-authz:18081", TLS: bad(func(t *gateway.GatewayTLS) { t.Key = "gateway.key" })},
-		"path with $":             {AuthzHost: "gateway-authz:18081", TLS: bad(func(t *gateway.GatewayTLS) { t.Cert = "/etc/$HOME/gateway.pem" })},
-		"path with a newline":     {AuthzHost: "gateway-authz:18081", TLS: bad(func(t *gateway.GatewayTLS) { t.Root = "/etc/ca.pem\nfailureMode: allow" })},
-		"bad authz server name":   {AuthzHost: "gateway-authz:18081", TLS: bad(func(t *gateway.GatewayTLS) { t.AuthzServerName = "gateway authz" })},
+		"relative path":           {AuthzHost: "gateway-authz:18081", IngestHost: "gateway-ingest:4317", TLS: bad(func(t *gateway.GatewayTLS) { t.Key = "gateway.key" })},
+		"path with $":             {AuthzHost: "gateway-authz:18081", IngestHost: "gateway-ingest:4317", TLS: bad(func(t *gateway.GatewayTLS) { t.Cert = "/etc/$HOME/gateway.pem" })},
+		"path with a newline":     {AuthzHost: "gateway-authz:18081", IngestHost: "gateway-ingest:4317", TLS: bad(func(t *gateway.GatewayTLS) { t.Root = "/etc/ca.pem\nfailureMode: allow" })},
+		"bad authz server name":   {AuthzHost: "gateway-authz:18081", IngestHost: "gateway-ingest:4317", TLS: bad(func(t *gateway.GatewayTLS) { t.AuthzServerName = "gateway authz" })},
 		"ingest without its name": {AuthzHost: "gateway-authz:18081", IngestHost: "gateway-ingest:4317", TLS: bad(func(t *gateway.GatewayTLS) { t.IngestServerName = "" })},
+		"ingest name, no ingest":  {AuthzHost: "gateway-authz:18081", TLS: gatewayTLS()},
 	} {
 		if out, err := gateway.RenderConfig(renderFixture(), opts); err == nil {
 			t.Errorf("%s: rendered\n%s", name, out)

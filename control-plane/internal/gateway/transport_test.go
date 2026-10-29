@@ -9,12 +9,15 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +33,8 @@ import (
 // HUMAN REVIEW REQUIRED: mutual TLS between agentgateway and the authz and ingest endpoints.
 
 const gatewayIdentity = "spiffe://muistamo.dev/agentgateway"
+
+var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 type authority struct {
 	cert *x509.Certificate
@@ -50,26 +55,55 @@ func newAuthority(t *testing.T, name string) authority {
 	return authority{cert: cert, key: key, pem: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})}
 }
 
-// leaf issues a certificate; server certificates name 127.0.0.1, client certificates a URI.
-func (a authority) leaf(t *testing.T, uri string, server bool, notAfter time.Time) tls.Certificate {
+// intermediate is a CA issued by a, as an operator's issuing CA under an offline root.
+func (a authority) intermediate(t *testing.T) authority {
 	t.Helper()
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "issuing CA"}, NotBefore: time.Now().Add(-time.Hour),
+		NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, a.cert, &key.PublicKey, a.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, _ := x509.ParseCertificate(der)
+	return authority{cert: cert, key: key, pem: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})}
+}
+
+type leafSpec struct {
+	uris, dns []string
+	eku       x509.ExtKeyUsage
+	notAfter  time.Time
+}
+
+func (a authority) issue(t *testing.T, s leafSpec) tls.Certificate {
+	t.Helper()
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if s.notAfter.IsZero() {
+		s.notAfter = time.Now().Add(time.Hour)
+	}
 	tmpl := &x509.Certificate{SerialNumber: big.NewInt(time.Now().UnixNano()), Subject: pkix.Name{CommonName: "leaf"},
-		NotBefore: time.Now().Add(-2 * time.Hour), NotAfter: notAfter, KeyUsage: x509.KeyUsageDigitalSignature}
-	if server {
-		tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		NotBefore: time.Now().Add(-2 * time.Hour), NotAfter: s.notAfter, KeyUsage: x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{s.eku}, DNSNames: s.dns}
+	for _, raw := range s.uris {
+		u, _ := url.Parse(raw)
+		tmpl.URIs = append(tmpl.URIs, u)
+	}
+	if s.eku == x509.ExtKeyUsageServerAuth {
 		tmpl.IPAddresses = []net.IP{net.ParseIP("127.0.0.1")}
-		tmpl.DNSNames = []string{"gateway-authz"}
-	} else {
-		tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
-		u, _ := url.Parse(uri)
-		tmpl.URIs = []*url.URL{u}
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, a.cert, &key.PublicKey, a.key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+}
+
+// leaf issues a server certificate for gateway-authz, or a client certificate naming uri.
+func (a authority) leaf(t *testing.T, uri string, server bool, notAfter time.Time) tls.Certificate {
+	if server {
+		return a.issue(t, leafSpec{dns: []string{"gateway-authz"}, eku: x509.ExtKeyUsageServerAuth, notAfter: notAfter})
+	}
+	return a.issue(t, leafSpec{uris: []string{uri}, eku: x509.ExtKeyUsageClientAuth, notAfter: notAfter})
 }
 
 func writePEM(t *testing.T, dir, name string, c tls.Certificate) (string, string) {
@@ -98,18 +132,34 @@ func newPKI(t *testing.T) pki {
 	return p
 }
 
-// serve runs a gRPC server with the endpoints' TLS configuration and returns its address.
-func serve(t *testing.T, cfg *tls.Config) string {
+// serve runs a gRPC server with the endpoints' transport options and returns its address.
+func serve(t *testing.T, transport gateway.ServerTransport) string {
 	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := grpc.NewServer(grpc.Creds(credentials.NewTLS(cfg)))
+	server := grpc.NewServer(transport.ServerOptions()...)
 	healthpb.RegisterHealthServer(server, health.NewServer())
 	go func() { _ = server.Serve(lis) }()
 	t.Cleanup(server.Stop)
 	return lis.Addr().String()
+}
+
+func serveTLS(t *testing.T, p pki, identity string) string {
+	t.Helper()
+	tr, err := gateway.ChooseTransport(false, p.serverCert, p.serverKey, p.caFile, identity, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return serve(t, tr)
+}
+
+func check(ctx context.Context, conn *grpc.ClientConn) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
+	return err
 }
 
 func call(addr string, creds credentials.TransportCredentials) error {
@@ -118,10 +168,7 @@ func call(addr string, creds credentials.TransportCredentials) error {
 		return err
 	}
 	defer func() { _ = conn.Close() }()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	_, err = healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
-	return err
+	return check(context.Background(), conn)
 }
 
 func clientTLS(p pki, cert *tls.Certificate, roots []byte, maxVersion uint16) credentials.TransportCredentials {
@@ -136,7 +183,7 @@ func clientTLS(p pki, cert *tls.Certificate, roots []byte, maxVersion uint16) cr
 
 func TestMutualTLSAdmitsOnlyTheGatewayIdentityFromTheOperatorsCA(t *testing.T) {
 	p := newPKI(t)
-	cfg, err := gateway.ServerTLS(p.serverCert, p.serverKey, p.caFile, gatewayIdentity)
+	cfg, err := gateway.ServerTLS(p.serverCert, p.serverKey, p.caFile, gatewayIdentity, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,22 +191,44 @@ func TestMutualTLSAdmitsOnlyTheGatewayIdentityFromTheOperatorsCA(t *testing.T) {
 	if cfg.ClientAuth != tls.RequireAndVerifyClientCert || cfg.MinVersion != tls.VersionTLS13 {
 		t.Fatalf("client auth %v, min version %x", cfg.ClientAuth, cfg.MinVersion)
 	}
-	addr := serve(t, cfg)
+	addr := serveTLS(t, p, gatewayIdentity)
 	good := p.ca.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))
 	if err := call(addr, clientTLS(p, &good, p.ca.pem, 0)); err != nil {
 		t.Fatalf("the gateway's certificate was refused: %v", err)
 	}
+	// An operator's issuing CA under the configured root: the gateway sends the chain.
+	issuing := p.ca.intermediate(t)
+	chained := issuing.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))
+	chained.Certificate = append(chained.Certificate, issuing.cert.Raw)
+	if err := call(addr, clientTLS(p, &chained, p.ca.pem, 0)); err != nil {
+		t.Fatalf("a chain through an intermediate was refused: %v", err)
+	}
+	unchained := issuing.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))
+
 	otherCA := p.other.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))
 	wrongName := p.ca.leaf(t, "spiffe://muistamo.dev/another-service", false, time.Now().Add(time.Hour))
 	expired := p.ca.leaf(t, gatewayIdentity, false, time.Now().Add(-time.Minute))
+	serverEKU := p.ca.issue(t, leafSpec{uris: []string{gatewayIdentity}, eku: x509.ExtKeyUsageServerAuth})
+	asDNS := p.ca.issue(t, leafSpec{dns: []string{"muistamo.dev"}, eku: x509.ExtKeyUsageClientAuth})
+	twoURIs := p.ca.issue(t, leafSpec{uris: []string{gatewayIdentity, "spiffe://muistamo.dev/another-service"}, eku: x509.ExtKeyUsageClientAuth})
+	withQuery := p.ca.issue(t, leafSpec{uris: []string{gatewayIdentity + "?x=1"}, eku: x509.ExtKeyUsageClientAuth})
+	upperHost := p.ca.issue(t, leafSpec{uris: []string{"spiffe://MUISTAMO.dev/agentgateway"}, eku: x509.ExtKeyUsageClientAuth})
 	for name, creds := range map[string]credentials.TransportCredentials{
-		"no client certificate":       clientTLS(p, nil, p.ca.pem, 0),
-		"certificate from another CA": clientTLS(p, &otherCA, p.ca.pem, 0),
-		"same CA, another identity":   clientTLS(p, &wrongName, p.ca.pem, 0),
-		"expired certificate":         clientTLS(p, &expired, p.ca.pem, 0),
-		"TLS 1.2 only":                clientTLS(p, &good, p.ca.pem, tls.VersionTLS12),
-		"plaintext":                   insecure.NewCredentials(),
-		"server not trusted":          clientTLS(p, &good, p.other.pem, 0),
+		"no client certificate":                clientTLS(p, nil, p.ca.pem, 0),
+		"certificate from another CA":          clientTLS(p, &otherCA, p.ca.pem, 0),
+		"same CA, another identity":            clientTLS(p, &wrongName, p.ca.pem, 0),
+		"expired certificate":                  clientTLS(p, &expired, p.ca.pem, 0),
+		"server-auth-only certificate":         clientTLS(p, &serverEKU, p.ca.pem, 0),
+		"trust domain as a DNS SAN":            clientTLS(p, &asDNS, p.ca.pem, 0),
+		"two URI SANs":                         clientTLS(p, &twoURIs, p.ca.pem, 0),
+		"identity with a query":                clientTLS(p, &withQuery, p.ca.pem, 0),
+		"uppercase trust domain":               clientTLS(p, &upperHost, p.ca.pem, 0),
+		"intermediate not sent":                clientTLS(p, &unchained, p.ca.pem, 0),
+		"TLS 1.2 only":                         clientTLS(p, &good, p.ca.pem, tls.VersionTLS12),
+		"plaintext":                            insecure.NewCredentials(),
+		"server not trusted":                   clientTLS(p, &good, p.other.pem, 0),
+		"server certificate for another name":  credentials.NewTLS(&tls.Config{RootCAs: poolOf(p.ca.pem), ServerName: "gateway-ingest", Certificates: []tls.Certificate{good}}),
+		"server certificate without client CA": credentials.NewTLS(&tls.Config{ServerName: "gateway-authz", Certificates: []tls.Certificate{good}}),
 	} {
 		if err := call(addr, creds); err == nil {
 			t.Errorf("%s: call succeeded", name)
@@ -167,9 +236,155 @@ func TestMutualTLSAdmitsOnlyTheGatewayIdentityFromTheOperatorsCA(t *testing.T) {
 	}
 }
 
+func poolOf(pemBytes []byte) *x509.CertPool {
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(pemBytes)
+	return pool
+}
+
+func TestDNSIdentityMatchesOnlyDNSSANs(t *testing.T) {
+	p := newPKI(t)
+	addr := serveTLS(t, p, "agentgateway.muistamo.internal")
+	for name, s := range map[string]leafSpec{
+		"exact":         {dns: []string{"agentgateway.muistamo.internal"}},
+		"other case":    {dns: []string{"AgentGateway.Muistamo.Internal"}},
+		"trailing dot":  {dns: []string{"agentgateway.muistamo.internal."}},
+		"among several": {dns: []string{"other.muistamo.internal", "agentgateway.muistamo.internal"}},
+	} {
+		s.eku = x509.ExtKeyUsageClientAuth
+		cert := p.ca.issue(t, s)
+		if err := call(addr, clientTLS(p, &cert, p.ca.pem, 0)); err != nil {
+			t.Errorf("%s: refused: %v", name, err)
+		}
+	}
+	for name, s := range map[string]leafSpec{
+		"as a URI SAN":   {uris: []string{"dns://agentgateway.muistamo.internal"}},
+		"wildcard":       {dns: []string{"*.muistamo.internal"}},
+		"suffix only":    {dns: []string{"muistamo.internal"}},
+		"longer name":    {dns: []string{"agentgateway.muistamo.internal.evil"}},
+		"no SAN at all":  {},
+		"another name":   {dns: []string{"other.muistamo.internal"}},
+		"spiffe instead": {uris: []string{"spiffe://agentgateway.muistamo.internal/x"}},
+	} {
+		s.eku = x509.ExtKeyUsageClientAuth
+		cert := p.ca.issue(t, s)
+		if err := call(addr, clientTLS(p, &cert, p.ca.pem, 0)); err == nil {
+			t.Errorf("%s: call succeeded", name)
+		}
+	}
+}
+
+func TestParseIdentityRefusesAmbiguousIdentities(t *testing.T) {
+	for _, ok := range []string{gatewayIdentity, "spiffe://example.org/ns/prod/sa/agentgateway", "agentgateway", "agentgateway.muistamo.internal"} {
+		if _, err := gateway.ParseIdentity(ok); err != nil {
+			t.Errorf("%q: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{
+		"", "spiffe://", "spiffe://muistamo.dev", "spiffe://muistamo.dev/", "spiffe://muistamo.dev:443/agentgateway",
+		"spiffe://user@muistamo.dev/agentgateway", "spiffe://muistamo.dev/agentgateway?x=1", "spiffe://muistamo.dev/agentgateway?",
+		"spiffe://muistamo.dev/agentgateway#frag", "spiffe://MUISTAMO.dev/agentgateway", "spiffe://muistamo.dev/*",
+		"https://muistamo.dev/agentgateway", "SPIFFE://muistamo.dev/agentgateway", "*.muistamo.internal", "AgentGateway",
+		"agentgateway.", "agent gateway", "agentgateway\n", "-agentgateway", "127.0.0.1:443",
+	} {
+		if _, err := gateway.ParseIdentity(bad); err == nil {
+			t.Errorf("%q: accepted", bad)
+		}
+	}
+}
+
+// Certificate validity is only checked at the handshake; a bounded connection age is what stops
+// an expired client certificate from keeping a connection open.
+func TestExpiredClientCertificateCannotKeepItsConnection(t *testing.T) {
+	defer gateway.ShortenConnectionAge(time.Second, 200*time.Millisecond)()
+	p := newPKI(t)
+	addr := serveTLS(t, p, gatewayIdentity)
+	expiresSoon := p.ca.leaf(t, gatewayIdentity, false, time.Now().Add(2*time.Second))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(clientTLS(p, &expiresSoon, p.ca.pem, 0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := check(context.Background(), conn); err != nil {
+		t.Fatalf("valid certificate refused: %v", err)
+	}
+	time.Sleep(4 * time.Second)
+	for range 3 {
+		if err = check(context.Background(), conn); err != nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err == nil {
+		t.Fatal("a connection opened with a now-expired client certificate still serves calls")
+	}
+}
+
+func TestRotatedFilesApplyWithoutRestartAndBadWritesKeepTheLastGoodSet(t *testing.T) {
+	p := newPKI(t)
+	var logs strings.Builder
+	var logsMu sync.Mutex
+	tr, err := gateway.ChooseTransport(false, p.serverCert, p.serverKey, p.caFile, gatewayIdentity,
+		slog.New(slog.NewTextHandler(lockedWriter{&logsMu, &logs}, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := serve(t, tr)
+	good := p.ca.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))
+	if err := call(addr, clientTLS(p, &good, p.ca.pem, 0)); err != nil {
+		t.Fatal(err)
+	}
+	touch := func(paths ...string) {
+		later := time.Now().Add(time.Minute)
+		for _, path := range paths {
+			_ = os.Chtimes(path, later, later)
+		}
+	}
+	// Rotation to a new CA: new handshakes use the new server certificate and client CA.
+	next := newAuthority(t, "next CA")
+	cert, key := writePEM(t, t.TempDir(), "server", next.leaf(t, "", true, time.Now().Add(time.Hour)))
+	for src, dst := range map[string]string{cert: p.serverCert, key: p.serverKey} {
+		body, _ := os.ReadFile(src)
+		_ = os.WriteFile(dst, body, 0o600)
+	}
+	_ = os.WriteFile(p.caFile, next.pem, 0o600)
+	touch(p.serverCert, p.serverKey, p.caFile)
+	rotated := next.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))
+	if err := call(addr, clientTLS(p, &rotated, next.pem, 0)); err != nil {
+		t.Fatalf("rotated certificates not applied: %v", err)
+	}
+	if err := call(addr, clientTLS(p, &good, p.ca.pem, 0)); err == nil {
+		t.Fatal("the retired CA is still trusted after rotation")
+	}
+	// A half-written certificate: the server keeps serving the last good set, the rotated one.
+	_ = os.WriteFile(p.serverCert, []byte("-----BEGIN CERTIFICATE-----\ntruncat"), 0o600)
+	touch(p.serverCert)
+	for range 2 {
+		if err := call(addr, clientTLS(p, &rotated, next.pem, 0)); err != nil {
+			t.Fatalf("a bad write replaced the last good set: %v", err)
+		}
+	}
+	logsMu.Lock()
+	defer logsMu.Unlock()
+	if n := strings.Count(logs.String(), "not reloaded"); n != 1 {
+		t.Fatalf("a bad set was logged %d times, want once:\n%s", n, logs.String())
+	}
+}
+
+type lockedWriter struct {
+	mu *sync.Mutex
+	w  io.Writer
+}
+
+func (l lockedWriter) Write(b []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(b)
+}
+
 func TestServerTLSRefusesIncompleteOrInconsistentMaterial(t *testing.T) {
 	p := newPKI(t)
-	otherCert, otherKey := writePEM(t, p.dir, "other", p.ca.leaf(t, "", true, time.Now().Add(time.Hour)))
+	_, otherKey := writePEM(t, p.dir, "other", p.ca.leaf(t, "", true, time.Now().Add(time.Hour)))
 	empty := filepath.Join(p.dir, "empty.pem")
 	_ = os.WriteFile(empty, []byte("not a certificate"), 0o600)
 	for name, args := range map[string][4]string{
@@ -178,21 +393,25 @@ func TestServerTLSRefusesIncompleteOrInconsistentMaterial(t *testing.T) {
 		"empty CA file":              {p.serverCert, p.serverKey, empty, gatewayIdentity},
 		"missing CA":                 {p.serverCert, p.serverKey, filepath.Join(p.dir, "absent-ca.pem"), gatewayIdentity},
 		"no identity":                {p.serverCert, p.serverKey, p.caFile, ""},
+		"ambiguous identity":         {p.serverCert, p.serverKey, p.caFile, "spiffe://muistamo.dev/agentgateway?x"},
 	} {
-		if _, err := gateway.ServerTLS(args[0], args[1], args[2], args[3]); err == nil {
+		if _, err := gateway.ServerTLS(args[0], args[1], args[2], args[3], quiet); err == nil {
 			t.Errorf("%s: built a TLS configuration", name)
 		}
 	}
-	_ = otherCert
 }
 
 func TestEndpointModeGate(t *testing.T) {
 	p := newPKI(t)
-	if tr, err := gateway.ChooseTransport(true, "", "", "", ""); err != nil || tr.TLS != nil {
+	if tr, err := gateway.ChooseTransport(true, "", "", "", "", quiet); err != nil || tr.TLS != nil || tr.ServerOptions() != nil {
 		t.Fatalf("explicit development plaintext = %+v, %v", tr, err)
 	}
-	if tr, err := gateway.ChooseTransport(false, p.serverCert, p.serverKey, p.caFile, gatewayIdentity); err != nil || tr.TLS == nil {
+	tr, err := gateway.ChooseTransport(false, p.serverCert, p.serverKey, p.caFile, gatewayIdentity, quiet)
+	if err != nil || tr.TLS == nil || tr.Identity.String() != gatewayIdentity {
 		t.Fatalf("mutual TLS = %+v, %v", tr, err)
+	}
+	if got := gateway.ServerNotAfter(tr.TLS); got.IsZero() || got.Before(time.Now()) {
+		t.Fatalf("server certificate expiry = %v", got)
 	}
 	for name, c := range map[string]struct {
 		dev  bool
@@ -203,11 +422,11 @@ func TestEndpointModeGate(t *testing.T) {
 		"partial":     {false, [4]string{p.serverCert, p.serverKey, "", ""}},
 		"no identity": {false, [4]string{p.serverCert, p.serverKey, p.caFile, ""}},
 	} {
-		if _, err := gateway.ChooseTransport(c.dev, c.args[0], c.args[1], c.args[2], c.args[3]); err == nil {
+		if _, err := gateway.ChooseTransport(c.dev, c.args[0], c.args[1], c.args[2], c.args[3], quiet); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	_, err := gateway.ChooseTransport(false, "", "", "", "")
+	_, err = gateway.ChooseTransport(false, "", "", "", "", quiet)
 	if err == nil || !strings.Contains(err.Error(), "--insecure-development") {
 		t.Fatalf("the refusal does not name both modes: %v", err)
 	}
