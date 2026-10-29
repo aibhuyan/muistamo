@@ -26,6 +26,8 @@ import (
 const (
 	appUser     = "muistamo_server_test"
 	appPassword = "test-only-not-a-secret"
+	// ownerPassword is for the per-database restricted owners of NewRestrictedAt.
+	ownerPassword = "test-only-not-a-secret"
 )
 
 // DB describes one throwaway database.
@@ -38,6 +40,46 @@ type DB struct {
 
 // New creates, migrates and (on cleanup) drops a database.
 func New(t *testing.T) DB {
+	t.Helper()
+	db := create(t)
+	if err := store.Migrate(context.Background(), db.OwnerURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	return db
+}
+
+// NewAt is New migrated only up to version, so a test can add data as an earlier release would
+// have left it and then upgrade with store.Migrate.
+func NewAt(t *testing.T, version int64) DB {
+	t.Helper()
+	db := create(t)
+	if err := store.MigrateTo(context.Background(), db.OwnerURL, version); err != nil {
+		t.Fatalf("migrate to %d: %v", version, err)
+	}
+	return db
+}
+
+// NewRestrictedAt is NewAt for a database owned by a role that is neither superuser nor
+// BYPASSRLS, as migrations run on managed PostgreSQL. Row-level security then applies to the
+// owner too, which is what backfills must survive.
+func NewRestrictedAt(t *testing.T, version int64) DB {
+	t.Helper()
+	db := createOwned(t, true)
+	if err := store.MigrateTo(context.Background(), db.OwnerURL, version); err != nil {
+		t.Fatalf("migrate to %d as a restricted owner: %v", version, err)
+	}
+	return db
+}
+
+// create creates an empty database and drops it on cleanup.
+func create(t *testing.T) DB {
+	t.Helper()
+	return createOwned(t, false)
+}
+
+// createOwned creates an empty database, owned by a fresh restricted role when restricted, and
+// drops both on cleanup.
+func createOwned(t *testing.T, restricted bool) DB {
 	t.Helper()
 	ctx := context.Background()
 	admin := os.Getenv("MUISTAMO_TEST_DATABASE_URL")
@@ -58,7 +100,15 @@ func New(t *testing.T) DB {
 	suffix := make([]byte, 6)
 	_, _ = rand.Read(suffix)
 	name := "muistamo_test_" + hex.EncodeToString(suffix)
-	if _, err := conn.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+	owner, create := "", "CREATE DATABASE "+name
+	if restricted {
+		owner = "muistamo_owner_" + hex.EncodeToString(suffix)
+		if _, err := conn.Exec(ctx, fmt.Sprintf("CREATE ROLE %s LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD '%s'", owner, ownerPassword)); err != nil {
+			t.Fatalf("create owner role: %v", err)
+		}
+		create += " OWNER " + owner
+	}
+	if _, err := conn.Exec(ctx, create); err != nil {
 		t.Fatalf("create database: %v", err)
 	}
 	t.Cleanup(func() {
@@ -71,13 +121,17 @@ func New(t *testing.T) DB {
 		if _, err := c.Exec(context.Background(), "DROP DATABASE "+name+" WITH (FORCE)"); err != nil {
 			t.Errorf("drop database %s: %v", name, err)
 		}
+		if owner != "" {
+			if _, err := c.Exec(context.Background(), "DROP ROLE "+owner); err != nil {
+				t.Errorf("drop role %s: %v", owner, err)
+			}
+		}
 	})
-
-	db := DB{OwnerURL: withDatabase(t, admin, name, nil), AppURL: withDatabase(t, admin, name, url.UserPassword(appUser, appPassword))}
-	if err := store.Migrate(ctx, db.OwnerURL); err != nil {
-		t.Fatalf("migrate: %v", err)
+	if restricted {
+		return DB{OwnerURL: withDatabase(t, admin, name, url.UserPassword(owner, ownerPassword)), AppURL: withDatabase(t, admin, name, url.UserPassword(appUser, appPassword))}
 	}
-	return db
+
+	return DB{OwnerURL: withDatabase(t, admin, name, nil), AppURL: withDatabase(t, admin, name, url.UserPassword(appUser, appPassword))}
 }
 
 // ensureRoles creates the cluster-wide roles once. Test packages run in parallel, so it holds
