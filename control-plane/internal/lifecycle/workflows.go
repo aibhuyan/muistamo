@@ -11,6 +11,8 @@
 package lifecycle
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
@@ -112,14 +114,22 @@ func Leaver(ctx workflow.Context, in LeaverInput) (LeaverResult, error) {
 	}
 	result := LeaverResult{Instances: instances}
 
-	// Revocation first and for everyone: it is the safety-critical step.
+	// Revocation first and for everyone: it is the safety-critical step. One instance's failure
+	// must never leave the person's other instances active, so every instance is attempted and
+	// the failures are reported together, as in the Entra leaver. Each step is retried first.
+	var failures []error
 	for _, name := range instances {
 		if err := workflow.ExecuteActivity(ctx, a.SetState, in.Scope, name, muistamov1.InstanceStateSuspended).Get(ctx, nil); err != nil {
-			return result, err
+			// Revocation requires a suspended instance; the failure is reported below.
+			failures = append(failures, fmt.Errorf("suspend %s: %w", name, err))
+			continue
 		}
 		if err := workflow.ExecuteActivity(ctx, a.RevokeCredentials, in.Scope, name).Get(ctx, nil); err != nil {
-			return result, err
+			failures = append(failures, fmt.Errorf("revoke credentials of %s: %w", name, err))
 		}
+	}
+	if len(failures) > 0 {
+		return result, fmt.Errorf("leaver requires reconciliation: %w", errors.Join(failures...))
 	}
 	var review ReviewOpened
 	if workflow.GetVersion(ctx, reviewChange, workflow.DefaultVersion, 1) == workflow.DefaultVersion {

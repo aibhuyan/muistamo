@@ -2,6 +2,8 @@ package lifecycle
 
 import (
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -253,4 +255,34 @@ func equal(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// One instance failing must not leave the person's other instances active: every instance is
+// suspended and revoked, and the workflow still fails so the failure is reconciled.
+func TestLeaverAttemptsEveryInstanceBeforeFailing(t *testing.T) {
+	env := newEnv(t)
+	var got steps
+	env.OnActivity(a.PersonInstances, mock.Anything, scope, person.ID).Return([]string{"one", "two", "three"}, nil)
+	env.OnActivity(a.SetState, mock.Anything, scope, "one", muistamov1.InstanceStateSuspended).Return(errors.New("registry unavailable")).Run(got.add("suspend-one"))
+	env.OnActivity(a.RevokeCredentials, mock.Anything, scope, "one").Return(nil).Maybe().Run(got.add("revoke-one"))
+	env.OnActivity(a.SetState, mock.Anything, scope, "two", muistamov1.InstanceStateSuspended).Return(nil).Run(got.add("suspend-two"))
+	env.OnActivity(a.RevokeCredentials, mock.Anything, scope, "two").Return(errors.New("evidence unavailable")).Run(got.add("revoke-two"))
+	env.OnActivity(a.SetState, mock.Anything, scope, "three", muistamov1.InstanceStateSuspended).Return(nil).Run(got.add("suspend-three"))
+	env.OnActivity(a.RevokeCredentials, mock.Anything, scope, "three").Return(nil).Run(got.add("revoke-three"))
+
+	env.ExecuteWorkflow(Leaver, LeaverInput{Scope: scope, Person: person})
+
+	err := env.GetWorkflowError()
+	if err == nil || !strings.Contains(err.Error(), "requires reconciliation") {
+		t.Fatalf("workflow error = %v, want reconciliation", err)
+	}
+	for _, step := range []string{"suspend-two", "suspend-three", "revoke-three"} {
+		if !slices.Contains(got, step) {
+			t.Errorf("steps = %v: %s never ran after another instance failed", got, step)
+		}
+	}
+	if slices.Contains(got, "revoke-one") {
+		t.Errorf("steps = %v: revoked an instance that was never suspended", got)
+	}
+	env.AssertNotCalled(t, "OpenPersonalLayerReview", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
