@@ -16,7 +16,7 @@ export MUISTAMO_TEST_TEMPORAL_ADDRESS ?= 127.0.0.1:7233
 # The Terraform provider's acceptance tests run against OpenTofu (MPL-2.0), never a BUSL binary.
 TOFU ?= $(shell command -v tofu 2>/dev/null)
 
-.PHONY: setup generate check-generated lint test test-db test-authz dev dev-down
+.PHONY: setup generate check-generated lint test test-db test-authz dev dev-down dev-gateway
 
 setup:
 	@for tool in go uv npm; do command -v $$tool >/dev/null || { echo "missing required tool: $$tool" >&2; exit 1; }; done
@@ -72,4 +72,19 @@ dev:
 	$(COMPOSE) up -d --wait
 
 dev-down:
-	$(COMPOSE) down
+	$(COMPOSE) --profile gateway down
+
+# The dev gateway for one tenant: renders the checker's and the gateway's configuration from
+# deploy/dev/gateway/authz.template.json, then starts or refreshes the gateway profile. Rerun
+# after an alias or model change. EVIDENCE_KEY is a key from `control-plane evidence keygen`;
+# MUISTAMO_DEV_GATEWAY_DB names another database than the dev one.
+dev-gateway:
+	@test -n "$(TENANT)" && test -f "$(EVIDENCE_KEY)" || { echo "usage: make dev-gateway TENANT=<tenant uuid> EVIDENCE_KEY=<evidence key file>" >&2; exit 1; }
+	sed 's/@TENANT@/$(TENANT)/' deploy/dev/gateway/authz.template.json > deploy/dev/gateway/authz.json
+	go run ./control-plane/cmd/control-plane gateway render-config --config deploy/dev/gateway/authz.json \
+		--authz-host gateway-authz:18081 --out deploy/dev/gateway/agentgateway.yaml
+	$(COMPOSE) --profile gateway build gateway-authz
+	MUISTAMO_DEV_EVIDENCE_KEY="$(abspath $(EVIDENCE_KEY))" $(COMPOSE) --profile gateway up -d --wait --no-start agentgateway
+	$(COMPOSE) --profile gateway cp deploy/dev/gateway/agentgateway.yaml agentgateway:/etc/agentgateway/config.yaml
+	MUISTAMO_DEV_EVIDENCE_KEY="$(abspath $(EVIDENCE_KEY))" $(COMPOSE) --profile gateway up -d --force-recreate --no-deps gateway-authz
+	MUISTAMO_DEV_EVIDENCE_KEY="$(abspath $(EVIDENCE_KEY))" $(COMPOSE) --profile gateway up -d --wait

@@ -146,11 +146,11 @@ func (a *Activities) RevokeCredentials(ctx context.Context, scope Scope, instanc
 	if err := a.Registry.AssertSimulated(ctx, scope.actor(), instance); err != nil {
 		return err
 	}
-	if err := a.Revoker.Revoke(ctx, scope.Tenant, instance); err != nil {
+	report, err := a.Revoker.Revoke(ctx, scope.actor(), instance)
+	if err != nil {
 		return fmt.Errorf("revoke credentials of %s: %w", instance, err)
 	}
-	return a.Registry.RecordLifecycleEvent(ctx, scope.actor(), "credentials.revoked", instance,
-		map[string]any{"revoker": revokerName(a.Revoker)})
+	return a.Registry.RecordLifecycleEvent(ctx, scope.actor(), "credentials.revoked", instance, report.evidence())
 }
 
 // SetIdentityEnabled disables or re-enables the instance's identity and records it.
@@ -216,9 +216,3 @@ func newInstance(name string, template registry.TemplateVersionRef, person Perso
 	return doc
 }
 
-func revokerName(r Revoker) string {
-	if _, ok := r.(*Simulated); ok {
-		return "simulated (no credentials exist until the gateway, D28)"
-	}
-	return fmt.Sprintf("%T", r)
-}

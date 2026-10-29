@@ -237,6 +237,9 @@ func (s *Service) setEntraState(ctx context.Context, tx pgx.Tx, actor Actor, eve
 	if !CanTransition(current.Document.Spec.State, to) {
 		return current, ErrConflict
 	}
+	if err := revokeBeforeReactivation(ctx, tx, s.signer, actor, current, to); err != nil {
+		return current, err
+	}
 	next := current.Document
 	next.Spec.State = to
 	updated, err := updateInstance(ctx, tx, current, next)

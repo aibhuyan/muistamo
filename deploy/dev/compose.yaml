@@ -44,5 +44,52 @@ services:
       timeout: 3s
       retries: 30
 
+  # The gateway profile (make dev-gateway): agentgateway, the development authorization checker
+  # and a fake provider. Only the gateway's model listener is published; the checker is plaintext
+  # and stays on the compose network (production transport is not integrated).
+  fake-provider:
+    profiles: [gateway]
+    image: python:3.12-slim
+    command: ["python", "-u", "/srv/server.py"]
+    environment:
+      MUISTAMO_PROVIDER_KEY_FAKE: fake-provider-key-not-a-secret
+    volumes:
+      - ./fake-provider:/srv:ro
+
+  gateway-authz:
+    profiles: [gateway]
+    build:
+      context: ../..
+      dockerfile: deploy/dev/control-plane.Dockerfile
+    command: ["gateway", "authz", "--config", "/etc/muistamo/authz.json", "--listen", "0.0.0.0:18081", "--insecure-development"]
+    environment:
+      # The fixed dev login from initdb/01-roles.sql; POSTGRES_PASSWORD is the owner's.
+      MUISTAMO_DATABASE_URL: postgres://muistamo_server:dev-only-not-a-secret@postgres:5432/${MUISTAMO_DEV_GATEWAY_DB:-${POSTGRES_DB:-muistamo}}
+      MUISTAMO_EVIDENCE_KEY_FILE: /run/muistamo/evidence.pem
+    volumes:
+      - ./gateway/authz.json:/etc/muistamo/authz.json:ro
+      - ${MUISTAMO_DEV_EVIDENCE_KEY:-./gateway/evidence.pem}:/run/muistamo/evidence.pem:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  agentgateway:
+    profiles: [gateway]
+    # agentgateway v1.6.0, pinned by digest (D28; docs/agentgateway-validation-2026-10-28.md).
+    image: cr.agentgateway.dev/agentgateway@sha256:9d3e6044ddcdc0878b1787f77bd401252b95e22684203fb5e874c4c42d2ed90c
+    command: ["-f", "/etc/agentgateway/config.yaml"]
+    environment:
+      MUISTAMO_PROVIDER_KEY_FAKE: fake-provider-key-not-a-secret
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-4000}:4000"
+    # A named volume, not a bind mount: Docker Desktop bind mounts deliver no file events, so
+    # hot reload would never fire. make dev-gateway copies the rendered file in.
+    volumes:
+      - gateway-config:/etc/agentgateway
+    depends_on:
+      - gateway-authz
+      - fake-provider
+
 volumes:
   postgres-data:
+  gateway-config:

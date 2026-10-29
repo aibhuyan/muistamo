@@ -2357,10 +2357,13 @@ type GatewayModelRoute struct {
 	// BaseUrl Trusted operator-pinned deployment endpoint, without credentials, query or fragment. The later renderer must emit this exact target and the matching configuration fingerprint together. Not independent provider-region verification.
 	BaseUrl       string `json:"baseUrl"`
 	CatalogueName string `json:"catalogueName"`
-	Model         string `json:"model"`
-	ModelRevision int    `json:"modelRevision"`
-	Provider      string `json:"provider"`
-	Region        string `json:"region"`
+
+	// CredentialEnv Name of the environment variable from which the gateway reads this route's provider credential at runtime. A reference only, never a value: Muistamo never stores provider credentials (NFR-08). Only MUISTAMO_PROVIDER_KEY_* names, so a configuration can never send another gateway secret upstream. The pinned gateway refuses to start when the variable is unset.
+	CredentialEnv *string `json:"credentialEnv,omitempty"`
+	Model         string  `json:"model"`
+	ModelRevision int     `json:"modelRevision"`
+	Provider      string  `json:"provider"`
+	Region        string  `json:"region"`
 }
 
 // HREvent A joiner or leaver event from the tenant's HR system, in Muistamo's own shape. HRIS connectors map their payloads onto this. Sent to POST /v1/hr/events with an HMAC signature.
@@ -3367,7 +3370,7 @@ type VirtualKey struct {
 	// MonthlyBudget An exact amount. A decimal string, never a binary float, so billed costs and budgets are exact (invariant 7). EUR only while model price sheets are EUR only.
 	MonthlyBudget Money `json:"monthlyBudget"`
 
-	// RevokeReason A fixed revocation reason code; never free text.
+	// RevokeReason A fixed revocation reason code, never free text: operator, compromised, rotation or leaver (administrators), leaver (the leaver workflow), or reactivation (keys from before a suspension, revoked when the instance becomes active again).
 	RevokeReason *string    `json:"revokeReason,omitempty"`
 	RevokedAt    *time.Time `json:"revokedAt,omitempty"`
 	RevokedBy    *string    `json:"revokedBy,omitempty"`

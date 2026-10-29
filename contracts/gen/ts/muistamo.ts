@@ -1427,6 +1427,8 @@ export interface components {
             provider: string;
             model: string;
             region: string;
+            /** @description Name of the environment variable from which the gateway reads this route's provider credential at runtime. A reference only, never a value: Muistamo never stores provider credentials (NFR-08). Only MUISTAMO_PROVIDER_KEY_* names, so a configuration can never send another gateway secret upstream. The pinned gateway refuses to start when the variable is unset. */
+            credentialEnv?: string;
             /**
              * Format: uri
              * @description Trusted operator-pinned deployment endpoint, without credentials, query or fragment. The later renderer must emit this exact target and the matching configuration fingerprint together. Not independent provider-region verification.
@@ -2464,7 +2466,7 @@ export interface components {
             /** Format: date-time */
             revokedAt?: string;
             revokedBy?: string;
-            /** @description A fixed revocation reason code; never free text. */
+            /** @description A fixed revocation reason code, never free text: operator, compromised, rotation or leaver (administrators), leaver (the leaver workflow), or reactivation (keys from before a suspension, revoked when the instance becomes active again). */
             revokeReason?: string;
         };
         /**

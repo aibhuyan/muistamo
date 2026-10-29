@@ -1,0 +1,7 @@
+*
+!go.mod
+!go.sum
+!contracts/
+!control-plane/
+contracts/gen/ts/
+contracts/gen/python/

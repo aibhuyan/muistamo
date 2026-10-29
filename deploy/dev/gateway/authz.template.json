@@ -1,0 +1,1 @@
+{"tenantId": "@TENANT@", "models": [{"alias": "dev-gateway-default", "aliasRevision": 1, "catalogueName": "dev-fake-model", "modelRevision": 1, "provider": "openai", "model": "fake-model", "region": "local-dev", "baseUrl": "http://fake-provider:18080/v1", "credentialEnv": "MUISTAMO_PROVIDER_KEY_FAKE"}]}
