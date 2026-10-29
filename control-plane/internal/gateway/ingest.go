@@ -213,12 +213,17 @@ func usageLine(attrs []*common.KeyValue) (registry.UsageLine, string) {
 	// client went away before the first byte (validation addendum 2026-10-29 (3)): the call ran
 	// and the provider likely bills the prompt, so it is treated like an aborted call below.
 	code, hasStatus := num("http.response.status_code")
-	if _, present := a["http.response.status_code"]; present && (!hasStatus || code < 200 || code > 299) {
+	if _, present := a["http.response.status_code"]; present && (!hasStatus || code < 200 || code > 599 || (code > 299 && code < 400)) {
 		return registry.UsageLine{}, "not-successful"
 	}
 	model, ok := str("gen_ai.request.model")
 	if !ok || model == "" {
 		return registry.UsageLine{}, "no-model"
+	}
+	if hasStatus && code >= 400 {
+		// An explicit gateway or provider error: the call is settled as failed (not in flight,
+		// not unaccounted) and never priced; providers normally do not bill errors.
+		return registry.UsageLine{RequestID: id, Model: model, FailedStatus: int(code)}, ""
 	}
 	if provider, _ := str("gen_ai.provider.name"); !openAISemantics[provider] {
 		return registry.UsageLine{}, "unvalidated-provider-usage"

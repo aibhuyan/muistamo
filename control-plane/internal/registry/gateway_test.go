@@ -29,9 +29,13 @@ func gatewayFixture(t *testing.T) (fixture, muistamov1.VirtualKeyRequest) {
 	if err := registry.ConfigureGatewayAdmins(t.Context(), f.db.OwnerURL, f.actor, []string{f.actor.Name}, f.key); err != nil {
 		t.Fatal(err)
 	}
+	// Rate limits at their ceilings, so tests of other rules are not refused by them; the
+	// rate-limit tests set their own.
+	perMinute, inFlight := 6000, 100
 	return f, muistamov1.VirtualKeyRequest{
 		Instance: "analyst-intern-person-a", Aliases: []string{"reasoning-default"},
-		MonthlyBudget: muistamov1.Money{Amount: "25.50", Currency: "EUR"},
+		MonthlyBudget:        muistamov1.Money{Amount: "25.50", Currency: "EUR"},
+		MaxRequestsPerMinute: &perMinute, MaxCallsInFlight: &inFlight,
 	}
 }
 

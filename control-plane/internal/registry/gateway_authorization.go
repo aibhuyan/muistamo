@@ -176,6 +176,7 @@ func (s *Service) AuthorizeGateway(ctx context.Context, tenant uuid.UUID, presen
 			WHERE c.tenant_id = k.tenant_id AND c.key_id = k.id AND c.kind = 'model'
 			AND c.authorized_at > now() - interval '24 hours'
 			AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id)
+			AND NOT EXISTS (SELECT 1 FROM failed_calls f WHERE f.tenant_id = c.tenant_id AND f.request_id = c.request_id)
 			AND (EXISTS (SELECT 1 FROM calls_without_usage w WHERE w.tenant_id = c.tenant_id AND w.request_id = c.request_id)
 			     OR c.authorized_at < now() - make_interval(secs => $2))
 			) <= k.max_calls_without_usage
@@ -185,6 +186,31 @@ func (s *Service) AuthorizeGateway(ctx context.Context, tenant uuid.UUID, presen
 		}
 		if !underCap {
 			return deny("calls-without-usage-limit")
+		}
+		// Rate limits (FR-702), under the same key lock, so concurrent checks of one key serialise.
+		// Requests per rolling minute count every authorized call. Calls in flight are model calls
+		// authorized within UnmeteredAfter that ingest has not settled with usage, a missing-usage
+		// or a failure report; older ones belong to the calls-without-usage cap above. If ingest
+		// is down nothing settles and the key is refused (fails closed). HUMAN REVIEW REQUIRED.
+		var underRate, underFlight bool
+		err = tx.QueryRow(ctx, `SELECT
+			(SELECT count(*) FROM gateway_calls c WHERE c.tenant_id = k.tenant_id AND c.key_id = k.id
+			   AND c.authorized_at > now() - interval '60 seconds') < k.max_requests_per_minute,
+			(SELECT count(*) FROM gateway_calls c WHERE c.tenant_id = k.tenant_id AND c.key_id = k.id AND c.kind = 'model'
+			   AND c.authorized_at >= now() - make_interval(secs => $2)
+			   AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id)
+			   AND NOT EXISTS (SELECT 1 FROM calls_without_usage w WHERE w.tenant_id = c.tenant_id AND w.request_id = c.request_id)
+			   AND NOT EXISTS (SELECT 1 FROM failed_calls f WHERE f.tenant_id = c.tenant_id AND f.request_id = c.request_id)
+			) < k.max_calls_in_flight
+			FROM virtual_keys k WHERE k.id = $1`, keyID, UnmeteredAfter.Seconds()).Scan(&underRate, &underFlight)
+		if err != nil {
+			return err
+		}
+		if !underRate {
+			return deny("rate-limited")
+		}
+		if !underFlight {
+			return deny("too-many-in-flight")
 		}
 		set, err := compileStored(ctx, tx)
 		if err != nil {

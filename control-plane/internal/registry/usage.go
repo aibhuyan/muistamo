@@ -44,6 +44,9 @@ type UsageLine struct {
 	// aborted stream). It is recorded in calls_without_usage, never priced, and its token
 	// counts must be zero.
 	UsageMissing bool
+	// FailedStatus is set (4xx/5xx) when the gateway or provider answered the call with an
+	// error. It is recorded in failed_calls, never priced; token counts must be zero.
+	FailedStatus int
 }
 
 // UsageIngest counts what RecordUsage did with a batch.
@@ -56,6 +59,8 @@ type UsageIngest struct {
 	ConflictingIDs []uuid.UUID
 	// WithoutUsage are the calls newly recorded as run without a usage report.
 	WithoutUsage []uuid.UUID
+	// Failed are the calls newly recorded as answered with an error.
+	Failed []uuid.UUID
 }
 
 // ingestActor is the evidence actor for usage the gateway reported.
@@ -69,7 +74,8 @@ func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []Usa
 	for _, l := range lines {
 		if l.InputTokens < 0 || l.CachedInputTokens < 0 || l.OutputTokens < 0 || l.CachedInputTokens > l.InputTokens ||
 			l.InputTokens > MaxTokens || l.OutputTokens > MaxTokens ||
-			(l.UsageMissing && (l.InputTokens != 0 || l.CachedInputTokens != 0 || l.OutputTokens != 0)) {
+			((l.UsageMissing || l.FailedStatus != 0) && (l.InputTokens != 0 || l.CachedInputTokens != 0 || l.OutputTokens != 0)) ||
+			(l.FailedStatus != 0 && (l.UsageMissing || l.FailedStatus < 400 || l.FailedStatus > 599)) {
 			return UsageIngest{}, fmt.Errorf("usage line %s: invalid token counts: %w", l.RequestID, ErrInvalid)
 		}
 	}
@@ -83,6 +89,12 @@ func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []Usa
 		for _, l := range lines {
 			if l.UsageMissing {
 				if err := recordWithoutUsage(ctx, tx, l, &out); err != nil {
+					return err
+				}
+				continue
+			}
+			if l.FailedStatus != 0 {
+				if err := recordFailed(ctx, tx, l, &out); err != nil {
 					return err
 				}
 				continue
@@ -122,7 +134,7 @@ func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []Usa
 				out.ConflictingIDs = append(out.ConflictingIDs, l.RequestID)
 			}
 		}
-		if len(out.Accepted) == 0 && len(out.WithoutUsage) == 0 {
+		if len(out.Accepted) == 0 && len(out.WithoutUsage) == 0 && len(out.Failed) == 0 {
 			return nil
 		}
 		rows, err := tx.Query(ctx, `SELECT cost_currency, sum(cost_amount)::text FROM usage_records
@@ -149,6 +161,10 @@ func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []Usa
 		for i, id := range out.WithoutUsage {
 			without[i] = id.String()
 		}
+		failed := make([]string, len(out.Failed))
+		for i, id := range out.Failed {
+			failed[i] = id.String()
+		}
 		digest, err := usageLinesDigest(ctx, tx, out.Accepted)
 		if err != nil {
 			return err
@@ -157,7 +173,7 @@ func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []Usa
 		return recordEvidence(ctx, tx, s.signer, actor, "gateway.usage.ingested", "UsageBatch", batch.String(), nil,
 			map[string]any{"requestIds": ids, "accepted": len(ids), "duplicate": out.Duplicate,
 				"conflicting": out.Conflicting, "unmatched": out.Unmatched, "costAtProviderPrices": cost,
-				"linesSha256": digest, "withoutUsage": without})
+				"linesSha256": digest, "withoutUsage": without, "failed": failed})
 	})
 	if err != nil {
 		return UsageIngest{}, err
@@ -173,6 +189,7 @@ func recordWithoutUsage(ctx context.Context, tx pgx.Tx, l UsageLine, out *UsageI
 		SELECT c.tenant_id, c.request_id FROM gateway_calls c
 		 WHERE c.request_id = $1 AND c.kind = 'model' AND c.model = $2
 		   AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id)
+		   AND NOT EXISTS (SELECT 1 FROM failed_calls f WHERE f.tenant_id = c.tenant_id AND f.request_id = c.request_id)
 		ON CONFLICT (tenant_id, request_id) DO NOTHING`, l.RequestID, l.Model)
 	if err != nil {
 		return fmt.Errorf("record call without usage %s: %w", l.RequestID, err)
@@ -183,12 +200,49 @@ func recordWithoutUsage(ctx context.Context, tx pgx.Tx, l UsageLine, out *UsageI
 	}
 	var repeated, metered bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM calls_without_usage WHERE request_id = $1),
-		EXISTS (SELECT 1 FROM usage_records WHERE request_id = $1)`, l.RequestID).Scan(&repeated, &metered); err != nil {
+		EXISTS (SELECT 1 FROM usage_records WHERE request_id = $1) OR EXISTS (SELECT 1 FROM failed_calls WHERE request_id = $1)`,
+		l.RequestID).Scan(&repeated, &metered); err != nil {
 		return fmt.Errorf("check call without usage %s: %w", l.RequestID, err)
 	}
 	switch {
 	case metered:
 		// The same call reported both with and without usage: contradictory, kept as metered.
+		out.Conflicting++
+		out.ConflictingIDs = append(out.ConflictingIDs, l.RequestID)
+	case repeated:
+		out.Duplicate++
+	default:
+		out.Unmatched++
+	}
+	return nil
+}
+
+// recordFailed records an authorized model call that the gateway or provider answered with an
+// error, once, and only for a model call in this tenant whose snapshot model matches, so it is
+// neither in flight nor unaccounted. A call already settled otherwise is a conflict.
+// HUMAN REVIEW REQUIRED: settled calls stop counting toward the in-flight limit.
+func recordFailed(ctx context.Context, tx pgx.Tx, l UsageLine, out *UsageIngest) error {
+	tag, err := tx.Exec(ctx, `INSERT INTO failed_calls (tenant_id, request_id, status_code)
+		SELECT c.tenant_id, c.request_id, $3 FROM gateway_calls c
+		 WHERE c.request_id = $1 AND c.kind = 'model' AND c.model = $2
+		   AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id)
+		   AND NOT EXISTS (SELECT 1 FROM calls_without_usage w WHERE w.tenant_id = c.tenant_id AND w.request_id = c.request_id)
+		ON CONFLICT (tenant_id, request_id) DO NOTHING`, l.RequestID, l.Model, l.FailedStatus)
+	if err != nil {
+		return fmt.Errorf("record failed call %s: %w", l.RequestID, err)
+	}
+	if tag.RowsAffected() == 1 {
+		out.Failed = append(out.Failed, l.RequestID)
+		return nil
+	}
+	var repeated, settled bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM failed_calls WHERE request_id = $1),
+		EXISTS (SELECT 1 FROM usage_records WHERE request_id = $1) OR EXISTS (SELECT 1 FROM calls_without_usage WHERE request_id = $1)`,
+		l.RequestID).Scan(&repeated, &settled); err != nil {
+		return fmt.Errorf("check failed call %s: %w", l.RequestID, err)
+	}
+	switch {
+	case settled:
 		out.Conflicting++
 		out.ConflictingIDs = append(out.ConflictingIDs, l.RequestID)
 	case repeated:
@@ -257,7 +311,8 @@ func (s *Service) ListUsage(ctx context.Context, actor Actor, f UsageFilter) (mu
 			       c.provider, c.model, c.mcp_method, c.mcp_tool, c.authorized_at,
 			       u.request_id IS NOT NULL, u.input_tokens, u.cached_input_tokens, u.output_tokens,
 			       u.cost_amount::text, u.cost_currency, u.recorded_at,
-			       EXISTS (SELECT 1 FROM calls_without_usage w WHERE w.tenant_id = c.tenant_id AND w.request_id = c.request_id)
+			       EXISTS (SELECT 1 FROM calls_without_usage w WHERE w.tenant_id = c.tenant_id AND w.request_id = c.request_id),
+			       (SELECT f.status_code FROM failed_calls f WHERE f.tenant_id = c.tenant_id AND f.request_id = c.request_id)
 			  FROM gateway_calls c LEFT JOIN usage_records u USING (tenant_id, request_id)
 			 WHERE ($1 OR c.person = $2)
 			   AND ($3 = '' OR c.instance = $3)
@@ -279,9 +334,10 @@ func (s *Service) ListUsage(ctx context.Context, actor Actor, f UsageFilter) (mu
 			var in, cached, outTok *int64
 			var amount, currency *string
 			var missing bool
+			var failed *int
 			if err := rows.Scan(&r.RequestId, &r.KeyId, &r.Instance, &r.Person, &r.CostCentre, &kind, &r.Alias,
 				&r.Provider, &r.Model, &r.McpMethod, &r.McpTool, &r.AuthorizedAt,
-				&metered, &in, &cached, &outTok, &amount, &currency, &r.RecordedAt, &missing); err != nil {
+				&metered, &in, &cached, &outTok, &amount, &currency, &r.RecordedAt, &missing, &failed); err != nil {
 				return fmt.Errorf("scan usage: %w", err)
 			}
 			r.Kind = muistamov1.UsageRecordKind(kind)
@@ -289,6 +345,7 @@ func (s *Service) ListUsage(ctx context.Context, actor Actor, f UsageFilter) (mu
 				r.Metered = &metered
 				if !metered {
 					r.UsageMissing = &missing
+					r.FailedStatus = failed
 				}
 			}
 			if metered {

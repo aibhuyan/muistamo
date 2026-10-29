@@ -38,3 +38,19 @@ class VirtualKeyRequest(BaseModel):
             le=1000,
         ),
     ] = None
+    maxRequestsPerMinute: Annotated[
+        int | None,
+        Field(
+            description="Calls the key may make within any rolling minute; more are refused with HTTP 429. Omitted means 60. Fixed at issuance.",
+            ge=1,
+            le=6000,
+        ),
+    ] = None
+    maxCallsInFlight: Annotated[
+        int | None,
+        Field(
+            description="Model calls the key may have in flight at once (authorized, with no usage, missing-usage or failure report yet, within 15 minutes); more are refused with HTTP 429. Bounds how far budgets and the calls-without-usage allowance can be overshot. Omitted means 4. Fixed at issuance.",
+            ge=1,
+            le=100,
+        ),
+    ] = None

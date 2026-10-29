@@ -68,6 +68,7 @@ func usageCmd(opts *options) *cobra.Command {
 					calls++
 					cmd.Println(usageLine(r, time.Now()))
 					switch {
+					case r.FailedStatus != nil:
 					case r.UsageMissing != nil && *r.UsageMissing:
 						withoutUsage++
 					case r.Metered != nil && !*r.Metered && !pending(r, time.Now()):
@@ -121,6 +122,8 @@ func pending(r muistamov1.UsageRecord, now time.Time) bool {
 func usageLine(r muistamov1.UsageRecord, now time.Time) string {
 	cost := "unmetered: cost unknown, may have been incurred"
 	switch {
+	case r.FailedStatus != nil:
+		cost = fmt.Sprintf("failed (HTTP %d): no cost", *r.FailedStatus)
 	case r.Metered != nil && !*r.Metered && r.UsageMissing != nil && *r.UsageMissing:
 		cost = "ran, no usage reported: cost unknown, likely incurred"
 	case r.Metered != nil && !*r.Metered && pending(r, now):
@@ -138,8 +141,8 @@ func keyLine(k muistamov1.VirtualKey) string {
 	if k.ExpiresAt != nil {
 		expires = k.ExpiresAt.UTC().Format(time.RFC3339)
 	}
-	return fmt.Sprintf("%s\t%s\t%s\taliases %s\tbudget %s %s/month\tover %d without usage in 24h refuses\texpires %s",
-		k.Id, k.Instance, k.Status, strings.Join(k.Aliases, ","), k.MonthlyBudget.Amount, k.MonthlyBudget.Currency, k.MaxCallsWithoutUsage, expires)
+	return fmt.Sprintf("%s\t%s\t%s\taliases %s\tbudget %s %s/month\tover %d without usage in 24h refuses, %d/min, %d in flight\texpires %s",
+		k.Id, k.Instance, k.Status, strings.Join(k.Aliases, ","), k.MonthlyBudget.Amount, k.MonthlyBudget.Currency, k.MaxCallsWithoutUsage, k.MaxRequestsPerMinute, k.MaxCallsInFlight, expires)
 }
 
 func keysListCmd(opts *options) *cobra.Command {
@@ -206,7 +209,7 @@ func keysGetCmd(opts *options) *cobra.Command {
 
 func keysIssueCmd(opts *options) *cobra.Command {
 	var instance, alias, budget, expires string
-	maxWithoutUsage := -1
+	maxWithoutUsage, perMinute, inFlight := -1, -1, -1
 	c := &cobra.Command{
 		Use:   "issue --instance NAME --alias ALIAS --budget EUR [--expires RFC3339] [--max-calls-without-usage N]",
 		Short: "Issue a virtual key; its secret is printed once and can never be shown again",
@@ -222,6 +225,19 @@ func keysIssueCmd(opts *options) *cobra.Command {
 				req.MaxCallsWithoutUsage = &maxWithoutUsage
 			case maxWithoutUsage != -1:
 				return fmt.Errorf("--max-calls-without-usage must be 0 or more")
+			}
+			for _, f := range []struct {
+				name  string
+				value int
+				dst   **int
+			}{{"--max-requests-per-minute", perMinute, &req.MaxRequestsPerMinute}, {"--max-calls-in-flight", inFlight, &req.MaxCallsInFlight}} {
+				switch {
+				case f.value >= 1:
+					v := f.value
+					*f.dst = &v
+				case f.value != -1:
+					return fmt.Errorf("%s must be 1 or more", f.name)
+				}
 			}
 			if expires != "" {
 				at, err := time.Parse(time.RFC3339, expires)
@@ -252,6 +268,8 @@ func keysIssueCmd(opts *options) *cobra.Command {
 	c.Flags().StringVar(&budget, "budget", "", "monthly budget in EUR, e.g. 25.50")
 	c.Flags().StringVar(&expires, "expires", "", "expiry time (RFC 3339)")
 	c.Flags().IntVar(&maxWithoutUsage, "max-calls-without-usage", -1, "calls within 24 hours that may run without a usage report, e.g. aborted calls (default 10; 0 refuses after the first)")
+	c.Flags().IntVar(&perMinute, "max-requests-per-minute", -1, "calls within any rolling minute (default 60)")
+	c.Flags().IntVar(&inFlight, "max-calls-in-flight", -1, "model calls in flight at once (default 4)")
 	for _, f := range []string{"instance", "alias", "budget"} {
 		_ = c.MarkFlagRequired(f)
 	}

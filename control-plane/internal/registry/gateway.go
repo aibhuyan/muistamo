@@ -35,6 +35,13 @@ const secretBytes = 32
 // without a usage report, when issuance names none (matches the column default in 00016).
 const DefaultMaxCallsWithoutUsage = 10
 
+// DefaultMaxRequestsPerMinute and DefaultMaxCallsInFlight are a key's rate limits when issuance
+// names none (FR-702; the column defaults in 00017). They fit one agent.
+const (
+	DefaultMaxRequestsPerMinute = 60
+	DefaultMaxCallsInFlight     = 4
+)
+
 // ParseKey splits a presented key into its id and decoded secret. It never says which part was
 // wrong: a caller learns only that the key is not valid.
 func ParseKey(presented string) (uuid.UUID, []byte, error) {
@@ -80,13 +87,15 @@ func requireGatewayAdmin(ctx context.Context, tx pgx.Tx, actor Actor, what strin
 }
 
 const keyColumns = `SELECT id, instance, aliases, budget_amount::text, budget_currency, expires_at, status,
-	created_at, created_by, revoked_at, revoked_by, revoke_reason, max_calls_without_usage FROM virtual_keys`
+	created_at, created_by, revoked_at, revoked_by, revoke_reason, max_calls_without_usage,
+	max_requests_per_minute, max_calls_in_flight FROM virtual_keys`
 
 func scanKey(row pgx.Row, now time.Time) (muistamov1.VirtualKey, error) {
 	var k muistamov1.VirtualKey
 	var amount, currency, status string
 	if err := row.Scan(&k.Id, &k.Instance, &k.Aliases, &amount, &currency, &k.ExpiresAt, &status,
-		&k.CreatedAt, &k.CreatedBy, &k.RevokedAt, &k.RevokedBy, &k.RevokeReason, &k.MaxCallsWithoutUsage); err != nil {
+		&k.CreatedAt, &k.CreatedBy, &k.RevokedAt, &k.RevokedBy, &k.RevokeReason, &k.MaxCallsWithoutUsage,
+		&k.MaxRequestsPerMinute, &k.MaxCallsInFlight); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return k, fmt.Errorf("virtual key: %w", ErrNotFound)
 		}
@@ -127,6 +136,16 @@ func (s *Service) IssueKey(ctx context.Context, actor Actor, req muistamov1.Virt
 	}
 	if maxWithoutUsage < 0 || maxWithoutUsage > 1000 {
 		return out, fmt.Errorf("maxCallsWithoutUsage must be 0 to 1000: %w", ErrInvalid)
+	}
+	perMinute, inFlight := DefaultMaxRequestsPerMinute, DefaultMaxCallsInFlight
+	if req.MaxRequestsPerMinute != nil {
+		perMinute = *req.MaxRequestsPerMinute
+	}
+	if req.MaxCallsInFlight != nil {
+		inFlight = *req.MaxCallsInFlight
+	}
+	if perMinute < 1 || perMinute > 6000 || inFlight < 1 || inFlight > 100 {
+		return out, fmt.Errorf("maxRequestsPerMinute must be 1 to 6000 and maxCallsInFlight 1 to 100: %w", ErrInvalid)
 	}
 	secret := make([]byte, secretBytes)
 	if _, err := rand.Read(secret); err != nil {
@@ -173,10 +192,11 @@ func (s *Service) IssueKey(ctx context.Context, actor Actor, req muistamov1.Virt
 			}
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO virtual_keys (tenant_id, id, instance, aliases, budget_amount,
-			budget_currency, expires_at, secret_sha256, created_by, max_calls_without_usage)
-			VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, $8, $9, $10)`,
+			budget_currency, expires_at, secret_sha256, created_by, max_calls_without_usage,
+			max_requests_per_minute, max_calls_in_flight)
+			VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, $8, $9, $10, $11, $12)`,
 			actor.Tenant, id, req.Instance, req.Aliases, req.MonthlyBudget.Amount, string(req.MonthlyBudget.Currency),
-			req.ExpiresAt, hash[:], actor.Name, maxWithoutUsage); err != nil {
+			req.ExpiresAt, hash[:], actor.Name, maxWithoutUsage, perMinute, inFlight); err != nil {
 			return fmt.Errorf("store virtual key: %w", err)
 		}
 		key, err := scanKey(tx.QueryRow(ctx, keyColumns+` WHERE id = $1`, id), time.Now())
@@ -187,7 +207,8 @@ func (s *Service) IssueKey(ctx context.Context, actor Actor, req muistamov1.Virt
 		// Evidence names the key, never its secret or hash.
 		return recordEvidence(ctx, tx, s.signer, actor, "gateway.key.issued", "VirtualKey", id.String(), nil,
 			map[string]any{"instance": key.Instance, "aliases": key.Aliases, "monthlyBudget": key.MonthlyBudget, "expiresAt": key.ExpiresAt,
-				"maxCallsWithoutUsage": key.MaxCallsWithoutUsage})
+				"maxCallsWithoutUsage": key.MaxCallsWithoutUsage, "maxRequestsPerMinute": key.MaxRequestsPerMinute,
+				"maxCallsInFlight": key.MaxCallsInFlight})
 	})
 	if err != nil {
 		return muistamov1.VirtualKeyIssued{}, err

@@ -119,7 +119,8 @@ func TestIngestRecordsOnlyAuthorizedSuccessfulModelUsage(t *testing.T) {
 		"mcp":            func(a map[string]any) { a["protocol"] = "mcp" },
 		"other path":     func(a map[string]any) { a["url.path"] = "/v1/anything" },
 		"upper path":     func(a map[string]any) { a["url.path"] = "/V1/CHAT/COMPLETIONS" },
-		"failed":         func(a map[string]any) { a["http.response.status_code"] = 500 },
+		"redirect":       func(a map[string]any) { a["http.response.status_code"] = 302 },
+		"bad status":     func(a map[string]any) { a["http.response.status_code"] = 700 },
 		"status as text": func(a map[string]any) { a["http.response.status_code"] = "200" },
 		"no model":       func(a map[string]any) { delete(a, "gen_ai.request.model") },
 		"negative":       func(a map[string]any) { a["gen_ai.usage.input_tokens"] = -1 },
@@ -236,6 +237,21 @@ func TestIngestTreatsIncompleteRecordsAsRunWithoutUsage(t *testing.T) {
 		if _, err := ingest(t, r).Export(authed("Bearer "+ingestToken), export(record(id, change))); err != nil || len(r.lines) != 1 ||
 			!r.lines[0].UsageMissing || r.lines[0].InputTokens != 0 || r.lines[0].OutputTokens != 0 {
 			t.Errorf("%s: lines %+v, err %v", name, r.lines, err)
+		}
+	}
+}
+
+// An explicit gateway or provider error settles the call as failed: never priced, never in flight.
+func TestIngestRecordsFailedCalls(t *testing.T) {
+	for _, code := range []int{400, 429, 500, 503} {
+		r := &usageRecorder{}
+		id := uuid.New()
+		if _, err := ingest(t, r).Export(authed("Bearer "+ingestToken), export(record(id, func(a map[string]any) {
+			a["http.response.status_code"] = code
+			delete(a, "gen_ai.usage.input_tokens")
+			delete(a, "gen_ai.usage.output_tokens")
+		}))); err != nil || len(r.lines) != 1 || r.lines[0].FailedStatus != code || r.lines[0].UsageMissing || r.lines[0].RequestID != id {
+			t.Errorf("status %d: lines %+v, err %v", code, r.lines, err)
 		}
 	}
 }
