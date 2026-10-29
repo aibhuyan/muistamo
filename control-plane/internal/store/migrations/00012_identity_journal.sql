@@ -74,11 +74,19 @@ CREATE UNIQUE INDEX identity_single_create ON identity_operations(tenant_id,inst
 ALTER TABLE instance_identities ADD CONSTRAINT identity_original_creation
   FOREIGN KEY (tenant_id,creation_id) REFERENCES identity_operations(tenant_id,id) DEFERRABLE INITIALLY DEFERRED;
 
+-- agent_instances forces row-level security, so a table owner that is neither superuser nor
+-- BYPASSRLS (as on managed PostgreSQL) would see no rows here: the backfill would copy nothing
+-- and still succeed. Lift FORCE for this one statement, inside this migration's transaction, so
+-- the owner reads every tenant's instances. A failure rolls the lift back with everything else.
+-- (Setting muistamo.tenant_id per tenant instead would leave '' on the connection, which the
+-- 00001 policies cannot cast.)
+ALTER TABLE agent_instances NO FORCE ROW LEVEL SECURITY;
 INSERT INTO instance_identities(tenant_id,instance_name,provider_mode,observed_state)
   SELECT tenant_id,name,'simulated','simulated' FROM agent_instances;
+ALTER TABLE agent_instances FORCE ROW LEVEL SECURITY;
 -- Fire the deferred creation-marker checks the backfill queued (they pass: creation_id is NULL),
 -- or the ALTERs below fail with "pending trigger events" on any database that has instances.
--- Corrected in place before release 1: the resulting schema is identical.
+-- Both corrections are made in place before release 1; the resulting schema is identical.
 SET CONSTRAINTS identity_original_creation IMMEDIATE;
 
 ALTER TABLE entra_bindings ENABLE ROW LEVEL SECURITY;
