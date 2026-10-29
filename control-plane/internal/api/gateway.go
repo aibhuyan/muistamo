@@ -2,13 +2,12 @@ package api
 
 import (
 	"context"
-	"net/http"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
+	"muistamo.dev/muistamo/control-plane/internal/registry"
 )
 
-// Virtual keys (docs/agentgateway-plan.md, step 3a). Usage arrives with metering (step 5); until
-// then it answers 501 and says so, rather than pretending to meter anything (invariant 8).
+// Virtual keys (docs/agentgateway-plan.md, step 3a) and usage at provider cost (step 5).
 
 func (s *server) ListVirtualKeys(ctx context.Context, req muistamov1.ListVirtualKeysRequestObject) (muistamov1.ListVirtualKeysResponseObject, error) {
 	actor, err := s.actor(ctx)
@@ -65,10 +64,18 @@ func (s *server) RevokeVirtualKey(ctx context.Context, req muistamov1.RevokeVirt
 	return muistamov1.RevokeVirtualKey200JSONResponse(key), nil
 }
 
-func (s *server) ListUsage(context.Context, muistamov1.ListUsageRequestObject) (muistamov1.ListUsageResponseObject, error) {
-	detail := "the gateway's usage metering (step 5) is not implemented yet; see docs/agentgateway-plan.md"
-	return muistamov1.ListUsagedefaultApplicationProblemPlusJSONResponse{
-		Body:       muistamov1.Problem{Title: "Not implemented", Status: http.StatusNotImplemented, Detail: &detail},
-		StatusCode: http.StatusNotImplemented,
-	}, nil
+// ListUsage returns authorized calls at provider cost. Administrators see the tenant's calls,
+// anyone else only their own; unmetered calls are reported, never estimated (invariant 8).
+func (s *server) ListUsage(ctx context.Context, req muistamov1.ListUsageRequestObject) (muistamov1.ListUsageResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err != nil {
+		return muistamov1.ListUsagedefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	filter := registry.UsageFilter{Instance: deref(req.Params.Instance), From: req.Params.From, To: req.Params.To,
+		Unmetered: req.Params.Unmetered != nil && *req.Params.Unmetered, Cursor: deref(req.Params.Cursor), Limit: limit(req.Params.Limit)}
+	page, err := s.svc.ListUsage(ctx, actor, filter)
+	if err != nil {
+		return muistamov1.ListUsagedefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	return muistamov1.ListUsage200JSONResponse(page), nil
 }

@@ -18,6 +18,7 @@ import (
 // RenderOptions places the checker the gateway calls. Nothing here can relax authorization.
 type RenderOptions struct {
 	AuthzHost     string // host:port of `control-plane gateway authz`
+	IngestHost    string // optional host:port of `control-plane gateway ingest`; usage export
 	ReadinessAddr string // optional gateway readiness listener
 }
 
@@ -66,6 +67,22 @@ func RenderConfig(cfg muistamov1.GatewayAuthzConfig, opts RenderOptions) ([]byte
 			return nil, fmt.Errorf("readiness address: %w", err)
 		}
 		doc = append(doc, yaml.MapItem{Key: "config", Value: yaml.MapSlice{{Key: "readinessAddr", Value: opts.ReadinessAddr}}})
+	}
+	if opts.IngestHost != "" {
+		if err := hostPort(opts.IngestHost); err != nil {
+			return nil, fmt.Errorf("ingest host: %w", err)
+		}
+		// One access-log record per request, sent with the ingest credential the gateway reads from
+		// its environment, carrying the request id the checker inserted (rules D and E).
+		doc = append(doc, yaml.MapItem{Key: "frontendPolicies", Value: yaml.MapSlice{{Key: "accessLog", Value: yaml.MapSlice{
+			{Key: "otlp", Value: yaml.MapSlice{
+				{Key: "host", Value: opts.IngestHost},
+				{Key: "policies", Value: yaml.MapSlice{{Key: "backendAuth", Value: yaml.MapSlice{{Key: "key", Value: "$" + IngestTokenEnv}}}}},
+				{Key: "fields", Value: yaml.MapSlice{{Key: "add", Value: yaml.MapSlice{
+					{Key: "muistamo.request_id", Value: `request.headers["x-muistamo-request-id"]`},
+				}}}},
+			}},
+		}}}})
 	}
 	doc = append(doc, yaml.MapItem{Key: "llm", Value: yaml.MapSlice{
 		{Key: "port", Value: 4000},

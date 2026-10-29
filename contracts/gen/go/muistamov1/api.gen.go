@@ -3315,7 +3315,7 @@ type UsagePage struct {
 	Next *string `json:"next,omitempty"`
 }
 
-// UsageRecord A call the gateway's check authorized, and what it cost. metered is false when no usage arrived from the gateway: the call may not have run (the gateway can still reject an authorized call), or its usage export was lost. Unmetered calls are reported, never estimated.
+// UsageRecord A call the gateway's check authorized, and what it cost at provider prices. metered is false while no usage has arrived; see metered for what an unmetered call means. Unmetered calls are reported, never estimated.
 type UsageRecord struct {
 	Alias             *string   `json:"alias,omitempty"`
 	AuthorizedAt      time.Time `json:"authorizedAt"`
@@ -3331,7 +3331,7 @@ type UsageRecord struct {
 	McpMethod   *string            `json:"mcpMethod,omitempty"`
 	McpTool     *string            `json:"mcpTool,omitempty"`
 
-	// Metered Model calls only: false when no usage arrived from the gateway, because the call may not have run (the gateway can reject an authorized call) or its usage export was lost. Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens.
+	// Metered Model calls only: false while no usage record exists. Within 15 minutes of authorization this is normal (usage is still arriving); after that the call is unmetered: its cost is unknown and may have been incurred (it may not have run, may have run without reporting usage, or its usage was lost in export or refused by ingest). Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens.
 	Metered *bool `json:"metered,omitempty"`
 
 	// Model The provider's model id the alias resolved to when authorized.
@@ -3484,7 +3484,11 @@ type ListUsageParams struct {
 	Instance *string    `form:"instance,omitempty" json:"instance,omitempty"`
 	From     *time.Time `form:"from,omitempty" json:"from,omitempty"`
 	To       *time.Time `form:"to,omitempty" json:"to,omitempty"`
-	Cursor   *string    `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Unmetered Only model calls authorized more than 15 minutes ago with no usage record. Their cost is unknown and may have been incurred: the call may not have run (the gateway can reject an authorized call), may have run without reporting usage (an aborted stream, a failed response), or its usage may have been lost in export or refused by ingest. Reported, never estimated.
+	Unmetered *bool   `form:"unmetered,omitempty" json:"unmetered,omitempty"`
+	Cursor    *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit     *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListVirtualKeysParams defines parameters for ListVirtualKeys.
@@ -7146,9 +7150,33 @@ func NewListUsageRequest(server string, params *ListUsageParams) (*http.Request,
 
 		}
 
+		if params.Unmetered != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "unmetered", *params.Unmetered, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Cursor != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -14888,6 +14916,19 @@ func (siw *ServerInterfaceWrapper) ListUsage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "unmetered" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unmetered", r.URL.Query(), &params.Unmetered, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unmetered"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unmetered", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "cursor" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -14897,6 +14938,19 @@ func (siw *ServerInterfaceWrapper) ListUsage(w http.ResponseWriter, r *http.Requ
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
 	}
