@@ -22,10 +22,12 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 
 	"muistamo.dev/muistamo/control-plane/internal/gateway"
 )
@@ -71,6 +73,7 @@ func (a authority) intermediate(t *testing.T) authority {
 
 type leafSpec struct {
 	uris, dns []string
+	urls      []*url.URL // taken as given, for encodings url.Parse would normalise
 	eku       x509.ExtKeyUsage
 	notAfter  time.Time
 }
@@ -88,6 +91,7 @@ func (a authority) issue(t *testing.T, s leafSpec) tls.Certificate {
 		u, _ := url.Parse(raw)
 		tmpl.URIs = append(tmpl.URIs, u)
 	}
+	tmpl.URIs = append(tmpl.URIs, s.urls...)
 	if s.eku == x509.ExtKeyUsageServerAuth {
 		tmpl.IPAddresses = []net.IP{net.ParseIP("127.0.0.1")}
 	}
@@ -213,6 +217,8 @@ func TestMutualTLSAdmitsOnlyTheGatewayIdentityFromTheOperatorsCA(t *testing.T) {
 	twoURIs := p.ca.issue(t, leafSpec{uris: []string{gatewayIdentity, "spiffe://muistamo.dev/another-service"}, eku: x509.ExtKeyUsageClientAuth})
 	withQuery := p.ca.issue(t, leafSpec{uris: []string{gatewayIdentity + "?x=1"}, eku: x509.ExtKeyUsageClientAuth})
 	upperHost := p.ca.issue(t, leafSpec{uris: []string{"spiffe://MUISTAMO.dev/agentgateway"}, eku: x509.ExtKeyUsageClientAuth})
+	encoded := p.ca.issue(t, leafSpec{uris: []string{"spiffe://muistamo.dev/%61gentgateway"}, eku: x509.ExtKeyUsageClientAuth})
+	upperScheme := p.ca.issue(t, leafSpec{urls: []*url.URL{{Scheme: "SPIFFE", Host: "muistamo.dev", Path: "/agentgateway"}}, eku: x509.ExtKeyUsageClientAuth})
 	for name, creds := range map[string]credentials.TransportCredentials{
 		"no client certificate":                clientTLS(p, nil, p.ca.pem, 0),
 		"certificate from another CA":          clientTLS(p, &otherCA, p.ca.pem, 0),
@@ -223,6 +229,8 @@ func TestMutualTLSAdmitsOnlyTheGatewayIdentityFromTheOperatorsCA(t *testing.T) {
 		"two URI SANs":                         clientTLS(p, &twoURIs, p.ca.pem, 0),
 		"identity with a query":                clientTLS(p, &withQuery, p.ca.pem, 0),
 		"uppercase trust domain":               clientTLS(p, &upperHost, p.ca.pem, 0),
+		"percent-encoded identity":             clientTLS(p, &encoded, p.ca.pem, 0),
+		"uppercase scheme":                     clientTLS(p, &upperScheme, p.ca.pem, 0),
 		"intermediate not sent":                clientTLS(p, &unchained, p.ca.pem, 0),
 		"TLS 1.2 only":                         clientTLS(p, &good, p.ca.pem, tls.VersionTLS12),
 		"plaintext":                            insecure.NewCredentials(),
@@ -286,6 +294,9 @@ func TestParseIdentityRefusesAmbiguousIdentities(t *testing.T) {
 		"spiffe://muistamo.dev/agentgateway#frag", "spiffe://MUISTAMO.dev/agentgateway", "spiffe://muistamo.dev/*",
 		"https://muistamo.dev/agentgateway", "SPIFFE://muistamo.dev/agentgateway", "*.muistamo.internal", "AgentGateway",
 		"agentgateway.", "agent gateway", "agentgateway\n", "-agentgateway", "127.0.0.1:443",
+		"spiffe://muistamo.dev/agentgateway/", "spiffe://muistamo.dev/a//b", "spiffe://muistamo.dev/../x",
+		"spiffe://muistamo.dev/a/./b", "spiffe://muistamo.dev/a%2Fb", "spiffe://muistamo.dev/%61gentgateway",
+		"spiffe://muistamo.dev/a b", "spiffe://muistamo.dev/agentgateway#",
 	} {
 		if _, err := gateway.ParseIdentity(bad); err == nil {
 			t.Errorf("%q: accepted", bad)
@@ -293,22 +304,112 @@ func TestParseIdentityRefusesAmbiguousIdentities(t *testing.T) {
 	}
 }
 
-// Certificate validity is only checked at the handshake; a bounded connection age is what stops
-// an expired client certificate from keeping a connection open.
-func TestExpiredClientCertificateCannotKeepItsConnection(t *testing.T) {
-	defer gateway.ShortenConnectionAge(time.Second, 200*time.Millisecond)()
-	p := newPKI(t)
-	addr := serveTLS(t, p, gatewayIdentity)
-	expiresSoon := p.ca.leaf(t, gatewayIdentity, false, time.Now().Add(2*time.Second))
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(clientTLS(p, &expiresSoon, p.ca.pem, 0)))
+// waitPast sleeps until a certificate's NotAfter (second-truncated by x509) has passed.
+func waitPast(t *testing.T, c tls.Certificate) {
+	t.Helper()
+	leaf, err := x509.ParseCertificate(c.Certificate[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = conn.Close() }()
+	time.Sleep(time.Until(leaf.NotAfter) + 1500*time.Millisecond)
+}
+
+func dial(t *testing.T, addr string, creds credentials.TransportCredentials) *grpc.ClientConn {
+	t.Helper()
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
 	if err := check(context.Background(), conn); err != nil {
 		t.Fatalf("valid certificate refused: %v", err)
 	}
-	time.Sleep(4 * time.Second)
+	return conn
+}
+
+// Certificate validity is only checked at the handshake; every call re-verifies it, so a client
+// certificate that expires on an open connection is refused at use time.
+func TestExpiredClientCertificateIsRefusedOnItsOpenConnection(t *testing.T) {
+	p := newPKI(t)
+	addr := serveTLS(t, p, gatewayIdentity)
+	expiresSoon := p.ca.leaf(t, gatewayIdentity, false, time.Now().Add(5*time.Second))
+	conn := dial(t, addr, clientTLS(p, &expiresSoon, p.ca.pem, 0))
+	waitPast(t, expiresSoon)
+	if err := check(context.Background(), conn); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("a call on a connection whose client certificate expired = %v, want Unauthenticated", err)
+	}
+}
+
+// Removing a CA reaches open connections at the next call, not when the connection is recycled.
+func TestCallsOnOpenConnectionsAreVerifiedAgainstTheCurrentCA(t *testing.T) {
+	defer gateway.RecheckEvery(0)()
+	p := newPKI(t)
+	addr := serveTLS(t, p, gatewayIdentity)
+	good := p.ca.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))
+	conn := dial(t, addr, clientTLS(p, &good, p.ca.pem, 0))
+	_ = os.WriteFile(p.caFile, newAuthority(t, "next CA").pem, 0o600)
+	if err := check(context.Background(), conn); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("a call from a removed CA on an open connection = %v, want Unauthenticated", err)
+	}
+}
+
+// The pin holds at the handshake itself, not only per call: a certificate from the right CA that
+// names another workload never completes a TLS session.
+func TestHandshakeRefusesAnotherIdentity(t *testing.T) {
+	p := newPKI(t)
+	addr := serveTLS(t, p, gatewayIdentity)
+	attempt := func(c tls.Certificate) error {
+		conn, err := tls.Dial("tcp", addr, &tls.Config{RootCAs: poolOf(p.ca.pem), ServerName: "gateway-authz",
+			Certificates: []tls.Certificate{c}, NextProtos: []string{"h2"}})
+		if err != nil {
+			return err
+		}
+		defer func() { _ = conn.Close() }()
+		// TLS 1.3 reports a refused client certificate on the first read after the handshake.
+		_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+		_, err = conn.Read(make([]byte, 1))
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			return nil
+		}
+		return err
+	}
+	if err := attempt(p.ca.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))); err != nil {
+		t.Fatalf("the gateway's certificate was refused at the handshake: %v", err)
+	}
+	if err := attempt(p.ca.leaf(t, "spiffe://muistamo.dev/another-service", false, time.Now().Add(time.Hour))); err == nil {
+		t.Fatal("a certificate naming another workload completed the handshake")
+	}
+}
+
+// Handshakes and calls cannot turn into file system load: the files are read once per interval.
+func TestFilesAreReadAtMostOncePerInterval(t *testing.T) {
+	defer gateway.RecheckEvery(time.Hour)()
+	p := newPKI(t)
+	addr := serveTLS(t, p, gatewayIdentity)
+	_ = os.WriteFile(p.caFile, newAuthority(t, "next CA").pem, 0o600)
+	good := p.ca.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))
+	if err := call(addr, clientTLS(p, &good, p.ca.pem, 0)); err != nil {
+		t.Fatalf("the files were reread before the interval passed: %v", err)
+	}
+}
+
+// A bounded connection age moves open connections onto a rotated server certificate.
+func TestConnectionsAreRecycledOntoARotatedServerCertificate(t *testing.T) {
+	defer gateway.ShortenConnectionAge(time.Second, 200*time.Millisecond)()
+	defer gateway.RecheckEvery(0)()
+	p := newPKI(t)
+	addr := serveTLS(t, p, gatewayIdentity)
+	good := p.ca.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))
+	// The client trusts only the old server CA, so a reconnection after rotation fails visibly.
+	conn := dial(t, addr, clientTLS(p, &good, p.ca.pem, 0))
+	next := newAuthority(t, "next server CA")
+	cert, key := writePEM(t, t.TempDir(), "server", next.leaf(t, "", true, time.Now().Add(time.Hour)))
+	for src, dst := range map[string]string{cert: p.serverCert, key: p.serverKey} {
+		body, _ := os.ReadFile(src)
+		_ = os.WriteFile(dst, body, 0o600)
+	}
+	time.Sleep(3 * time.Second)
+	var err error
 	for range 3 {
 		if err = check(context.Background(), conn); err != nil {
 			break
@@ -316,11 +417,12 @@ func TestExpiredClientCertificateCannotKeepItsConnection(t *testing.T) {
 		time.Sleep(time.Second)
 	}
 	if err == nil {
-		t.Fatal("a connection opened with a now-expired client certificate still serves calls")
+		t.Fatal("an open connection was never moved onto the rotated server certificate")
 	}
 }
 
 func TestRotatedFilesApplyWithoutRestartAndBadWritesKeepTheLastGoodSet(t *testing.T) {
+	defer gateway.RecheckEvery(0)()
 	p := newPKI(t)
 	var logs strings.Builder
 	var logsMu sync.Mutex
@@ -334,10 +436,15 @@ func TestRotatedFilesApplyWithoutRestartAndBadWritesKeepTheLastGoodSet(t *testin
 	if err := call(addr, clientTLS(p, &good, p.ca.pem, 0)); err != nil {
 		t.Fatal(err)
 	}
-	touch := func(paths ...string) {
-		later := time.Now().Add(time.Minute)
-		for _, path := range paths {
-			_ = os.Chtimes(path, later, later)
+	// Change detection is by content: keep every file's modification time unchanged.
+	stamps := map[string]time.Time{}
+	for _, path := range []string{p.serverCert, p.serverKey, p.caFile} {
+		st, _ := os.Stat(path)
+		stamps[path] = st.ModTime()
+	}
+	restamp := func() {
+		for path, at := range stamps {
+			_ = os.Chtimes(path, at, at)
 		}
 	}
 	// Rotation to a new CA: new handshakes use the new server certificate and client CA.
@@ -348,26 +455,35 @@ func TestRotatedFilesApplyWithoutRestartAndBadWritesKeepTheLastGoodSet(t *testin
 		_ = os.WriteFile(dst, body, 0o600)
 	}
 	_ = os.WriteFile(p.caFile, next.pem, 0o600)
-	touch(p.serverCert, p.serverKey, p.caFile)
+	restamp()
 	rotated := next.leaf(t, gatewayIdentity, false, time.Now().Add(time.Hour))
 	if err := call(addr, clientTLS(p, &rotated, next.pem, 0)); err != nil {
 		t.Fatalf("rotated certificates not applied: %v", err)
 	}
-	if err := call(addr, clientTLS(p, &good, p.ca.pem, 0)); err == nil {
+	// The client trusts the new server certificate, so only the server's CA decides this.
+	if err := call(addr, clientTLS(p, &good, next.pem, 0)); err == nil {
 		t.Fatal("the retired CA is still trusted after rotation")
 	}
-	// A half-written certificate: the server keeps serving the last good set, the rotated one.
+	// A half-written certificate, then a missing CA: the server keeps serving the last good set,
+	// the rotated one, and logs each problem once however many handshakes see it.
 	_ = os.WriteFile(p.serverCert, []byte("-----BEGIN CERTIFICATE-----\ntruncat"), 0o600)
-	touch(p.serverCert)
-	for range 2 {
+	for range 3 {
 		if err := call(addr, clientTLS(p, &rotated, next.pem, 0)); err != nil {
 			t.Fatalf("a bad write replaced the last good set: %v", err)
 		}
 	}
+	body, _ := os.ReadFile(cert)
+	_ = os.WriteFile(p.serverCert, body, 0o600)
+	_ = os.Remove(p.caFile)
+	for range 3 {
+		if err := call(addr, clientTLS(p, &rotated, next.pem, 0)); err != nil {
+			t.Fatalf("a missing file replaced the last good set: %v", err)
+		}
+	}
 	logsMu.Lock()
 	defer logsMu.Unlock()
-	if n := strings.Count(logs.String(), "not reloaded"); n != 1 {
-		t.Fatalf("a bad set was logged %d times, want once:\n%s", n, logs.String())
+	if n := strings.Count(logs.String(), "not reloaded"); n != 2 {
+		t.Fatalf("two bad sets were logged %d times, want once each:\n%s", n, logs.String())
 	}
 }
 
