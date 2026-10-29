@@ -144,7 +144,7 @@ func TestRateLimitRefusalsAre429WithRetryAfter(t *testing.T) {
 	for reason, want := range map[muistamov1.GatewayAuthorizationDecisionReason]struct {
 		status uint32
 		retry  string
-	}{"rate-limited": {429, "60"}, "too-many-in-flight": {429, "5"}, "budget-reached": {403, ""}, "calls-without-usage-limit": {403, ""}} {
+	}{"rate-limited": {429, "60"}, "too-many-in-flight": {429, "30"}, "budget-reached": {403, ""}, "calls-without-usage-limit": {403, ""}} {
 		cfg := config()
 		s, err := gateway.NewAuthorization(refuser{reason}, cfg, "model", slog.New(slog.NewTextHandler(io.Discard, nil)))
 		if err != nil {

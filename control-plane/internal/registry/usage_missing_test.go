@@ -178,6 +178,9 @@ func backdate(t *testing.T, f fixture, id uuid.UUID, ago string) {
 	testdb.Exec(t, f.db.OwnerURL, `ALTER TABLE gateway_calls DISABLE TRIGGER gateway_calls_stamp`)
 	testdb.Exec(t, f.db.OwnerURL, `UPDATE gateway_calls SET authorized_at = now() - $2::interval WHERE request_id = $1`, id, ago)
 	testdb.Exec(t, f.db.OwnerURL, `ALTER TABLE gateway_calls ENABLE TRIGGER gateway_calls_stamp`)
+	// The call's open row and any missing-usage report age with it.
+	testdb.Exec(t, f.db.OwnerURL, `UPDATE open_calls SET authorized_at = now() - $2::interval WHERE request_id = $1`, id, ago)
+	testdb.Exec(t, f.db.OwnerURL, `UPDATE calls_without_usage SET recorded_at = now() - $2::interval WHERE request_id = $1`, id, ago)
 }
 
 // A call still unaccounted 15 minutes after authorization (its export was lost or refused) counts

@@ -3430,7 +3430,7 @@ type VirtualKeyRequest struct {
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 	Instance  string     `json:"instance"`
 
-	// MaxCallsInFlight Model calls the key may have in flight at once (authorized, with no usage, missing-usage or failure report yet, within 15 minutes); more are refused with HTTP 429. Bounds how far budgets and the calls-without-usage allowance can be overshot. Omitted means 4. Fixed at issuance.
+	// MaxCallsInFlight Model calls the key may have in flight at once (authorized, with no usage, missing-usage or failure report yet, within 15 minutes); more are refused with HTTP 429. Bounds how far budgets can be overshot (calls older than 15 minutes leave this count and count toward maxCallsWithoutUsage instead, so the overshoot bound is the two together). Omitted means 4. Fixed at issuance.
 	MaxCallsInFlight *int `json:"maxCallsInFlight,omitempty"`
 
 	// MaxCallsWithoutUsage How many of the key's calls within a rolling 24 hours may run without a usage report: a call the client aborted (the provider likely bills it, but the gateway reports no usage), or one still unaccounted 15 minutes after authorization. Once more have, calls are refused until enough fall out of the window. Calls in flight when the limit is reached can overshoot it. Omitted means 10; 0 refuses the key after the first such call. Fixed at issuance.

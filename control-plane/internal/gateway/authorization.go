@@ -175,9 +175,11 @@ func (s *Authorization) Check(ctx context.Context, req *auth.CheckRequest) (*aut
 // rateLimited answers 429 with a retry hint, the standard for rate limits (RFC 6585), so clients
 // back off instead of treating the refusal as a permission problem.
 func rateLimited(reason muistamov1.GatewayAuthorizationDecisionReason) *auth.CheckResponse {
+	// Upper bounds, never promises: the minute window frees within 60 seconds; calls in flight
+	// settle when their usage export arrives (seconds), or leave the count after 15 minutes.
 	retry := "60"
 	if reason == muistamov1.GatewayAuthorizationDecisionReasonTooManyInFlight {
-		retry = "5"
+		retry = "30"
 	}
 	return &auth.CheckResponse{Status: &status.Status{Code: int32(codes.ResourceExhausted)}, HttpResponse: &auth.CheckResponse_DeniedResponse{DeniedResponse: &auth.DeniedHttpResponse{
 		Status:  &typev3.HttpStatus{Code: typev3.StatusCode_TooManyRequests},

@@ -255,3 +255,25 @@ func TestIngestRecordsFailedCalls(t *testing.T) {
 		}
 	}
 }
+
+// 408, 502 and 504 can follow a request the provider accepted, so they count as run without
+// usage; an error without a model attribute still settles as failed by request id.
+func TestIngestTreatsGatewayTimeoutsAsRunWithoutUsage(t *testing.T) {
+	for _, code := range []int{408, 502, 504} {
+		r := &usageRecorder{}
+		if _, err := ingest(t, r).Export(authed("Bearer "+ingestToken), export(record(uuid.New(), func(a map[string]any) {
+			a["http.response.status_code"] = code
+			delete(a, "gen_ai.usage.input_tokens")
+			delete(a, "gen_ai.usage.output_tokens")
+		}))); err != nil || len(r.lines) != 1 || !r.lines[0].UsageMissing || r.lines[0].FailedStatus != 0 {
+			t.Errorf("status %d: lines %+v, err %v", code, r.lines, err)
+		}
+	}
+	r := &usageRecorder{}
+	if _, err := ingest(t, r).Export(authed("Bearer "+ingestToken), export(record(uuid.New(), func(a map[string]any) {
+		a["http.response.status_code"] = 503
+		delete(a, "gen_ai.request.model")
+	}))); err != nil || len(r.lines) != 1 || r.lines[0].FailedStatus != 503 || r.lines[0].Model != "" {
+		t.Errorf("error without a model: lines %+v, err %v", r.lines, err)
+	}
+}

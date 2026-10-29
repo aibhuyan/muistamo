@@ -115,6 +115,9 @@ func (s *Service) RecordUsage(ctx context.Context, tenant uuid.UUID, lines []Usa
 				return fmt.Errorf("record usage %s: %w", l.RequestID, err)
 			}
 			if tag.RowsAffected() == 1 {
+				if err := settle(ctx, tx, l.RequestID); err != nil {
+					return err
+				}
 				out.Accepted = append(out.Accepted, l.RequestID)
 				continue
 			}
@@ -195,6 +198,9 @@ func recordWithoutUsage(ctx context.Context, tx pgx.Tx, l UsageLine, out *UsageI
 		return fmt.Errorf("record call without usage %s: %w", l.RequestID, err)
 	}
 	if tag.RowsAffected() == 1 {
+		if err := settle(ctx, tx, l.RequestID); err != nil {
+			return err
+		}
 		out.WithoutUsage = append(out.WithoutUsage, l.RequestID)
 		return nil
 	}
@@ -218,13 +224,14 @@ func recordWithoutUsage(ctx context.Context, tx pgx.Tx, l UsageLine, out *UsageI
 }
 
 // recordFailed records an authorized model call that the gateway or provider answered with an
-// error, once, and only for a model call in this tenant whose snapshot model matches, so it is
+// error, once, and only for a model call in this tenant whose snapshot model matches (gateway
+// errors may carry no model; the request id alone then identifies the call), so it is
 // neither in flight nor unaccounted. A call already settled otherwise is a conflict.
 // HUMAN REVIEW REQUIRED: settled calls stop counting toward the in-flight limit.
 func recordFailed(ctx context.Context, tx pgx.Tx, l UsageLine, out *UsageIngest) error {
 	tag, err := tx.Exec(ctx, `INSERT INTO failed_calls (tenant_id, request_id, status_code)
 		SELECT c.tenant_id, c.request_id, $3 FROM gateway_calls c
-		 WHERE c.request_id = $1 AND c.kind = 'model' AND c.model = $2
+		 WHERE c.request_id = $1 AND c.kind = 'model' AND ($2 = '' OR c.model = $2)
 		   AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id)
 		   AND NOT EXISTS (SELECT 1 FROM calls_without_usage w WHERE w.tenant_id = c.tenant_id AND w.request_id = c.request_id)
 		ON CONFLICT (tenant_id, request_id) DO NOTHING`, l.RequestID, l.Model, l.FailedStatus)
@@ -232,6 +239,9 @@ func recordFailed(ctx context.Context, tx pgx.Tx, l UsageLine, out *UsageIngest)
 		return fmt.Errorf("record failed call %s: %w", l.RequestID, err)
 	}
 	if tag.RowsAffected() == 1 {
+		if err := settle(ctx, tx, l.RequestID); err != nil {
+			return err
+		}
 		out.Failed = append(out.Failed, l.RequestID)
 		return nil
 	}
@@ -249,6 +259,15 @@ func recordFailed(ctx context.Context, tx pgx.Tx, l UsageLine, out *UsageIngest)
 		out.Duplicate++
 	default:
 		out.Unmatched++
+	}
+	return nil
+}
+
+// settle closes a call ingest has accounted for, so it no longer counts in flight or toward the
+// calls-without-usage cap as unaccounted.
+func settle(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM open_calls WHERE request_id = $1`, id); err != nil {
+		return fmt.Errorf("settle call %s: %w", id, err)
 	}
 	return nil
 }

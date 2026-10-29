@@ -1,6 +1,7 @@
 package registry_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -198,4 +199,73 @@ func TestRateLimitsAreValidatedShownAndFixed(t *testing.T) {
 func withLimits(req muistamov1.VirtualKeyRequest, perMinute, inFlight int) muistamov1.VirtualKeyRequest {
 	req.MaxRequestsPerMinute, req.MaxCallsInFlight = &perMinute, &inFlight
 	return req
+}
+
+// Concurrent checks of one key serialise on its row lock: exactly the limit is admitted.
+func TestConcurrentChecksAdmitExactlyTheLimit(t *testing.T) {
+	f, req := gatewayFixture(t)
+	issued := keyWithLimits(t, f, req, 6000, 2)
+	call, route := modelCall()
+	results := make(chan bool, 8)
+	for range 8 {
+		go func() {
+			d, err := f.svc.AuthorizeGateway(context.Background(), f.actor.Tenant, issued.Secret, call, &route)
+			results <- err == nil && d.Allowed
+		}()
+	}
+	admitted := 0
+	for range 8 {
+		if <-results {
+			admitted++
+		}
+	}
+	if admitted != 2 {
+		t.Fatalf("admitted %d of 8 concurrent calls with 2 allowed in flight", admitted)
+	}
+}
+
+// Only a key's first rate-limit refusal in a minute is signed; later ones are still refused.
+func TestRateLimitRefusalsAreSignedOncePerMinute(t *testing.T) {
+	f, req := gatewayFixture(t)
+	issued := keyWithLimits(t, f, req, 1, 100)
+	settle(t, f, authorize(t, f, issued))
+	before := f.events(t)
+	for i := range 3 {
+		if ok, reason := allowed(t, f, issued); ok || reason != "rate-limited" {
+			t.Fatalf("refusal %d: allowed %v, reason %q", i+1, ok, reason)
+		}
+	}
+	if n := f.events(t) - before; n != 1 {
+		t.Fatalf("three refusals in a minute wrote %d evidence events, want 1", n)
+	}
+	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM evidence_events WHERE action = 'gateway.call.denied'
+		AND after->>'reason' = 'rate-limited' AND after ? 'throttle'`); n != 1 {
+		t.Fatalf("signed throttle refusal = %d", n)
+	}
+}
+
+// Usage arriving after a failure report is priced: the real usage wins (the failure is kept).
+func TestUsageAfterAFailureIsPriced(t *testing.T) {
+	f, issued, id := meteredFixture(t)
+	if _, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{{RequestID: id, Model: "test-model", FailedStatus: 500}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{line(id, 1000, 0, 0)})
+	if err != nil || len(got.Accepted) != 1 {
+		t.Fatalf("usage after a failure = %+v, %v", got, err)
+	}
+	_ = issued
+}
+
+// A gateway error without the model attribute still settles its call.
+func TestFailuresWithoutAModelSettleByRequestID(t *testing.T) {
+	f, req := gatewayFixture(t)
+	issued := keyWithLimits(t, f, req, 6000, 1)
+	id := authorize(t, f, issued)
+	if got, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{{RequestID: id, FailedStatus: 503}}); err != nil || len(got.Failed) != 1 {
+		t.Fatalf("failure without a model = %+v, %v", got, err)
+	}
+	if ok, reason := allowed(t, f, issued); !ok {
+		t.Fatalf("the settled call still counts in flight: %s", reason)
+	}
 }

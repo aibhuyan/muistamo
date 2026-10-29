@@ -44,6 +44,22 @@ func (s *Service) AuthorizeGateway(ctx context.Context, tenant uuid.UUID, presen
 			return recordEvidence(ctx, tx, s.signer, actor, "gateway.call.denied", "GatewayRequest", id.String(), nil,
 				detail)
 		}
+		// A rate-limit refusal is signed only for the key's first in a minute; later ones that
+		// minute are logged by the gateway adapter, so a client ignoring retry-after cannot flood
+		// the evidence chain. The refusal itself still applies to every call.
+		throttle := func(reason muistamov1.GatewayAuthorizationDecisionReason, key uuid.UUID) error {
+			tag, err := tx.Exec(ctx, `INSERT INTO throttle_marks (tenant_id, key_id, window_start)
+				VALUES ($1, $2, date_trunc('minute', now())) ON CONFLICT DO NOTHING`, tenant, key)
+			if err != nil {
+				return fmt.Errorf("mark throttling: %w", err)
+			}
+			if tag.RowsAffected() == 0 {
+				out.Reason = reason
+				return nil
+			}
+			trusted["throttle"] = "first refusal this minute; later refusals this minute are logged, not signed"
+			return deny(reason)
+		}
 		if req.Kind == "mcp" {
 			return deny("mcp-not-integrated")
 		}
@@ -153,11 +169,11 @@ func (s *Service) AuthorizeGateway(ctx context.Context, tenant uuid.UUID, presen
 		// Recorded spend only. In-flight and missing usage can overshoot; later ingest/reporting
 		// must expose that limit rather than estimating unseen provider usage.
 		var within bool
-		err = tx.QueryRow(ctx, `SELECT k.budget_currency='EUR' AND coalesce((SELECT sum(u.cost_amount)
-			FROM gateway_calls c JOIN usage_records u USING(tenant_id,request_id)
-			WHERE c.tenant_id=k.tenant_id AND c.key_id=k.id
-			AND c.authorized_at >= (date_trunc('month',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
-			AND c.authorized_at < ((date_trunc('month',now() AT TIME ZONE 'UTC')+interval '1 month') AT TIME ZONE 'UTC')),0)<k.budget_amount
+		// One row: key_spend is kept by the database as usage arrives (00017), per UTC month of
+		// authorization, so this does not grow with the month's call volume.
+		err = tx.QueryRow(ctx, `SELECT k.budget_currency='EUR' AND coalesce((SELECT s.amount FROM key_spend s
+			WHERE s.tenant_id=k.tenant_id AND s.key_id=k.id AND s.currency=k.budget_currency
+			AND s.month=(date_trunc('month',now() AT TIME ZONE 'UTC'))::date),0)<k.budget_amount
 			FROM virtual_keys k WHERE k.id=$1`, keyID).Scan(&within)
 		if err != nil {
 			return err
@@ -171,15 +187,17 @@ func (s *Service) AuthorizeGateway(ctx context.Context, tenant uuid.UUID, presen
 		// are still unaccounted after UnmeteredAfter (a lost or refused export): the cap fails
 		// closed. Calls whose usage did arrive no longer count. Calls in flight can overshoot it.
 		// HUMAN REVIEW REQUIRED.
+		// Both parts read only small sets (reports of the last day, a key's unsettled calls), never
+		// call history: this runs under the key lock on every call.
 		var underCap bool
-		err = tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM gateway_calls c
-			WHERE c.tenant_id = k.tenant_id AND c.key_id = k.id AND c.kind = 'model'
-			AND c.authorized_at > now() - interval '24 hours'
-			AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id)
-			AND NOT EXISTS (SELECT 1 FROM failed_calls f WHERE f.tenant_id = c.tenant_id AND f.request_id = c.request_id)
-			AND (EXISTS (SELECT 1 FROM calls_without_usage w WHERE w.tenant_id = c.tenant_id AND w.request_id = c.request_id)
-			     OR c.authorized_at < now() - make_interval(secs => $2))
-			) <= k.max_calls_without_usage
+		err = tx.QueryRow(ctx, `SELECT
+			(SELECT count(*) FROM calls_without_usage w JOIN gateway_calls c USING (tenant_id, request_id)
+			  WHERE w.tenant_id = k.tenant_id AND w.recorded_at > now() - interval '24 hours' AND c.key_id = k.id
+			    AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id))
+			+ (SELECT count(*) FROM open_calls o
+			  WHERE o.tenant_id = k.tenant_id AND o.key_id = k.id
+			    AND o.authorized_at < now() - make_interval(secs => $2) AND o.authorized_at > now() - interval '24 hours')
+			<= k.max_calls_without_usage
 			FROM virtual_keys k WHERE k.id = $1`, keyID, UnmeteredAfter.Seconds()).Scan(&underCap)
 		if err != nil {
 			return err
@@ -188,29 +206,25 @@ func (s *Service) AuthorizeGateway(ctx context.Context, tenant uuid.UUID, presen
 			return deny("calls-without-usage-limit")
 		}
 		// Rate limits (FR-702), under the same key lock, so concurrent checks of one key serialise.
-		// Requests per rolling minute count every authorized call. Calls in flight are model calls
-		// authorized within UnmeteredAfter that ingest has not settled with usage, a missing-usage
-		// or a failure report; older ones belong to the calls-without-usage cap above. If ingest
+		// Requests per rolling minute count the key's authorized calls of the last minute (bounded
+		// by the limit itself). Calls in flight are the key's open (unsettled) model calls younger
+		// than UnmeteredAfter; older ones belong to the calls-without-usage cap above. If ingest
 		// is down nothing settles and the key is refused (fails closed). HUMAN REVIEW REQUIRED.
 		var underRate, underFlight bool
 		err = tx.QueryRow(ctx, `SELECT
 			(SELECT count(*) FROM gateway_calls c WHERE c.tenant_id = k.tenant_id AND c.key_id = k.id
 			   AND c.authorized_at > now() - interval '60 seconds') < k.max_requests_per_minute,
-			(SELECT count(*) FROM gateway_calls c WHERE c.tenant_id = k.tenant_id AND c.key_id = k.id AND c.kind = 'model'
-			   AND c.authorized_at >= now() - make_interval(secs => $2)
-			   AND NOT EXISTS (SELECT 1 FROM usage_records u WHERE u.tenant_id = c.tenant_id AND u.request_id = c.request_id)
-			   AND NOT EXISTS (SELECT 1 FROM calls_without_usage w WHERE w.tenant_id = c.tenant_id AND w.request_id = c.request_id)
-			   AND NOT EXISTS (SELECT 1 FROM failed_calls f WHERE f.tenant_id = c.tenant_id AND f.request_id = c.request_id)
-			) < k.max_calls_in_flight
+			(SELECT count(*) FROM open_calls o WHERE o.tenant_id = k.tenant_id AND o.key_id = k.id
+			   AND o.authorized_at >= now() - make_interval(secs => $2)) < k.max_calls_in_flight
 			FROM virtual_keys k WHERE k.id = $1`, keyID, UnmeteredAfter.Seconds()).Scan(&underRate, &underFlight)
 		if err != nil {
 			return err
 		}
 		if !underRate {
-			return deny("rate-limited")
+			return throttle("rate-limited", keyID)
 		}
 		if !underFlight {
-			return deny("too-many-in-flight")
+			return throttle("too-many-in-flight", keyID)
 		}
 		set, err := compileStored(ctx, tx)
 		if err != nil {
@@ -226,6 +240,12 @@ func (s *Service) AuthorizeGateway(ctx context.Context, tenant uuid.UUID, presen
 			VALUES($1,$2,$3,$4,$5,$6,'model',$7,$8,$9,$10,$11::numeric,$12::numeric,$13::numeric)`, tenant, id, keyID, instance,
 			principal, inst.Document.Spec.CostCentre, alias, provider, model, currency, input, cached, output); err != nil {
 			return fmt.Errorf("record gateway authorization: %w", err)
+		}
+		// Open until ingest settles it: counted toward the in-flight limit, and after
+		// UnmeteredAfter toward the calls-without-usage cap. The time is the call's own.
+		if _, err := tx.Exec(ctx, `INSERT INTO open_calls (tenant_id, request_id, key_id, authorized_at)
+			SELECT tenant_id, request_id, key_id, authorized_at FROM gateway_calls WHERE request_id = $1`, id); err != nil {
+			return fmt.Errorf("open gateway call: %w", err)
 		}
 		actor.Name = "gateway:" + instance
 		out.Allowed, out.Reason, out.KeyId, out.Instance, out.Person, out.CostCentre, out.Policy = true, "allowed", &keyID, &instance, &principal, inst.Document.Spec.CostCentre, &observation
