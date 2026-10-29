@@ -51,3 +51,26 @@ func seedInstance(t *testing.T, db testdb.DB, tenant uuid.UUID, name string) {
 	testdb.ExecIn(t, db.OwnerURL, tenant, `INSERT INTO agent_instances (tenant_id, name, template_name, template_version, state, revision, document)
 		VALUES ($1, 'analyst-intern-person-a', 'analyst-intern', 1, 'active', 1, '{}')`, tenant)
 }
+
+// 00011 backfills occurred_at on every retained HR event before making it NOT NULL. Under a
+// restricted owner, forced row-level security would hide the rows and fail the upgrade.
+func TestHRDispatchUpgradesADatabaseWithEvents(t *testing.T) {
+	for name, at := range map[string]func(*testing.T, int64) testdb.DB{"superuser owner": testdb.NewAt, "restricted owner": testdb.NewRestrictedAt} {
+		t.Run(name, func(t *testing.T) {
+			db := at(t, 10)
+			tenant := uuid.New()
+			testdb.Exec(t, db.OwnerURL, `INSERT INTO tenants (id, name) VALUES ($1, 'acme')`, tenant)
+			testdb.ExecIn(t, db.OwnerURL, tenant, `INSERT INTO hr_events (tenant_id, event_id, type, person_id, workflow_id, payload)
+				VALUES ($1, 'ev-1', 'joiner', 'P-1', 'joiner-ev-1', '{"occurredAt": "2026-10-01T09:00:00Z"}')`, tenant)
+			if err := store.MigrateTo(context.Background(), db.OwnerURL, 11); err != nil {
+				t.Fatalf("upgrade of a database with HR events: %v", err)
+			}
+			if got := testdb.ScalarIn(t, db.OwnerURL, tenant, `SELECT (occurred_at = '2026-10-01T09:00:00Z')::text FROM hr_events WHERE event_id = 'ev-1'`); got != "true" {
+				t.Fatalf("backfilled occurred_at matches the event's source time = %s", got)
+			}
+			if forced := testdb.Scalar(t, db.OwnerURL, `SELECT relforcerowsecurity::text FROM pg_class WHERE relname = 'hr_events'`); forced != "true" {
+				t.Fatalf("hr_events FORCE ROW LEVEL SECURITY after upgrade = %s, want true", forced)
+			}
+		})
+	}
+}

@@ -14,7 +14,13 @@ ALTER TABLE hr_events
   ADD COLUMN dispatch_attempted_at timestamptz,
   ADD COLUMN setup_completed_at timestamptz;
 
+-- hr_events forces row-level security, so a table owner that is neither superuser nor BYPASSRLS
+-- (as on managed PostgreSQL) would update no rows, and SET NOT NULL below would fail. Lift FORCE
+-- for this one statement, inside this migration's transaction (a failure rolls it back).
+-- Corrected in place before release 1; the resulting schema is identical.
+ALTER TABLE hr_events NO FORCE ROW LEVEL SECURITY;
 UPDATE hr_events SET occurred_at = coalesce((payload ->> 'occurredAt')::timestamptz, received_at);
+ALTER TABLE hr_events FORCE ROW LEVEL SECURITY;
 ALTER TABLE hr_events ALTER COLUMN occurred_at SET NOT NULL;
 ALTER TABLE hr_events ADD CONSTRAINT hr_dispatch_decision CHECK (
   (decision = 'legacy' AND generation = 0 AND dispatch_state = 'legacy') OR
