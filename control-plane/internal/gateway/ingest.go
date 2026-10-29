@@ -42,6 +42,10 @@ const MaxRecordsPerExport = 2048
 // exportDeadline bounds the time one export may hold its transaction.
 const exportDeadline = 30 * time.Second
 
+// mayHaveRun are error statuses the gateway can produce after the provider accepted the request
+// (a timeout or a broken upstream), so the provider may still bill the call.
+var mayHaveRun = map[int64]bool{408: true, 502: true, 504: true}
+
 // openAISemantics are the providers whose input token count includes cached tokens, the
 // convention the pricing formula assumes. Others are refused until their usage is validated.
 var openAISemantics = map[string]bool{"openai": true}
@@ -148,7 +152,7 @@ func (s *Ingest) Export(ctx context.Context, req *collogs.ExportLogsServiceReque
 		rejected += n
 	}
 	if result.Conflicting > 0 {
-		s.log.Warn("gateway reported different usage for already metered calls; the first record is kept",
+		s.log.Warn("gateway reported contradictory outcomes for already settled calls; the first record is kept",
 			"tenant", s.tenant, "requests", result.ConflictingIDs)
 	}
 	level := slog.LevelInfo
@@ -213,19 +217,27 @@ func usageLine(attrs []*common.KeyValue) (registry.UsageLine, string) {
 	// client went away before the first byte (validation addendum 2026-10-29 (3)): the call ran
 	// and the provider likely bills the prompt, so it is treated like an aborted call below.
 	code, hasStatus := num("http.response.status_code")
-	if _, present := a["http.response.status_code"]; present && (!hasStatus || code < 200 || code > 299) {
+	if _, present := a["http.response.status_code"]; present && (!hasStatus || code < 200 || code > 599 || (code > 299 && code < 400)) {
 		return registry.UsageLine{}, "not-successful"
 	}
 	model, ok := str("gen_ai.request.model")
-	if !ok || model == "" {
+	settledAsFailed := hasStatus && code >= 400 && !mayHaveRun[code]
+	if (!ok || model == "") && !settledAsFailed {
 		return registry.UsageLine{}, "no-model"
+	}
+	if settledAsFailed {
+		// An explicit error answer: the call is settled as failed (not in flight, not
+		// unaccounted) and never priced; providers normally do not bill these. 408, 502 and 504
+		// can come from the gateway after the provider accepted (and may bill) the request, so
+		// they fall through and are recorded as run without usage, counting toward the cap.
+		return registry.UsageLine{RequestID: id, Model: model, FailedStatus: int(code)}, ""
 	}
 	if provider, _ := str("gen_ai.provider.name"); !openAISemantics[provider] {
 		return registry.UsageLine{}, "unvalidated-provider-usage"
 	}
 	in, okIn := num("gen_ai.usage.input_tokens")
 	out, okOut := num("gen_ai.usage.output_tokens")
-	if !hasStatus || !okIn || !okOut {
+	if !hasStatus || code >= 400 || !okIn || !okOut {
 		// The call ran but the gateway reported no complete usage, as for a call the client
 		// aborted (before or after the first byte): recorded as such and counted against the
 		// key's cap, never priced. Partial usage fails closed the same way.

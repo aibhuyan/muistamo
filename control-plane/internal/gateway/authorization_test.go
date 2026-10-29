@@ -131,3 +131,38 @@ func TestAuthorizationProtocolNeverFallsBackToBodiesOrClientMetadata(t *testing.
 		})
 	}
 }
+
+type refuser struct{ reason muistamov1.GatewayAuthorizationDecisionReason }
+
+func (r refuser) AuthorizeGateway(context.Context, uuid.UUID, string, muistamov1.GatewayAuthorizationRequest, *muistamov1.GatewayModelRoute) (muistamov1.GatewayAuthorizationDecision, error) {
+	id, _ := uuid.NewV7()
+	return muistamov1.GatewayAuthorizationDecision{RequestId: id, Reason: r.reason}, nil
+}
+
+// Rate limits answer 429 with a retry hint (RFC 6585); every other refusal stays 403.
+func TestRateLimitRefusalsAre429WithRetryAfter(t *testing.T) {
+	for reason, want := range map[muistamov1.GatewayAuthorizationDecisionReason]struct {
+		status uint32
+		retry  string
+	}{"rate-limited": {429, "60"}, "too-many-in-flight": {429, "30"}, "budget-reached": {403, ""}, "calls-without-usage-limit": {403, ""}} {
+		cfg := config()
+		s, err := gateway.NewAuthorization(refuser{reason}, cfg, "model", slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := s.Check(t.Context(), request(cfg))
+		if err != nil || res.GetOkResponse() != nil {
+			t.Fatalf("%s: %+v, %v", reason, res, err)
+		}
+		denied := res.GetDeniedResponse()
+		retry := ""
+		for _, h := range denied.GetHeaders() {
+			if h.GetHeader().GetKey() == "retry-after" {
+				retry = h.GetHeader().GetValue()
+			}
+		}
+		if uint32(denied.GetStatus().GetCode()) != want.status || retry != want.retry {
+			t.Errorf("%s: status %d, retry-after %q; want %d, %q", reason, denied.GetStatus().GetCode(), retry, want.status, want.retry)
+		}
+	}
+}

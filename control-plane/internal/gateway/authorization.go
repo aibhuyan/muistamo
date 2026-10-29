@@ -143,6 +143,10 @@ func (s *Authorization) Check(ctx context.Context, req *auth.CheckRequest) (*aut
 	d, err := s.decisions.AuthorizeGateway(ctx, s.tenant, token, call, route)
 	// Do not log raw headers, paths, metadata, errors carrying SQL inputs, or credentials.
 	s.log.Info("gateway authorization", "request_id", d.RequestId, "agent", d.Instance, "person", d.Person, "allowed", err == nil && d.Allowed, "reason", d.Reason)
+	if err == nil && (d.Reason == muistamov1.GatewayAuthorizationDecisionReasonRateLimited ||
+		d.Reason == muistamov1.GatewayAuthorizationDecisionReasonTooManyInFlight) {
+		return rateLimited(d.Reason), nil
+	}
 	if err != nil || !d.Allowed || d.Instance == nil || d.Person == nil {
 		return denied(), nil
 	}
@@ -166,6 +170,22 @@ func (s *Authorization) Check(ctx context.Context, req *auth.CheckRequest) (*aut
 	}
 	slices.Sort(okResponse.HeadersToRemove)
 	return &auth.CheckResponse{Status: &status.Status{Code: int32(codes.OK)}, HttpResponse: &auth.CheckResponse_OkResponse{OkResponse: okResponse}}, nil
+}
+
+// rateLimited answers 429 with a retry hint, the standard for rate limits (RFC 6585), so clients
+// back off instead of treating the refusal as a permission problem.
+func rateLimited(reason muistamov1.GatewayAuthorizationDecisionReason) *auth.CheckResponse {
+	// Upper bounds, never promises: the minute window frees within 60 seconds; calls in flight
+	// settle when their usage export arrives (seconds), or leave the count after 15 minutes.
+	retry := "60"
+	if reason == muistamov1.GatewayAuthorizationDecisionReasonTooManyInFlight {
+		retry = "30"
+	}
+	return &auth.CheckResponse{Status: &status.Status{Code: int32(codes.ResourceExhausted)}, HttpResponse: &auth.CheckResponse_DeniedResponse{DeniedResponse: &auth.DeniedHttpResponse{
+		Status:  &typev3.HttpStatus{Code: typev3.StatusCode_TooManyRequests},
+		Headers: []*core.HeaderValueOption{{Header: &core.HeaderValue{Key: "retry-after", Value: retry}, AppendAction: core.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD}},
+		Body:    `{"error":"gateway rate limit: ` + string(reason) + `"}`,
+	}}}
 }
 
 func denied() *auth.CheckResponse {

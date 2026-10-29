@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,5 +205,28 @@ func TestUsagePagesNewestFirstWithoutOverlap(t *testing.T) {
 	}
 	if _, err := f.svc.ListUsage(t.Context(), f.actor, registry.UsageFilter{Cursor: "not-a-cursor!"}); !errors.Is(err, registry.ErrInvalid) {
 		t.Fatalf("bad cursor = %v", err)
+	}
+}
+
+// Recorded spend is kept per key and month by the database as usage arrives; the server role can
+// read it but never write it, so it grows only with real usage rows.
+func TestKeySpendTracksRecordedUsageExactly(t *testing.T) {
+	f, issued, first := meteredFixture(t)
+	second := authorize(t, f, issued)
+	if _, err := f.svc.RecordUsage(t.Context(), f.actor.Tenant, []registry.UsageLine{line(first, 1000, 400, 250), line(second, 1000, 0, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	// 0.005292 + 0.0028 = 0.008092 EUR.
+	if got := testdb.Scalar(t, f.db.OwnerURL, `SELECT amount::text FROM key_spend WHERE key_id = $1`, issued.Key.Id); got != "0.008092000000" {
+		t.Fatalf("key spend = %s, want 0.008092000000", got)
+	}
+	for _, stmt := range []string{
+		`UPDATE key_spend SET amount = 0 WHERE key_id = $1`,
+		`DELETE FROM key_spend WHERE key_id = $1`,
+		`INSERT INTO key_spend (tenant_id, key_id, month, currency, amount) VALUES (nullif(current_setting('muistamo.tenant_id', true), '')::uuid, $1, '2000-01-01', 'EUR', 0)`,
+	} {
+		if err := testdb.ExecErr(f.db.AppURL, f.actor.Tenant, stmt, issued.Key.Id); err == nil || !strings.Contains(err.Error(), "permission denied") {
+			t.Errorf("%s: err = %v, want permission denied", stmt, err)
+		}
 	}
 }

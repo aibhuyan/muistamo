@@ -30,3 +30,11 @@ func TestUsageLineSaysWhenACallRanWithoutUsage(t *testing.T) {
 		t.Errorf("aborted call = %q", got)
 	}
 }
+
+func TestUsageLineSaysWhenACallFailed(t *testing.T) {
+	no, status := false, 503
+	r := muistamov1.UsageRecord{AuthorizedAt: time.Now(), Kind: "model", Metered: &no, FailedStatus: &status}
+	if got := usageLine(r, time.Now()); !strings.Contains(got, "failed (HTTP 503): no cost") {
+		t.Errorf("failed call = %q", got)
+	}
+}

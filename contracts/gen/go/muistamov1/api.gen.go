@@ -523,7 +523,9 @@ const (
 	GatewayAuthorizationDecisionReasonInvalidRequest         GatewayAuthorizationDecisionReason = "invalid-request"
 	GatewayAuthorizationDecisionReasonMcpNotIntegrated       GatewayAuthorizationDecisionReason = "mcp-not-integrated"
 	GatewayAuthorizationDecisionReasonPersonNotEstablished   GatewayAuthorizationDecisionReason = "person-not-established"
+	GatewayAuthorizationDecisionReasonRateLimited            GatewayAuthorizationDecisionReason = "rate-limited"
 	GatewayAuthorizationDecisionReasonRouteNotCurrent        GatewayAuthorizationDecisionReason = "route-not-current"
+	GatewayAuthorizationDecisionReasonTooManyInFlight        GatewayAuthorizationDecisionReason = "too-many-in-flight"
 )
 
 // Valid indicates whether the value is a known member of the GatewayAuthorizationDecisionReason enum.
@@ -551,7 +553,11 @@ func (e GatewayAuthorizationDecisionReason) Valid() bool {
 		return true
 	case GatewayAuthorizationDecisionReasonPersonNotEstablished:
 		return true
+	case GatewayAuthorizationDecisionReasonRateLimited:
+		return true
 	case GatewayAuthorizationDecisionReasonRouteNotCurrent:
+		return true
+	case GatewayAuthorizationDecisionReasonTooManyInFlight:
 		return true
 	default:
 		return false
@@ -3325,14 +3331,17 @@ type UsageRecord struct {
 	CachedInputTokens *int      `json:"cachedInputTokens,omitempty"`
 
 	// Cost At provider cost from the price snapshot taken when authorized; no markup.
-	Cost        *Money             `json:"cost,omitempty"`
-	CostCentre  *string            `json:"costCentre,omitempty"`
-	InputTokens *int               `json:"inputTokens,omitempty"`
-	Instance    string             `json:"instance"`
-	KeyId       openapi_types.UUID `json:"keyId"`
-	Kind        UsageRecordKind    `json:"kind"`
-	McpMethod   *string            `json:"mcpMethod,omitempty"`
-	McpTool     *string            `json:"mcpTool,omitempty"`
+	Cost       *Money  `json:"cost,omitempty"`
+	CostCentre *string `json:"costCentre,omitempty"`
+
+	// FailedStatus Model calls only: the HTTP status when the gateway or provider answered the call with an error (4xx or 5xx). Providers normally do not bill errors, so no cost is recorded.
+	FailedStatus *int               `json:"failedStatus,omitempty"`
+	InputTokens  *int               `json:"inputTokens,omitempty"`
+	Instance     string             `json:"instance"`
+	KeyId        openapi_types.UUID `json:"keyId"`
+	Kind         UsageRecordKind    `json:"kind"`
+	McpMethod    *string            `json:"mcpMethod,omitempty"`
+	McpTool      *string            `json:"mcpTool,omitempty"`
 
 	// Metered Model calls only: false while no usage record exists. Within 15 minutes of authorization this is normal (usage is still arriving); after that the call is unmetered: its cost is unknown and may have been incurred (it may not have run, may have run without reporting usage, or its usage was lost in export or refused by ingest). Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens.
 	Metered *bool `json:"metered,omitempty"`
@@ -3373,8 +3382,14 @@ type VirtualKey struct {
 	Id        openapi_types.UUID `json:"id"`
 	Instance  string             `json:"instance"`
 
+	// MaxCallsInFlight Model calls the key may have in flight at once.
+	MaxCallsInFlight int `json:"maxCallsInFlight"`
+
 	// MaxCallsWithoutUsage How many of the key's calls within a rolling 24 hours may run without a usage report (aborted, or unaccounted after 15 minutes); once more have, calls are refused. Calls in flight can overshoot it.
 	MaxCallsWithoutUsage int `json:"maxCallsWithoutUsage"`
+
+	// MaxRequestsPerMinute Calls the key may make within any rolling minute.
+	MaxRequestsPerMinute int `json:"maxRequestsPerMinute"`
 
 	// MonthlyBudget An exact amount. A decimal string, never a binary float, so billed costs and budgets are exact (invariant 7). EUR only while model price sheets are EUR only.
 	MonthlyBudget Money `json:"monthlyBudget"`
@@ -3415,8 +3430,14 @@ type VirtualKeyRequest struct {
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 	Instance  string     `json:"instance"`
 
+	// MaxCallsInFlight Model calls the key may have in flight at once (authorized, with no usage, missing-usage or failure report yet, within 15 minutes); more are refused with HTTP 429. Bounds how far budgets can be overshot (calls older than 15 minutes leave this count and count toward maxCallsWithoutUsage instead, so the overshoot bound is the two together). Omitted means 4. Fixed at issuance.
+	MaxCallsInFlight *int `json:"maxCallsInFlight,omitempty"`
+
 	// MaxCallsWithoutUsage How many of the key's calls within a rolling 24 hours may run without a usage report: a call the client aborted (the provider likely bills it, but the gateway reports no usage), or one still unaccounted 15 minutes after authorization. Once more have, calls are refused until enough fall out of the window. Calls in flight when the limit is reached can overshoot it. Omitted means 10; 0 refuses the key after the first such call. Fixed at issuance.
 	MaxCallsWithoutUsage *int `json:"maxCallsWithoutUsage,omitempty"`
+
+	// MaxRequestsPerMinute Calls the key may make within any rolling minute; more are refused with HTTP 429. Omitted means 60. Fixed at issuance.
+	MaxRequestsPerMinute *int `json:"maxRequestsPerMinute,omitempty"`
 
 	// MonthlyBudget Calls are refused once the recorded spend of calls authorized in the current UTC calendar month reaches it. Calls in flight can overshoot; the overshoot is reported, not hidden.
 	MonthlyBudget Money `json:"monthlyBudget"`

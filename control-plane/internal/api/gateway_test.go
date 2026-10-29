@@ -120,6 +120,9 @@ func TestGatewaySchemaLetsTheServerOnlyIssueAndRevokeKeys(t *testing.T) {
 		// Deleting a call without usage would reset a key's cap.
 		`UPDATE calls_without_usage SET recorded_at = now() WHERE request_id = $1`,
 		`DELETE FROM calls_without_usage WHERE request_id = $1`,
+		// Deleting a failed call would put it back in flight.
+		`UPDATE failed_calls SET status_code = 500 WHERE request_id = $1`,
+		`DELETE FROM failed_calls WHERE request_id = $1`,
 	} {
 		if err := testdb.ExecErr(app, a, stmt, call); sqlstate(err) != insufficientPriv {
 			t.Errorf("%s: err = %v, want permission denied", stmt, err)

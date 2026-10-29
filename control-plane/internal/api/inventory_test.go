@@ -23,6 +23,10 @@ var noPersonalData = map[string]string{
 	"knowledge_service_secrets": "the tenant's service-call secret",
 	"usage_records":             "token counts and cost per request id; the person is in gateway_calls",
 	"calls_without_usage":       "request id and time of calls that reported no usage; the person is in gateway_calls",
+	"failed_calls":              "request id, error status and time; the person is in gateway_calls",
+	"open_calls":                "request id, key id and time of unsettled calls; the person is in gateway_calls",
+	"throttle_marks":            "key id and minute of a key's first rate-limit refusal",
+	"key_spend":                 "recorded spend per key, month and currency",
 }
 
 func TestEveryTenantTableIsClassifiedForPrivacy(t *testing.T) {

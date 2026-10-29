@@ -2225,6 +2225,8 @@ components:
           - route-not-current
           - budget-reached
           - calls-without-usage-limit
+          - rate-limited
+          - too-many-in-flight
           - mcp-not-integrated
         requestId:
           type: string
@@ -4496,6 +4498,13 @@ components:
             its usage was lost in export or refused by ingest). Unmetered calls are
             reported, never estimated. Absent for MCP calls, which carry no tokens.'
           type: boolean
+        failedStatus:
+          description: 'Model calls only: the HTTP status when the gateway or provider
+            answered the call with an error (4xx or 5xx). Providers normally do not
+            bill errors, so no cost is recorded.'
+          type: integer
+          minimum: 400
+          maximum: 599
         usageMissing:
           description: 'Model calls only: true when the gateway reported that the
             call ran but sent no usage (for example a call the client aborted). Its
@@ -4569,6 +4578,8 @@ components:
       - aliases
       - monthlyBudget
       - maxCallsWithoutUsage
+      - maxRequestsPerMinute
+      - maxCallsInFlight
       - status
       - createdAt
       - createdBy
@@ -4613,6 +4624,16 @@ components:
           type: integer
           minimum: 0
           maximum: 1000
+        maxRequestsPerMinute:
+          description: Calls the key may make within any rolling minute.
+          type: integer
+          minimum: 1
+          maximum: 6000
+        maxCallsInFlight:
+          description: Model calls the key may have in flight at once.
+          type: integer
+          minimum: 1
+          maximum: 100
         revokeReason:
           description: 'A fixed revocation reason code, never free text: operator,
             compromised, rotation or leaver (administrators), leaver (the leaver workflow),
@@ -4696,6 +4717,22 @@ components:
           type: integer
           minimum: 0
           maximum: 1000
+        maxRequestsPerMinute:
+          description: Calls the key may make within any rolling minute; more are
+            refused with HTTP 429. Omitted means 60. Fixed at issuance.
+          type: integer
+          minimum: 1
+          maximum: 6000
+        maxCallsInFlight:
+          description: Model calls the key may have in flight at once (authorized,
+            with no usage, missing-usage or failure report yet, within 15 minutes);
+            more are refused with HTTP 429. Bounds how far budgets can be overshot
+            (calls older than 15 minutes leave this count and count toward maxCallsWithoutUsage
+            instead, so the overshoot bound is the two together). Omitted means 4.
+            Fixed at issuance.
+          type: integer
+          minimum: 1
+          maximum: 100
     VirtualKeyRevocation:
       title: VirtualKeyRevocation
       description: 'Revoke a key. Final: a revoked key never becomes active again.'

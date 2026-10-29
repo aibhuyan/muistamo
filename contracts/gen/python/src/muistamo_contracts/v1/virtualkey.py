@@ -42,6 +42,12 @@ class VirtualKey(BaseModel):
             le=1000,
         ),
     ]
+    maxRequestsPerMinute: Annotated[
+        int, Field(description="Calls the key may make within any rolling minute.", ge=1, le=6000)
+    ]
+    maxCallsInFlight: Annotated[
+        int, Field(description="Model calls the key may have in flight at once.", ge=1, le=100)
+    ]
     revokeReason: Annotated[
         str | None,
         Field(

@@ -39,6 +39,14 @@ class UsageRecord(BaseModel):
             description="Model calls only: false while no usage record exists. Within 15 minutes of authorization this is normal (usage is still arriving); after that the call is unmetered: its cost is unknown and may have been incurred (it may not have run, may have run without reporting usage, or its usage was lost in export or refused by ingest). Unmetered calls are reported, never estimated. Absent for MCP calls, which carry no tokens."
         ),
     ] = None
+    failedStatus: Annotated[
+        int | None,
+        Field(
+            description="Model calls only: the HTTP status when the gateway or provider answered the call with an error (4xx or 5xx). Providers normally do not bill errors, so no cost is recorded.",
+            ge=400,
+            le=599,
+        ),
+    ] = None
     usageMissing: Annotated[
         bool | None,
         Field(

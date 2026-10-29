@@ -8,7 +8,7 @@
   "required": ["allowed", "reason", "requestId"],
   "properties": {
     "allowed": {"type": "boolean"},
-    "reason": {"type": "string", "enum": ["allowed", "invalid-request", "invalid-key", "inactive-key", "inactive-instance", "identity-not-ready", "person-not-established", "alias-not-allowed", "route-not-current", "budget-reached", "calls-without-usage-limit", "mcp-not-integrated"]},
+    "reason": {"type": "string", "enum": ["allowed", "invalid-request", "invalid-key", "inactive-key", "inactive-instance", "identity-not-ready", "person-not-established", "alias-not-allowed", "route-not-current", "budget-reached", "calls-without-usage-limit", "rate-limited", "too-many-in-flight", "mcp-not-integrated"]},
     "requestId": {"type": "string", "format": "uuid"},
     "keyId": {"type": "string", "format": "uuid"},
     "instance": {"type": "string"},

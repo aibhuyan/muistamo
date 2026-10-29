@@ -38,6 +38,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.headers.get("authorization") != "Bearer " + PROVIDER_KEY:
             self.send_error(401)
             return
+        # Development only: a client asks for a provider error to exercise failed-call handling.
+        fail = self.headers.get("x-fake-fail", "")
+        if fail.isdigit() and 400 <= int(fail) <= 599:
+            self.send_error(int(fail))
+            return
         if request.get("stream"):
             self.stream(bool((request.get("stream_options") or {}).get("include_usage")))
             return

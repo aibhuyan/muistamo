@@ -21,6 +21,8 @@ class Reason(StrEnum):
     route_not_current = "route-not-current"
     budget_reached = "budget-reached"
     calls_without_usage_limit = "calls-without-usage-limit"
+    rate_limited = "rate-limited"
+    too_many_in_flight = "too-many-in-flight"
     mcp_not_integrated = "mcp-not-integrated"
 
 
