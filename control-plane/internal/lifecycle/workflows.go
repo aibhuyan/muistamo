@@ -125,11 +125,10 @@ func Leaver(ctx workflow.Context, in LeaverInput) (LeaverResult, error) {
 			if !fanOut {
 				return result, err
 			}
-			// An instance that could not be suspended is not revoked: while it is active, new
-			// keys can be issued and calls authorized, so a revocation could not hold. It is
-			// reported for reconciliation.
+			// Revocation never waits for suspension: revoking only ever removes access, so an
+			// instance that could not be suspended still has its credentials revoked, and the
+			// suspension is reported for reconciliation.
 			failures = append(failures, fmt.Errorf("suspend %s: %w", name, err))
-			continue
 		}
 		if err := workflow.ExecuteActivity(ctx, a.RevokeCredentials, in.Scope, name).Get(ctx, nil); err != nil {
 			if !fanOut {

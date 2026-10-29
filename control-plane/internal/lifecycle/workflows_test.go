@@ -266,7 +266,7 @@ func TestLeaverAttemptsEveryInstanceBeforeFailing(t *testing.T) {
 	live.Generation = 1 // a current HR generation, whose setup fence must be released
 	env.OnActivity(a.PersonInstances, mock.Anything, live, person.ID).Return([]string{"one", "two", "three"}, nil)
 	env.OnActivity(a.SetState, mock.Anything, live, "one", muistamov1.InstanceStateSuspended).Return(errors.New("registry unavailable")).Run(got.add("suspend-one"))
-	env.OnActivity(a.RevokeCredentials, mock.Anything, live, "one").Return(nil).Maybe().Run(got.add("revoke-one"))
+	env.OnActivity(a.RevokeCredentials, mock.Anything, live, "one").Return(nil).Run(got.add("revoke-one"))
 	env.OnActivity(a.SetState, mock.Anything, live, "two", muistamov1.InstanceStateSuspended).Return(nil).Run(got.add("suspend-two"))
 	env.OnActivity(a.RevokeCredentials, mock.Anything, live, "two").Return(errors.New("evidence unavailable")).Run(got.add("revoke-two"))
 	env.OnActivity(a.SetState, mock.Anything, live, "three", muistamov1.InstanceStateSuspended).Return(nil).Run(got.add("suspend-three"))
@@ -285,12 +285,13 @@ func TestLeaverAttemptsEveryInstanceBeforeFailing(t *testing.T) {
 			t.Errorf("workflow error %q does not report %q", err, want)
 		}
 	}
-	for _, step := range []string{"suspend-two", "suspend-three", "revoke-three", "settle"} {
+	// The instance that could not be suspended is still revoked: revocation never waits.
+	for _, step := range []string{"revoke-one", "suspend-two", "suspend-three", "revoke-three", "settle"} {
 		if !slices.Contains(got, step) {
 			t.Errorf("steps = %v: %s never ran after another instance failed", got, step)
 		}
 	}
-	for _, step := range []string{"revoke-one", "review"} {
+	for _, step := range []string{"review"} {
 		if slices.Contains(got, step) {
 			t.Errorf("steps = %v: %s ran despite the failure", got, step)
 		}
