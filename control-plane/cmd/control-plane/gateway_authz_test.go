@@ -36,8 +36,8 @@ func TestGatewayConfigRejectsUnknownFieldsAndInvalidRoutes(t *testing.T) {
 func TestGatewayAuthorizationRequiresExplicitDevelopmentMode(t *testing.T) {
 	cmd := gatewayAuthorizationCmd()
 	cmd.SetArgs([]string{"--config", "unused.json"})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "requires --insecure-development") {
-		t.Fatalf("unapproved production mode started or development gate was skipped: %v", err)
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--insecure-development") || !strings.Contains(err.Error(), "--client-identity") {
+		t.Fatalf("an endpoint started without mutual TLS or the explicit development flag: %v", err)
 	}
 }
 
@@ -70,7 +70,7 @@ func TestGatewayRenderWritesTheCheckersDigestAndReplacesWhole(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := gatewayRenderCmd()
-	cmd.SetArgs([]string{"--config", cfgPath, "--authz-host", "authz:18081", "--out", out})
+	cmd.SetArgs([]string{"--config", cfgPath, "--authz-host", "authz:18081", "--insecure-plaintext", "--out", out})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestWorkerRevokesRealKeys(t *testing.T) {
 func TestGatewayIngestRequiresExplicitDevelopmentMode(t *testing.T) {
 	cmd := gatewayIngestCmd()
 	cmd.SetArgs([]string{"--config", "unused.json"})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "requires --insecure-development") {
-		t.Fatalf("unapproved production ingest started or development gate was skipped: %v", err)
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--insecure-development") || !strings.Contains(err.Error(), "--client-identity") {
+		t.Fatalf("ingest started without mutual TLS or the explicit development flag: %v", err)
 	}
 }

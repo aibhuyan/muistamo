@@ -16,7 +16,7 @@ export MUISTAMO_TEST_TEMPORAL_ADDRESS ?= 127.0.0.1:7233
 # The Terraform provider's acceptance tests run against OpenTofu (MPL-2.0), never a BUSL binary.
 TOFU ?= $(shell command -v tofu 2>/dev/null)
 
-.PHONY: setup generate check-generated lint test test-db test-authz dev dev-down dev-gateway
+.PHONY: setup generate check-generated lint test test-db test-authz dev dev-down dev-certs dev-gateway
 
 setup:
 	@for tool in go uv npm; do command -v $$tool >/dev/null || { echo "missing required tool: $$tool" >&2; exit 1; }; done
@@ -79,14 +79,23 @@ dev-down:
 # after an alias or model change. EVIDENCE_KEY is a key from `control-plane evidence keygen`;
 # MUISTAMO_DEV_GATEWAY_DB names another database than the dev one.
 DEV_GATEWAY_ENV = MUISTAMO_DEV_EVIDENCE_KEY="$(abspath $(EVIDENCE_KEY))" MUISTAMO_DEV_INGEST_TOKEN="$$(cat deploy/dev/gateway/ingest-token)"
-dev-gateway:
+# A throwaway CA and certificates for mutual TLS in the gateway profile (development only).
+dev-certs:
+	bash deploy/dev/gateway/dev-certs.sh
+
+dev-gateway: dev-certs
 	@test -n "$(TENANT)" && test -f "$(EVIDENCE_KEY)" || { echo "usage: make dev-gateway TENANT=<tenant uuid> EVIDENCE_KEY=<evidence key file>" >&2; exit 1; }
 	sed 's/@TENANT@/$(TENANT)/' deploy/dev/gateway/authz.template.json > deploy/dev/gateway/authz.json
 	@test -s deploy/dev/gateway/ingest-token || printf 'fake-dev-ingest-token-%s' "$$(openssl rand -hex 16)" > deploy/dev/gateway/ingest-token
-	go run ./control-plane/cmd/control-plane gateway render-config --config deploy/dev/gateway/authz.json \
-		--authz-host gateway-authz:18081 --ingest-host gateway-ingest:4317 --out deploy/dev/gateway/agentgateway.yaml
+	# Paths are inside the gateway container; MSYS_NO_PATHCONV stops Git Bash on Windows rewriting them.
+	MSYS_NO_PATHCONV=1 go run ./control-plane/cmd/control-plane gateway render-config --config deploy/dev/gateway/authz.json \
+		--authz-host gateway-authz:18081 --ingest-host gateway-ingest:4317 \
+		--tls-root /etc/muistamo/tls/ca.pem --tls-cert /etc/muistamo/tls/gateway.pem --tls-key /etc/muistamo/tls/gateway.key \
+		--authz-server-name gateway-authz --ingest-server-name gateway-ingest --out deploy/dev/gateway/agentgateway.yaml
 	$(COMPOSE) --profile gateway build gateway-authz gateway-ingest
 	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --wait --no-start agentgateway
 	$(COMPOSE) --profile gateway cp deploy/dev/gateway/agentgateway.yaml agentgateway:/etc/agentgateway/config.yaml
+	# Recreated so every container mounts the current certificate files (dev-certs replaces them).
+	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --force-recreate --no-deps --no-start agentgateway
 	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --force-recreate --no-deps gateway-authz gateway-ingest
 	$(DEV_GATEWAY_ENV) $(COMPOSE) --profile gateway up -d --wait

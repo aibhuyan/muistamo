@@ -53,3 +53,4 @@ Thumbs.db
 deploy/dev/gateway/authz.json
 deploy/dev/gateway/agentgateway.yaml
 deploy/dev/gateway/ingest-token
+deploy/dev/gateway/tls/
