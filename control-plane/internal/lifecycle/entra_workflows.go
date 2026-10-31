@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
@@ -72,6 +73,24 @@ func EntraJoiner(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (names 
 	var templates []registry.TemplateVersionRef
 	if err := workflow.ExecuteActivity(ctx, a.EntraMatchTemplates, ref).Get(ctx, &templates); err != nil {
 		return nil, err
+	}
+	// Which Entra user the person is, for on-behalf-of retrieval. It holds up the joiner by at
+	// most a few minutes: an unlinked person gets their agents, and knowledge retrieval refuses
+	// for them. A lookup that cannot finish replaces any earlier link, so a rehire never keeps a
+	// link it could not confirm.
+	if workflow.GetVersion(ctx, "entra-link-user", workflow.DefaultVersion, 1) == 1 {
+		link := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: 30 * time.Second,
+			RetryPolicy: &temporal.RetryPolicy{
+				InitialInterval: time.Second, BackoffCoefficient: 2, MaximumInterval: 30 * time.Second, MaximumAttempts: 5,
+			},
+		})
+		if err := workflow.ExecuteActivity(link, a.EntraLinkUser, ref).Get(link, nil); err != nil {
+			workflow.GetLogger(ctx).Warn("Entra user not linked; knowledge retrieval refuses for this person until a joiner links them", "error", err)
+			if err := workflow.ExecuteActivity(ctx, a.EntraUnlinkUser, ref).Get(ctx, nil); err != nil {
+				return nil, fmt.Errorf("record the unlinked Entra user: %w", err)
+			}
+		}
 	}
 	for _, template := range templates {
 		var name string

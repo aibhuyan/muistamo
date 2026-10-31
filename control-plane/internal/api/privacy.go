@@ -44,3 +44,15 @@ func (s *server) ExportPersonalData(ctx context.Context, req muistamov1.ExportPe
 	}
 	return muistamov1.ExportPersonalData200JSONResponse(out), nil
 }
+
+func (s *server) GetEntraUserLink(ctx context.Context, req muistamov1.GetEntraUserLinkRequestObject) (muistamov1.GetEntraUserLinkResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err != nil {
+		return muistamov1.GetEntraUserLinkdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	link, err := s.svc.GetEntraUserLink(ctx, actor, req.PersonId)
+	if err != nil {
+		return muistamov1.GetEntraUserLinkdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	return muistamov1.GetEntraUserLink200JSONResponse(link), nil
+}

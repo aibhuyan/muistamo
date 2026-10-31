@@ -887,6 +887,77 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/people/{personId}/entra-link:
+    parameters:
+      - name: personId
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+    get:
+      operationId: getEntraUserLink
+      summary: Which Entra user an HR person was matched to (privacy officers only)
+      responses:
+        "200":
+          description: The link, including unmatched, ambiguous and conflict outcomes.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/entrauserlink.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/internal/knowledge/delegations:
+    post:
+      operationId: issueKnowledgeDelegation
+      summary: Act for the person behind an Entra token, through their own agent (service call)
+      description: >-
+        Service call from the knowledge service only, never a user identity: X-Muistamo-Tenant
+        names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256
+        of "t.body"> under a key derived from the tenant's knowledge-service secret for this
+        direction and tenant alone (HMAC-SHA256 of "muistamo/v1 knowledge→control-plane",
+        a line feed and the tenant id, under the secret). Signatures older than five minutes,
+        and any nonce already seen, are refused.
+        The token is validated, the person's link, agent and identity are checked at this
+        moment, and the decision is recorded in signed evidence before the answer. The answer
+        carries a bearer token: serve it only over TLS. Without an Entra configuration the
+        route answers 501.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/knowledgedelegationrequest.json"
+      responses:
+        "200":
+          description: Issued. It carries a bearer token and must never be cached.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/knowledgedelegation.json"
+        "403":
+          description: Refused; the reason is recorded in evidence.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/knowledgedelegationrefusal.json"
+        "503":
+          description: The decision could not be recorded or the provider could not be reached; nothing is issued.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/knowledgedelegationrefusal.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/privacy/access:
     post:
       operationId: exportPersonalData

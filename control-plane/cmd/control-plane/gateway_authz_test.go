@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
+	"muistamo.dev/muistamo/control-plane/internal/entra"
 	"muistamo.dev/muistamo/control-plane/internal/evidence"
 	"muistamo.dev/muistamo/control-plane/internal/gateway"
 	"muistamo.dev/muistamo/control-plane/internal/lifecycle"
@@ -105,6 +106,19 @@ func TestWorkerRevokesRealKeys(t *testing.T) {
 		if k, ok := r.(lifecycle.KeyRevoker); !ok || k.Registry != svc {
 			t.Errorf("%s worker revoker = %T, want the registry's KeyRevoker", name, r)
 		}
+	}
+}
+
+// The live worker links each joiner to their Entra user; without the directory the joiner
+// would continue unlinked and knowledge retrieval would refuse for every person.
+func TestWorkerLinksEntraUsers(t *testing.T) {
+	svc := registry.New(nil, evidence.LocalKey{})
+	adapter, err := entra.NewAdapter(svc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if live := entraWorkerActivities(svc, adapter); live.Users != adapter {
+		t.Fatalf("live worker user directory = %v, want the Entra adapter", live.Users)
 	}
 }
 

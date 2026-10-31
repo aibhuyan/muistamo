@@ -24,7 +24,7 @@ class RolloutEvaluation(BaseModel):
     reason: str
 
 
-class Status6(StrEnum):
+class Status7(StrEnum):
     completed = "completed"
     rolled_back = "rolled-back"
 
@@ -41,7 +41,7 @@ class Rollout(BaseModel):
         Strategy, Field(description="immediate in release 1; canary is release 2 (FR-604).")
     ]
     evaluation: Annotated[RolloutEvaluation, Field(title="RolloutEvaluation")]
-    status: Status6
+    status: Status7
     createdBy: str
     createdAt: AwareDatetime
     reason: str

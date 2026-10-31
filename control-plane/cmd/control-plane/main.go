@@ -39,10 +39,16 @@ func main() {
 }
 
 func serveCmd(log *slog.Logger) *cobra.Command {
-	return &cobra.Command{
+	var bindingPaths []string
+	var credentialStdin bool
+	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the API (MUISTAMO_DATABASE_URL, CONTROL_PLANE_ADDR)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			configs, err := readEntraWorkerBindings(cmd, bindingPaths, credentialStdin)
+			if err != nil {
+				return err
+			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
@@ -76,10 +82,26 @@ func serveCmd(log *slog.Logger) *cobra.Command {
 				log.Warn("TEMPORAL_ADDRESS not set: HR events will be refused")
 			}
 
+			// Knowledge delegations need each tenant's enrolled Entra binding and its credential.
+			// Without one the route answers 501: nothing is validated, exchanged or issued.
+			service := registry.New(db, key)
+			var delegator api.Delegator
+			if len(configs) > 0 {
+				d, err := entraDelegator(ctx, service, configs, log)
+				if err != nil {
+					return err
+				}
+				delegator = d
+				log.Info("knowledge delegations served", "binding_count", len(configs))
+				log.Warn("knowledge delegation responses carry bearer tokens: serve the API only over TLS outside development")
+			} else {
+				log.Warn("no Entra binding configured: knowledge delegations answer 501")
+			}
+
 			addr := envOr("CONTROL_PLANE_ADDR", "127.0.0.1:8080")
 			srv := &http.Server{
 				Addr:              addr,
-				Handler:           api.Handler(registry.New(db, key), resolver, hr, log),
+				Handler:           api.HandlerWithDelegator(service, resolver, hr, delegator, log),
 				ReadHeaderTimeout: 5 * time.Second,
 			}
 			go func() {
@@ -95,6 +117,9 @@ func serveCmd(log *slog.Logger) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringSliceVar(&bindingPaths, "entra-binding", nil, "enrolled development binding JSON files, one per tenant, one private credential line per file")
+	cmd.Flags().BoolVar(&credentialStdin, "credential-stdin", false, "read development Entra credentials privately from redirected stdin")
+	return cmd
 }
 
 func workerCmd(log *slog.Logger) *cobra.Command {
@@ -176,7 +201,11 @@ func workerActivities(service *registry.Service, sim *lifecycle.Simulated) *life
 }
 
 func entraWorkerActivities(service *registry.Service, identity lifecycle.IdentityAdapter) *lifecycle.EntraActivities {
-	return &lifecycle.EntraActivities{Registry: service, Identity: identity, Revoker: lifecycle.KeyRevoker{Registry: service}}
+	acts := &lifecycle.EntraActivities{Registry: service, Identity: identity, Revoker: lifecycle.KeyRevoker{Registry: service}}
+	if users, ok := identity.(lifecycle.UserDirectory); ok {
+		acts.Users = users
+	}
+	return acts
 }
 
 func migrateCmd() *cobra.Command {

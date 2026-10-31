@@ -65,6 +65,8 @@ type fakeGraph struct {
 	staleDelete int
 	read404     int
 	mutate      func(*http.Request, map[string]any) (int, any)
+	// users answers the employeeId lookup; like Graph, the filter ignores case.
+	users []map[string]any
 }
 
 func (f *fakeGraph) transport(t *testing.T) roundTripFunc {
@@ -93,11 +95,30 @@ func (f *fakeGraph) transport(t *testing.T) roundTripFunc {
 			}
 			return response(r, 200, map[string]any{"access_token": fakeToken, "token_type": "Bearer", "expires_in": 3600}), nil
 		}
-		if r.URL.Host != "graph.microsoft.com" || !strings.HasPrefix(r.URL.Path, "/v1.0/servicePrincipals/") {
+		if r.URL.Host != "graph.microsoft.com" || (!strings.HasPrefix(r.URL.Path, "/v1.0/servicePrincipals/") && r.URL.Path != "/v1.0/users") {
 			t.Fatal("incorrect Graph endpoint")
 		}
 		if r.Header.Get("Authorization") != "Bearer "+fakeToken {
 			t.Fatal("incorrect authorization")
+		}
+		if r.URL.Path == "/v1.0/users" {
+			q := r.URL.Query()
+			if r.Method != "GET" || r.Header.Get("ConsistencyLevel") != "eventual" || q.Get("$count") != "true" || q.Get("$select") != "id,employeeId" {
+				t.Fatal("unsafe user lookup")
+			}
+			if f.mutate != nil {
+				if status, body := f.mutate(r, nil); status != 0 {
+					return response(r, status, body), nil
+				}
+			}
+			want := strings.TrimSuffix(strings.TrimPrefix(q.Get("$filter"), "employeeId eq '"), "'")
+			found := []any{}
+			for _, u := range f.users {
+				if strings.EqualFold(fmt.Sprint(u["employeeId"]), want) {
+					found = append(found, u)
+				}
+			}
+			return response(r, 200, map[string]any{"value": found, "@odata.count": len(found)}), nil
 		}
 		if _, err := uuid.Parse(r.Header.Get("client-request-id")); err != nil {
 			t.Fatal("missing correlation id")

@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -41,6 +42,8 @@ type adapterGraph struct {
 	calls                       []string
 	creation                    uuid.UUID
 	enabled, exists, loseCreate bool
+	users                       []map[string]any // the employeeId lookup's directory
+	usersStatus                 int              // when set, the lookup answers this status
 }
 
 func (g *adapterGraph) transport(t *testing.T) roundTripFunc {
@@ -75,6 +78,19 @@ func (g *adapterGraph) transport(t *testing.T) roundTripFunc {
 			}
 			return response(r, 201, data()), nil
 		case http.MethodGet:
+			if r.URL.Path == "/v1.0/users" {
+				if g.usersStatus != 0 {
+					return response(r, g.usersStatus, map[string]any{"error": map[string]string{"code": "Authorization_RequestDenied"}}), nil
+				}
+				want := strings.TrimSuffix(strings.TrimPrefix(r.URL.Query().Get("$filter"), "employeeId eq '"), "'")
+				found := []any{}
+				for _, u := range g.users {
+					if strings.EqualFold(fmt.Sprint(u["employeeId"]), want) {
+						found = append(found, u)
+					}
+				}
+				return response(r, 200, map[string]any{"@odata.count": len(found), "value": found}), nil
+			}
 			if strings.Contains(r.URL.Path, "servicePrincipals/microsoft.graph.agentIdentity") {
 				values := []any{}
 				if g.exists {

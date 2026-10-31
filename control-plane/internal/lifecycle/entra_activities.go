@@ -20,10 +20,16 @@ type IdentityAdapter interface {
 	Reconcile(context.Context, registry.Actor, uuid.UUID) (muistamov1.IdentityOperationStatus, error)
 }
 
+// UserDirectory finds a person's Entra user (docs/obo-retrieval-plan.md, PR A).
+type UserDirectory interface {
+	LookupUser(context.Context, registry.Actor, uuid.UUID, string) (registry.EntraUserMatch, error)
+}
+
 type EntraActivities struct {
 	Registry *registry.Service
 	Identity IdentityAdapter
 	Revoker  Revoker
+	Users    UserDirectory
 }
 
 func liveActor(ref muistamov1.EntraLifecycleRef) registry.Actor {
@@ -56,6 +62,41 @@ func (a *EntraActivities) EntraMatchTemplates(ctx context.Context, ref muistamov
 		return nil, liveError(registry.ErrConflict)
 	}
 	return a.Registry.MatchTemplatesByJobCode(ctx, liveActor(ref), e.Person.JobCode)
+}
+
+// EntraLinkUser records which Entra user the joiner's person is: the one user whose employeeId
+// is the HR person id. A definite provider refusal is evidenced and not retried; the person then
+// stays unlinked and knowledge retrieval refuses for them until a later joiner links them.
+func (a *EntraActivities) EntraLinkUser(ctx context.Context, ref muistamov1.EntraLifecycleRef) error {
+	if a.Users == nil {
+		return temporal.NewNonRetryableApplicationError("Entra user directory unavailable", "unconfigured", nil)
+	}
+	e, route, _, err := a.Registry.ResolveEntraReceipt(ctx, liveActor(ref), ref.ReceiptId, true)
+	if err != nil {
+		return liveError(err)
+	}
+	if e.Type != "joiner" || route.BindingVersion == nil {
+		return liveError(registry.ErrConflict)
+	}
+	match, err := a.Users.LookupUser(ctx, liveActor(ref), *route.BindingVersion, e.Person.Id)
+	var refusal *registry.ProviderRefusal
+	if errors.As(err, &refusal) {
+		if err := a.Registry.RecordEntraUserLookupFailure(ctx, liveActor(ref), ref.ReceiptId, refusal.Code); err != nil {
+			return liveError(err)
+		}
+		return temporal.NewNonRetryableApplicationError("Entra user lookup refused", "lookup-refused", refusal)
+	}
+	if err != nil {
+		return liveError(err)
+	}
+	_, err = a.Registry.RecordEntraUserLink(ctx, liveActor(ref), ref.ReceiptId, match.Status, match.ObjectID)
+	return liveError(err)
+}
+
+// EntraUnlinkUser records that the joiner could not look the person's user up, replacing any
+// earlier link. It needs no provider call; after a refusal EntraLinkUser has already recorded it.
+func (a *EntraActivities) EntraUnlinkUser(ctx context.Context, ref muistamov1.EntraLifecycleRef) error {
+	return liveError(a.Registry.RecordEntraUserLookupFailure(ctx, liveActor(ref), ref.ReceiptId, "lookup-failed"))
 }
 
 func (a *EntraActivities) EntraEnsureInstance(ctx context.Context, ref muistamov1.EntraLifecycleRef, template registry.TemplateVersionRef) (string, error) {

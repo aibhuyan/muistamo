@@ -728,6 +728,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/people/{personId}/entra-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        /** Which Entra user an HR person was matched to (privacy officers only) */
+        get: operations["getEntraUserLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/internal/knowledge/delegations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Act for the person behind an Entra token, through their own agent (service call)
+         * @description Service call from the knowledge service only, never a user identity: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under a key derived from the tenant's knowledge-service secret for this direction and tenant alone (HMAC-SHA256 of "muistamo/v1 knowledge→control-plane", a line feed and the tenant id, under the secret). Signatures older than five minutes, and any nonce already seen, are refused. The token is validated, the person's link, agent and identity are checked at this moment, and the decision is recorded in signed evidence before the answer. The answer carries a bearer token: serve it only over TLS. Without an Entra configuration the route answers 501.
+         */
+        post: operations["issueKnowledgeDelegation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/privacy/access": {
         parameters: {
             query?: never;
@@ -1266,6 +1305,29 @@ export interface components {
             receiptId: string;
         };
         /**
+         * EntraUserLink
+         * @description Which Entra user an HR person is, as the person's latest live joiner found it: the user whose employeeId equals the HR person id, keyed by the user's immutable object id. Requests made with an Entra token are matched to a person only through a matched link, never by name or email. unmatched: no user carries the id, or the HR id cannot be an Entra employeeId. ambiguous: more than one user carries it. conflict: the user also matched another person; neither person is linked until a later joiner finds them unambiguously. unavailable: the lookup was refused or failed, so no earlier link is kept. Only matched links carry entraUserObjectId.
+         */
+        EntraUserLink: {
+            personId: string;
+            /** @enum {string} */
+            status: "matched" | "unmatched" | "ambiguous" | "conflict" | "unavailable";
+            /** Format: uuid */
+            entraUserObjectId?: string;
+            /** Format: uuid */
+            entraTenantId: string;
+            /**
+             * Format: uuid
+             * @description The HR receipt whose joiner recorded this outcome. A conflict found by another person's joiner keeps this person's receipt.
+             */
+            receiptId: string;
+            /**
+             * Format: date-time
+             * @description When this outcome was recorded.
+             */
+            matchedAt: string;
+        };
+        /**
          * EntryDecay
          * @description How recently a reviewer vouched for a pack entry (FR-307). current until dueAt; then due (still served, flagged and queued for the pack's reviewers) until expiresAt; then expired, which is never served and is removed by the next decay sweep. Mandatory packs never expire: their entries stay due and are flagged to privacy officers.
          */
@@ -1608,6 +1670,46 @@ export interface components {
          */
         InstanceTransition: {
             to: components["schemas"]["InstanceState"];
+        };
+        /**
+         * KnowledgeDelegation
+         * @description A delegation issued to the knowledge service: the person's active agent, the knowledge packs its template allows, and a Microsoft Graph token that names both the agent and the person. It was authorised at the moment of the request and its evidence is recorded; the knowledge service uses it for one retrieval and asks again for the next.
+         */
+        KnowledgeDelegation: {
+            instance: string;
+            /**
+             * Format: uuid
+             * @description The agent's Entra agent identity (object id).
+             */
+            agentIdentity: string;
+            /** @description The HR person the agent acts for. */
+            person: string;
+            /** @description The knowledge packs of the agent's effective template. Retrieval never reaches outside them. */
+            packs: components["schemas"]["KnowledgePackRef"][];
+            /** @description Delegated Microsoft Graph access token. A credential: never log or store it. */
+            graphToken: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        /**
+         * KnowledgeDelegationRefusal
+         * @description Why no delegation was issued. token-invalid: the user token failed validation. user-unlinked: the token's user is not linked to an HR person by their current joiner. no-active-agent: the person has no active agent (or not the one named). agent-ambiguous: the person has more than one active agent and none was named. identity-not-ready: the agent's identity is not enabled for the person's current HR generation. exchange-refused: Entra refused or failed the on-behalf-of exchange. evidence-unavailable: the decision could not be recorded, so nothing is issued. Every refusal except evidence-unavailable is recorded in signed evidence.
+         */
+        KnowledgeDelegationRefusal: {
+            /** @enum {string} */
+            reason: "token-invalid" | "user-unlinked" | "no-active-agent" | "agent-ambiguous" | "identity-not-ready" | "exchange-refused" | "evidence-unavailable";
+        };
+        /**
+         * KnowledgeDelegationRequest
+         * @description The knowledge service asks the control plane to act for the person who sent userToken, through that person's own agent (on-behalf-of). A signed service call: the signature, its time window and the single-use nonce together refuse replays.
+         */
+        KnowledgeDelegationRequest: {
+            /** @description The person's Entra access token for Muistamo, as the knowledge service received it. Never stored or recorded. */
+            userToken: string;
+            /** @description Which of the person's agents acts. Needed only when the person has more than one active agent. */
+            instance?: string;
+            /** @description 128 random bits, hex encoded. Each nonce is accepted once. */
+            nonce: string;
         };
         /**
          * KnowledgeEntry
@@ -3698,6 +3800,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErasureProof"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getEntraUserLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link, including unmatched, ambiguous and conflict outcomes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntraUserLink"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    issueKnowledgeDelegation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeDelegationRequest"];
+            };
+        };
+        responses: {
+            /** @description Issued. It carries a bearer token and must never be cached. */
+            200: {
+                headers: {
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDelegation"];
+                };
+            };
+            /** @description Refused; the reason is recorded in evidence. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDelegationRefusal"];
+                };
+            };
+            /** @description The decision could not be recorded or the provider could not be reached; nothing is issued. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDelegationRefusal"];
                 };
             };
             default: components["responses"]["Problem"];
