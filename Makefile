@@ -16,7 +16,7 @@ export MUISTAMO_TEST_TEMPORAL_ADDRESS ?= 127.0.0.1:7233
 # The Terraform provider's acceptance tests run against OpenTofu (MPL-2.0), never a BUSL binary.
 TOFU ?= $(shell command -v tofu 2>/dev/null)
 
-.PHONY: setup generate check-generated lint test test-db test-authz dev dev-down dev-certs dev-gateway
+.PHONY: setup generate check-generated lint test test-db test-authz e2e-obo dev dev-down dev-certs dev-gateway
 
 setup:
 	@for tool in go uv npm; do command -v $$tool >/dev/null || { echo "missing required tool: $$tool" >&2; exit 1; }; done
@@ -40,6 +40,7 @@ check-generated:
 lint: check-generated
 	$(GOLANGCI_LINT) run ./...
 	$(GOLANGCI_LINT) run --build-tags authz ./...
+	$(GOLANGCI_LINT) run --build-tags e2e ./control-plane/internal/entra/...
 	uv run --no-sync ruff check .
 	uv run --no-sync ruff format --check .
 	npm run --prefix console lint
@@ -66,6 +67,11 @@ test-authz: test-db
 	if ! grep -q -- '--- PASS\|--- FAIL' /tmp/muistamo-authz-go.log; then echo "authz: no Go tests ran" >&2; status=1; fi; \
 	uv run --no-sync pytest knowledge/tests/authz -m authz -p no:cacheprovider || status=1; \
 	exit $$status
+
+# Separate-binary end-to-end run of per-person retrieval against a loopback fake of Microsoft's
+# services (deploy/dev/e2e). Needs make dev (PostgreSQL and Temporal).
+e2e-obo: test-db
+	uv run --no-sync python deploy/dev/e2e/run_obo.py
 
 dev:
 	@command -v docker >/dev/null || { echo "missing required tool: docker" >&2; exit 1; }

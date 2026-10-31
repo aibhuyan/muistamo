@@ -59,7 +59,7 @@ class _NoRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
-_opener = urllib.request.build_opener(_NoRedirects())
+_opener = urllib.request.build_opener(_NoRedirects(), urllib.request.ProxyHandler({}))
 
 
 def fetch_keys(directory: uuid.UUID) -> bytes:

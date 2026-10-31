@@ -155,9 +155,13 @@ func New(binding muistamov1.EntraIdentityBinding, resolve SecretResolver) (*Clie
 	if err != nil {
 		return nil, err
 	}
+	httpClient := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if e2eTransport != nil {
+		httpClient.Transport = e2eTransport()
+	}
 	return &Client{
 		binding: checked, resolve: resolve,
-		http: &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		http: httpClient,
 		pause: func(ctx context.Context) error {
 			timer := time.NewTimer(time.Second)
 			defer timer.Stop()
@@ -170,6 +174,11 @@ func New(binding muistamov1.EntraIdentityBinding, resolve SecretResolver) (*Clie
 		},
 	}, nil
 }
+
+// e2eTransport is set only in binaries built with the e2e tag (e2e_transport.go), for the
+// separate-binary end-to-end run against a loopback fake of Microsoft's services. A shipped
+// binary has no way to set it: there is no flag, variable or file that redirects these hosts.
+var e2eTransport func() http.RoundTripper
 
 func canonicalID(s string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(s)
