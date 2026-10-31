@@ -453,7 +453,7 @@ func (c *Client) graph(ctx context.Context, operation, method, path string, body
 	headers.Set("OData-Version", "4.0")
 	headers.Set("client-request-id", requestID.String())
 	headers.Set("return-client-request-id", "true")
-	if operation == "discovery" {
+	if operation == "discovery" || operation == "user-lookup" {
 		headers.Set("ConsistencyLevel", "eventual")
 	}
 	return c.send(ctx, operation, method, graphBase+path, headers, body, requestID, method != http.MethodGet)
@@ -536,6 +536,19 @@ func (c *Client) allowedDestination(req *http.Request) bool {
 	}
 	if path == identityCollection {
 		return req.Method == http.MethodGet || req.Method == http.MethodPost
+	}
+	if path == usersCollection {
+		// Only the employeeId lookup: a read with exactly its parameters.
+		q := u.Query()
+		for _, key := range []string{"$filter", "$select", "$count", "$top"} {
+			if len(q[key]) != 1 {
+				return false
+			}
+		}
+		filter, prefixed := strings.CutPrefix(q.Get("$filter"), "employeeId eq '")
+		id, quoted := strings.CutSuffix(filter, "'")
+		return req.Method == http.MethodGet && len(q) == 4 && q.Get("$select") == "id,employeeId" &&
+			q.Get("$count") == "true" && q.Get("$top") == "2" && prefixed && quoted && employeeIDPattern.MatchString(id)
 	}
 	if !strings.HasPrefix(path, "servicePrincipals/") {
 		return false

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
@@ -29,14 +30,76 @@ func TestEntraJoinerEnablesBeforeActivation(t *testing.T) {
 	var got steps
 	refs := []registry.TemplateVersionRef{{Name: "analyst", Version: 1}}
 	env.OnActivity(liveActs.EntraMatchTemplates, mock.Anything, liveRef).Return(refs, nil)
+	env.OnActivity(liveActs.EntraLinkUser, mock.Anything, liveRef).Return(nil).Run(got.add("link"))
 	env.OnActivity(liveActs.EntraEnsureInstance, mock.Anything, liveRef, refs[0]).Return("instance", nil).Run(got.add("ensure"))
 	env.OnActivity(liveActs.EntraCreate, mock.Anything, liveRef, "instance").Return(nil).Run(got.add("create"))
 	env.OnActivity(liveActs.EntraEnable, mock.Anything, liveRef, "instance").Return(nil).Run(got.add("enable"))
 	env.OnActivity(liveActs.EntraActivate, mock.Anything, liveRef, "instance").Return(nil).Run(got.add("activate"))
 	env.OnActivity(liveActs.EntraSettleSetup, mock.Anything, liveRef).Return(nil).Run(got.add("settle"))
 	env.ExecuteWorkflow(EntraJoiner, liveRef)
-	if env.GetWorkflowError() != nil || !equal(got, []string{"ensure", "create", "enable", "activate", "settle"}) {
+	if env.GetWorkflowError() != nil || !equal(got, []string{"link", "ensure", "create", "enable", "activate", "settle"}) {
 		t.Fatalf("live joiner order: %v %v", got, env.GetWorkflowError())
+	}
+}
+
+// An unlinked person still gets their agents; only knowledge retrieval refuses for them.
+func TestEntraJoinerContinuesWhenTheUserCannotBeLinked(t *testing.T) {
+	env := liveEnv()
+	var got steps
+	refs := []registry.TemplateVersionRef{{Name: "analyst", Version: 1}}
+	env.OnActivity(liveActs.EntraMatchTemplates, mock.Anything, liveRef).Return(refs, nil)
+	env.OnActivity(liveActs.EntraLinkUser, mock.Anything, liveRef).Return(temporal.NewNonRetryableApplicationError("Entra user lookup refused", "lookup-refused", nil)).Run(got.add("link"))
+	env.OnActivity(liveActs.EntraUnlinkUser, mock.Anything, liveRef).Return(nil).Run(got.add("unlink"))
+	env.OnActivity(liveActs.EntraEnsureInstance, mock.Anything, liveRef, refs[0]).Return("instance", nil).Run(got.add("ensure"))
+	env.OnActivity(liveActs.EntraCreate, mock.Anything, liveRef, "instance").Return(nil)
+	env.OnActivity(liveActs.EntraEnable, mock.Anything, liveRef, "instance").Return(nil)
+	env.OnActivity(liveActs.EntraActivate, mock.Anything, liveRef, "instance").Return(nil).Run(got.add("activate"))
+	env.OnActivity(liveActs.EntraSettleSetup, mock.Anything, liveRef).Return(nil)
+	env.ExecuteWorkflow(EntraJoiner, liveRef)
+	if env.GetWorkflowError() != nil || !equal(got, []string{"link", "unlink", "ensure", "activate"}) {
+		t.Fatalf("joiner with an unlinked user: %v %v", got, env.GetWorkflowError())
+	}
+}
+
+// A lookup that keeps failing gives up within minutes, records the person unlinked, and the
+// joiner continues; if even that cannot be recorded, the joiner fails rather than keep a link.
+func TestEntraJoinerBoundsAFailingLookup(t *testing.T) {
+	for name, unlink := range map[string]error{"recorded": nil, "unrecorded": errors.New("database unavailable")} {
+		t.Run(name, func(t *testing.T) {
+			env := liveEnv()
+			attempts := 0
+			refs := []registry.TemplateVersionRef{{Name: "analyst", Version: 1}}
+			env.OnActivity(liveActs.EntraMatchTemplates, mock.Anything, liveRef).Return(refs, nil)
+			env.OnActivity(liveActs.EntraLinkUser, mock.Anything, liveRef).Return(errors.New("graph unavailable")).Run(func(mock.Arguments) { attempts++ })
+			env.OnActivity(liveActs.EntraUnlinkUser, mock.Anything, liveRef).Return(unlink)
+			env.OnActivity(liveActs.EntraEnsureInstance, mock.Anything, liveRef, refs[0]).Return("instance", nil)
+			env.OnActivity(liveActs.EntraCreate, mock.Anything, liveRef, "instance").Return(nil)
+			env.OnActivity(liveActs.EntraEnable, mock.Anything, liveRef, "instance").Return(nil)
+			env.OnActivity(liveActs.EntraActivate, mock.Anything, liveRef, "instance").Return(nil)
+			env.OnActivity(liveActs.EntraSettleSetup, mock.Anything, liveRef).Return(nil)
+			env.ExecuteWorkflow(EntraJoiner, liveRef)
+			if attempts != 5 {
+				t.Fatalf("lookup attempts = %d, want 5", attempts)
+			}
+			if failed := env.GetWorkflowError() != nil; failed != (unlink != nil) {
+				t.Fatalf("joiner error = %v with unlink error %v", env.GetWorkflowError(), unlink)
+			}
+		})
+	}
+}
+
+// A joiner recorded before user linking (no version marker) replays without a lookup.
+func TestEntraJoinerBeforeUserLinkingNeverLooksUp(t *testing.T) {
+	env := liveEnv()
+	env.OnGetVersion("entra-link-user", workflow.DefaultVersion, workflow.Version(1)).Return(workflow.DefaultVersion)
+	env.OnActivity(liveActs.EntraMatchTemplates, mock.Anything, liveRef).Return([]registry.TemplateVersionRef{}, nil)
+	var got steps
+	// A forbidden call would only fail the link step, which the joiner tolerates: record it instead.
+	env.OnActivity(liveActs.EntraLinkUser, mock.Anything, liveRef).Return(nil).Maybe().Run(got.add("link"))
+	env.OnActivity(liveActs.EntraSettleSetup, mock.Anything, liveRef).Return(nil)
+	env.ExecuteWorkflow(EntraJoiner, liveRef)
+	if env.GetWorkflowError() != nil || len(got) != 0 {
+		t.Fatalf("pre-linking joiner: steps %v, error %v", got, env.GetWorkflowError())
 	}
 }
 

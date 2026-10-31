@@ -1068,6 +1068,29 @@ export interface components {
             receiptId: string;
         };
         /**
+         * EntraUserLink
+         * @description Which Entra user an HR person is, as the person's latest live joiner found it: the user whose employeeId equals the HR person id, keyed by the user's immutable object id. Requests made with an Entra token are matched to a person only through a matched link, never by name or email. unmatched: no user carries the id, or the HR id cannot be an Entra employeeId. ambiguous: more than one user carries it. conflict: the user also matched another person; neither person is linked until a later joiner finds them unambiguously. unavailable: the lookup was refused or failed, so no earlier link is kept. Only matched links carry entraUserObjectId.
+         */
+        EntraUserLink: {
+            personId: string;
+            /** @enum {string} */
+            status: "matched" | "unmatched" | "ambiguous" | "conflict" | "unavailable";
+            /** Format: uuid */
+            entraUserObjectId?: string;
+            /** Format: uuid */
+            entraTenantId: string;
+            /**
+             * Format: uuid
+             * @description The HR receipt whose joiner recorded this outcome. A conflict found by another person's joiner keeps this person's receipt.
+             */
+            receiptId: string;
+            /**
+             * Format: date-time
+             * @description When this outcome was recorded.
+             */
+            matchedAt: string;
+        };
+        /**
          * EntryDecay
          * @description How recently a reviewer vouched for a pack entry (FR-307). current until dueAt; then due (still served, flagged and queued for the pack's reviewers) until expiresAt; then expired, which is never served and is removed by the next decay sweep. Mandatory packs never expire: their entries stay due and are flagged to privacy officers.
          */
