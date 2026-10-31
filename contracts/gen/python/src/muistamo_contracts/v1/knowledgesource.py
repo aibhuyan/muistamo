@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 from enum import StrEnum
-from pydantic import BaseModel, ConfigDict, Field
 from typing import Annotated, Literal
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 from .common import objectmeta
 
 
@@ -13,11 +13,27 @@ class Connector(StrEnum):
     test = "test"
 
 
+class Library(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
 class SharePointSourceConfig(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    siteUrl: str
+    siteUrl: Annotated[
+        str,
+        Field(
+            description="https://<tenant>.sharepoint.com/sites/<site> (or /teams/<site>).",
+            pattern="^https://[a-z0-9-]{1,63}\\.sharepoint\\.com/(sites|teams)/[A-Za-z0-9._-]{1,128}/?$",
+        ),
+    ]
+    libraries: Annotated[
+        list[Library] | None,
+        Field(
+            description="Document libraries to index, by name. All of the site's libraries when absent."
+        ),
+    ] = None
 
 
 class TestSourceDocument(BaseModel):
@@ -46,7 +62,7 @@ class KnowledgeSourceSpec(BaseModel):
     connector: Annotated[
         Connector,
         Field(
-            description="sharepoint is release 1's one source (not built yet). test is an in-memory connector for development and the adversarial suite, refused unless explicitly enabled."
+            description="sharepoint is release 1's one source: indexed by the tenant's read-only Sites.Selected indexer app, authorised live per document with the token delegated to the acting person's own agent. test is an in-memory connector for development and the adversarial suite, refused unless explicitly enabled."
         ),
     ]
     sharepoint: Annotated[SharePointSourceConfig | None, Field(title="SharePointSourceConfig")] = (

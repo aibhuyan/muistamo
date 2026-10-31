@@ -157,6 +157,7 @@ def world(testdb: TestDB) -> Iterator[World]:
         other_tenant=uuid.uuid4(),
     )
     w.tenant, w.other_tenant = w.register_tenant(), w.register_tenant()
+    w.fake_graph = FakeGraph  # for connector harnesses that build their own
     try:
         yield w
     finally:
@@ -290,3 +291,121 @@ def entra_world(world: World) -> EntraWorld:
 def new_directory():
     """Makes fake Entra directories (FakeDirectory)."""
     return FakeDirectory
+
+
+class FakeGraph:
+    """A strict fake of Microsoft Graph and the token endpoint for one SharePoint site.
+
+    The indexer authenticates with its client secret; people are asked about only with a token
+    the control plane delegated for them ("delegated:<person>"). Any other request, host, method,
+    header or token is a test failure or a 401.
+    """
+
+    HOST = "contoso.sharepoint.com"
+    SITE = "https://contoso.sharepoint.com/sites/finance"
+    DRIVE = "b!drive-1"
+
+    def __init__(self, documents: list[dict], directory: uuid.UUID, client_id: uuid.UUID) -> None:
+        self.documents = documents
+        self.directory, self.client_id = directory, client_id
+        self.unavailable = False
+        self.batch_status: int | None = None  # every item answers this, when set
+        self.tokens_asked: list[str] = []
+        self.calls: list[tuple[str, str]] = []
+
+    def external_id(self, doc_id: str) -> str:
+        return f"{self.DRIVE}/{doc_id}"
+
+    def web_url(self, doc_id: str) -> str:
+        return f"{self.SITE}/Shared%20Documents/{doc_id}.txt"
+
+    def __call__(self, method, url, headers, body, timeout):
+        import json
+        from urllib.parse import parse_qs, urlsplit
+
+        self.calls.append((method, url))
+        parts = urlsplit(url)
+        assert parts.scheme == "https", url
+        if parts.hostname == "login.microsoftonline.com":
+            assert method == "POST" and parts.path == f"/{self.directory}/oauth2/v2.0/token"
+            form = parse_qs(body.decode())
+            assert form["client_id"] == [str(self.client_id)] and form["grant_type"] == [
+                "client_credentials"
+            ]
+            assert form["client_secret"] == ["obviously-fake-indexer-secret"]
+            return 200, json.dumps(
+                {"access_token": "indexer-token", "token_type": "Bearer", "expires_in": 3600}
+            ).encode()
+        if parts.hostname == self.HOST:
+            # A pre-authenticated download link: never sent a token.
+            assert method == "GET" and "Authorization" not in headers, "download sent a token"
+            doc_id = parts.path.rsplit("/", 1)[-1]
+            doc = next(d for d in self.documents if d["id"] == doc_id)
+            return 200, doc["body"].encode()
+        assert parts.hostname == "graph.microsoft.com", url
+        token = headers.get("Authorization", "").removeprefix("Bearer ")
+        path = parts.path.removeprefix("/v1.0")
+        if path == "/$batch":
+            assert method == "POST"
+            if token == "indexer-token" or not token.startswith("delegated:"):  # noqa: S105 - fake tokens
+                return 401, b'{"error":{"code":"InvalidAuthenticationToken"}}'
+            person = token.removeprefix("delegated:")
+            self.tokens_asked.append(person)
+            if self.unavailable:
+                return 503, b'{"error":{"code":"serviceNotAvailable"}}'
+            responses = []
+            for request in json.loads(body)["requests"]:
+                assert request["method"] == "GET" and request["url"].endswith("?$select=id")
+                item = request["url"].split("/items/", 1)[1].split("?", 1)[0]
+                doc = next((d for d in self.documents if d["id"] == item), None)
+                status = 404 if doc is None else 200 if person in doc["readers"] else 403
+                responses.append(
+                    {"id": request["id"], "status": self.batch_status or status, "body": {}}
+                )
+            return 200, json.dumps({"responses": responses[::-1]}).encode()
+        assert method == "GET" and token == "indexer-token", f"{method} {path} with {token[:12]}"  # noqa: S105 - fake tokens
+        if path == "/sites/contoso.sharepoint.com:/sites/finance":
+            return 200, b'{"id":"contoso.sharepoint.com,1111,2222"}'
+        if path == "/sites/contoso.sharepoint.com%2C1111%2C2222/drives":
+            return 200, json.dumps(
+                {
+                    "value": [
+                        {"id": self.DRIVE, "name": "Documents"},
+                        {"id": "b!other", "name": "Archive"},
+                    ]
+                }
+            ).encode()
+        if path == f"/drives/{self.DRIVE}/root/delta":
+            page = int(parse_qs(parts.query).get("page", ["0"])[0])
+            items = [
+                {
+                    "id": d["id"],
+                    "name": d["id"] + ".txt",
+                    "file": {},
+                    "size": len(d["body"]),
+                    "webUrl": self.web_url(d["id"]),
+                    "lastModifiedDateTime": "2026-10-30T09:00:00Z",
+                    "@microsoft.graph.downloadUrl": f"https://{self.HOST}/download/{d['id']}",
+                }
+                for d in self.documents
+            ]
+            half = len(items) // 2
+            if page == 0:
+                return 200, json.dumps(
+                    {
+                        "value": [{"id": "root", "name": "root", "folder": {}}, *items[:half]],
+                        "@odata.nextLink": f"https://graph.microsoft.com/v1.0/drives/{self.DRIVE}/root/delta?page=1",
+                    }
+                ).encode()
+            return 200, json.dumps(
+                {"value": items[half:], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/x"}
+            ).encode()
+        if path == "/drives/b!other/root/delta":
+            raise AssertionError("a library outside spec.sharepoint.libraries was listed")
+        raise AssertionError(f"unexpected Graph call {method} {url}")
+
+
+@pytest.fixture
+def fake_graph():
+    """Makes strict fake Graphs (FakeGraph)."""
+    return FakeGraph

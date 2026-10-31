@@ -19,6 +19,7 @@ raises, every document from that source is withheld.
 from __future__ import annotations
 
 import threading
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -56,19 +57,12 @@ class Connector(Protocol):
     def authorise(self, principal: Principal, external_ids: list[str]) -> set[str]: ...
 
 
-# Builds a connector for one source from that source's current configuration.
-ConnectorFactory = Callable[[str, dict[str, Any]], Connector]
+# Builds a connector for one source of a tenant from that source's current configuration.
+ConnectorFactory = Callable[[str, dict[str, Any], uuid.UUID], Connector]
 
 
 class NotBuilt(Exception):
     """The connector is part of the contract but has no implementation yet."""
-
-
-def sharepoint_factory(source: str, spec: dict[str, Any]) -> Connector:
-    raise NotBuilt(
-        "the SharePoint connector is not built yet; it needs an Entra test tenant and an app registration "
-        "so that authorisation runs on behalf of each person (FR-201-203)"
-    )
 
 
 @dataclass
@@ -101,13 +95,19 @@ class InMemoryConnector:
         return {i for i in external_ids if principal.person in readers.get(i, set())}
 
 
-def in_memory_factory(source: str, spec: dict[str, Any]) -> Connector:
+def in_memory_factory(source: str, spec: dict[str, Any], tenant: uuid.UUID) -> Connector:
     return InMemoryConnector(documents=list((spec.get("test") or {}).get("documents", [])))
 
 
-def default_factories(enable_test: bool) -> dict[str, ConnectorFactory]:
+def default_factories(
+    enable_test: bool, sharepoint: ConnectorFactory | None = None
+) -> dict[str, ConnectorFactory]:
     """The connectors a service offers. The test connector only when explicitly enabled."""
-    factories: dict[str, ConnectorFactory] = {"sharepoint": sharepoint_factory}
+    from muistamo_knowledge import sharepoint as sp
+
+    factories: dict[str, ConnectorFactory] = {
+        "sharepoint": sharepoint or sp.factory_for(lambda tenant: None)
+    }
     if enable_test:
         factories["test"] = in_memory_factory
     return factories

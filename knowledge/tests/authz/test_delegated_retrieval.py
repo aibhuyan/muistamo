@@ -68,7 +68,9 @@ def setup(entra_world) -> ControlPlane:
         ],
     }
     connectors = {name: InMemoryConnector(documents=d) for name, d in docs.items()}
-    world.knowledge.connectors = {"test": lambda source, spec: connectors[spec["pack"]]}
+    world.knowledge.connectors = {
+        "test": lambda source, spec, tenant=None: connectors[spec["pack"]]
+    }
     r = world.client(REVIEWER)
     for name, d in docs.items():
         p = {
@@ -177,8 +179,8 @@ def test_without_a_delegation_pack_knowledge_and_every_source_stay_closed(entra_
     rules_connector = InMemoryConnector(documents=rules_doc)
     previous = world.knowledge.connectors["test"]
     world.knowledge.connectors = {
-        "test": lambda source, spec: (
-            rules_connector if spec["pack"] == "company-rules" else previous(source, spec)
+        "test": lambda source, spec, tenant=None: (
+            rules_connector if spec["pack"] == "company-rules" else previous(source, spec, tenant)
         )
     }
     r = world.client(REVIEWER)

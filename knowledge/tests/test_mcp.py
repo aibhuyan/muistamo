@@ -24,7 +24,7 @@ def setup(world) -> None:
             },
         ]
     )
-    world.knowledge.connectors = {"test": lambda s, spec: instance}
+    world.knowledge.connectors = {"test": lambda s, spec, tenant=None: instance}
     r = world.client(R)
     r.put("/v1/knowledge/packs/finance", json=PACK)
     r.put(

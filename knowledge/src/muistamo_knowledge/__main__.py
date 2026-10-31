@@ -72,7 +72,17 @@ def serve(_: argparse.Namespace) -> None:
             "TEST CONNECTOR enabled: sources may use the in-memory test connector; development only"
         )
     host, _, port = os.environ.get("KNOWLEDGE_ADDR", "127.0.0.1:8001").rpartition(":")
-    knowledge = Knowledge(db, key, default_factories(enable_test))
+    sharepoint = None
+    if indexers := os.environ.get("MUISTAMO_SHAREPOINT_INDEXERS", ""):
+        from muistamo_knowledge import sharepoint as sp
+
+        # The operator's file names each tenant's read-only indexer app; secrets in their own files.
+        sharepoint = sp.factory_for(sp.load_indexers(indexers))
+    else:
+        logging.warning(
+            "MUISTAMO_SHAREPOINT_INDEXERS is not set: SharePoint sources cannot be indexed"
+        )
+    knowledge = Knowledge(db, key, default_factories(enable_test, sharepoint))
     if entra_callers:
         from muistamo_knowledge.delegation import DelegationClient
         from muistamo_knowledge.leavers import Leavers

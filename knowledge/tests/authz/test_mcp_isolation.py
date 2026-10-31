@@ -40,7 +40,7 @@ def setup(world) -> None:
         },
     ]
     instance = InMemoryConnector(documents=docs)
-    world.knowledge.connectors = {"test": lambda s, spec: instance}
+    world.knowledge.connectors = {"test": lambda s, spec, tenant=None: instance}
     r = world.client(R)
     r.put("/v1/knowledge/packs/finance", json=PACK)
     r.put(

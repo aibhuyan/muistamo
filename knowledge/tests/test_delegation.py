@@ -177,7 +177,9 @@ def setup(entra_world, documents: dict[str, list[dict]]) -> dict[str, RecordingC
     for name, docs in documents.items():
         connectors[name] = RecordingConnector(documents=docs)
         connectors[name].principals = []
-    world.knowledge.connectors = {"test": lambda source, spec: connectors[spec["pack"]]}
+    world.knowledge.connectors = {
+        "test": lambda source, spec, tenant=None: connectors[spec["pack"]]
+    }
     r = world.client(REVIEWER)
     for name, docs in documents.items():
         assert r.put(f"/v1/knowledge/packs/{name}", json=pack(name)).status_code == 201
