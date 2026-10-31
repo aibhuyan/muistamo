@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/knowledgedelegationrefusal.json",
+  "title": "KnowledgeDelegationRefusal",
+  "description": "Why no delegation was issued. token-invalid: the user token failed validation. user-unlinked: the token's user is not linked to an HR person by their current joiner. no-active-agent: the person has no active agent (or not the one named). agent-ambiguous: the person has more than one active agent and none was named. identity-not-ready: the agent's identity is not enabled for the person's current HR generation. exchange-refused: Entra refused or failed the on-behalf-of exchange. evidence-unavailable: the decision could not be recorded, so nothing is issued. Every refusal except evidence-unavailable is recorded in signed evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reason"],
+  "properties": {
+    "reason": {
+      "type": "string",
+      "enum": ["token-invalid", "user-unlinked", "no-active-agent", "agent-ambiguous", "identity-not-ready", "exchange-refused", "evidence-unavailable"]
+    }
+  }
+}

@@ -861,6 +861,39 @@ func (e InstanceState) Valid() bool {
 	}
 }
 
+// Defines values for KnowledgeDelegationRefusalReason.
+const (
+	KnowledgeDelegationRefusalReasonAgentAmbiguous      KnowledgeDelegationRefusalReason = "agent-ambiguous"
+	KnowledgeDelegationRefusalReasonEvidenceUnavailable KnowledgeDelegationRefusalReason = "evidence-unavailable"
+	KnowledgeDelegationRefusalReasonExchangeRefused     KnowledgeDelegationRefusalReason = "exchange-refused"
+	KnowledgeDelegationRefusalReasonIdentityNotReady    KnowledgeDelegationRefusalReason = "identity-not-ready"
+	KnowledgeDelegationRefusalReasonNoActiveAgent       KnowledgeDelegationRefusalReason = "no-active-agent"
+	KnowledgeDelegationRefusalReasonTokenInvalid        KnowledgeDelegationRefusalReason = "token-invalid"
+	KnowledgeDelegationRefusalReasonUserUnlinked        KnowledgeDelegationRefusalReason = "user-unlinked"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgeDelegationRefusalReason enum.
+func (e KnowledgeDelegationRefusalReason) Valid() bool {
+	switch e {
+	case KnowledgeDelegationRefusalReasonAgentAmbiguous:
+		return true
+	case KnowledgeDelegationRefusalReasonEvidenceUnavailable:
+		return true
+	case KnowledgeDelegationRefusalReasonExchangeRefused:
+		return true
+	case KnowledgeDelegationRefusalReasonIdentityNotReady:
+		return true
+	case KnowledgeDelegationRefusalReasonNoActiveAgent:
+		return true
+	case KnowledgeDelegationRefusalReasonTokenInvalid:
+		return true
+	case KnowledgeDelegationRefusalReasonUserUnlinked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for KnowledgeEntryDataClass.
 const (
 	KnowledgeEntryDataClassConfidential KnowledgeEntryDataClass = "confidential"
@@ -2560,6 +2593,43 @@ type InstanceTransition struct {
 	To InstanceState `json:"to"`
 }
 
+// KnowledgeDelegation A delegation issued to the knowledge service: the person's active agent, the knowledge packs its template allows, and a Microsoft Graph token that names both the agent and the person. It was authorised at the moment of the request and its evidence is recorded; the knowledge service uses it for one retrieval and asks again for the next.
+type KnowledgeDelegation struct {
+	// AgentIdentity The agent's Entra agent identity (object id).
+	AgentIdentity openapi_types.UUID `json:"agentIdentity"`
+	ExpiresAt     time.Time          `json:"expiresAt"`
+
+	// GraphToken Delegated Microsoft Graph access token. A credential: never log or store it.
+	GraphToken string `json:"graphToken"`
+	Instance   string `json:"instance"`
+
+	// Packs The knowledge packs of the agent's effective template. Retrieval never reaches outside them.
+	Packs []KnowledgePackRef `json:"packs"`
+
+	// Person The HR person the agent acts for.
+	Person string `json:"person"`
+}
+
+// KnowledgeDelegationRefusal Why no delegation was issued. token-invalid: the user token failed validation. user-unlinked: the token's user is not linked to an HR person by their current joiner. no-active-agent: the person has no active agent (or not the one named). agent-ambiguous: the person has more than one active agent and none was named. identity-not-ready: the agent's identity is not enabled for the person's current HR generation. exchange-refused: Entra refused or failed the on-behalf-of exchange. evidence-unavailable: the decision could not be recorded, so nothing is issued. Every refusal except evidence-unavailable is recorded in signed evidence.
+type KnowledgeDelegationRefusal struct {
+	Reason KnowledgeDelegationRefusalReason `json:"reason"`
+}
+
+// KnowledgeDelegationRefusalReason defines model for KnowledgeDelegationRefusal.Reason.
+type KnowledgeDelegationRefusalReason string
+
+// KnowledgeDelegationRequest The knowledge service asks the control plane to act for the person who sent userToken, through that person's own agent (on-behalf-of). A signed service call: the signature, its time window and the single-use nonce together refuse replays.
+type KnowledgeDelegationRequest struct {
+	// Instance Which of the person's agents acts. Needed only when the person has more than one active agent.
+	Instance *string `json:"instance,omitempty"`
+
+	// Nonce 128 random bits, hex encoded. Each nonce is accepted once.
+	Nonce string `json:"nonce"`
+
+	// UserToken The person's Entra access token for Muistamo, as the knowledge service received it. Never stored or recorded.
+	UserToken string `json:"userToken"`
+}
+
 // KnowledgeEntry An immutable entry revision.
 type KnowledgeEntry struct {
 	Body        string                  `json:"body"`
@@ -3592,6 +3662,9 @@ type ApplyInstanceJSONRequestBody = AgentInstance
 // TransitionInstanceJSONRequestBody defines body for TransitionInstance for application/json ContentType.
 type TransitionInstanceJSONRequestBody = InstanceTransition
 
+// IssueKnowledgeDelegationJSONRequestBody defines body for IssueKnowledgeDelegation for application/json ContentType.
+type IssueKnowledgeDelegationJSONRequestBody = KnowledgeDelegationRequest
+
 // ApplyLinkJSONRequestBody defines body for ApplyLink for application/json ContentType.
 type ApplyLinkJSONRequestBody = AgentLink
 
@@ -3866,6 +3939,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/instances/{name}/transitions (the `TransitionInstance` operationId).
 	TransitionInstance(ctx context.Context, name Name, params *TransitionInstanceParams, body TransitionInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// IssueKnowledgeDelegationWithBody Act for the person behind an Entra token, through their own agent (service call)
+	//
+	// Service call from the knowledge service only, never a user identity: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under a key derived from the tenant's knowledge-service secret for this direction and tenant alone (HMAC-SHA256 of "muistamo/v1 knowledge→control-plane", a line feed and the tenant id, under the secret). Signatures older than five minutes, and any nonce already seen, are refused. The token is validated, the person's link, agent and identity are checked at this moment, and the decision is recorded in signed evidence before the answer. The answer carries a bearer token: serve it only over TLS. Without an Entra configuration the route answers 501.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
+	IssueKnowledgeDelegationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// IssueKnowledgeDelegation Act for the person behind an Entra token, through their own agent (service call)
+	//
+	// Service call from the knowledge service only, never a user identity: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under a key derived from the tenant's knowledge-service secret for this direction and tenant alone (HMAC-SHA256 of "muistamo/v1 knowledge→control-plane", a line feed and the tenant id, under the secret). Signatures older than five minutes, and any nonce already seen, are refused. The token is validated, the person's link, agent and identity are checked at this moment, and the decision is recorded in signed evidence before the answer. The answer carries a bearer token: serve it only over TLS. Without an Entra configuration the route answers 501.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
+	IssueKnowledgeDelegation(ctx context.Context, body IssueKnowledgeDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListLinks List every agent link
 	//
@@ -4556,6 +4647,44 @@ func (c *Client) TransitionInstanceWithBody(ctx context.Context, name Name, para
 // Corresponds with POST /v1/instances/{name}/transitions (the `TransitionInstance` operationId).
 func (c *Client) TransitionInstance(ctx context.Context, name Name, params *TransitionInstanceParams, body TransitionInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTransitionInstanceRequest(c.Server, name, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// IssueKnowledgeDelegationWithBody Act for the person behind an Entra token, through their own agent (service call)
+//
+// Service call from the knowledge service only, never a user identity: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under a key derived from the tenant's knowledge-service secret for this direction and tenant alone (HMAC-SHA256 of "muistamo/v1 knowledge→control-plane", a line feed and the tenant id, under the secret). Signatures older than five minutes, and any nonce already seen, are refused. The token is validated, the person's link, agent and identity are checked at this moment, and the decision is recorded in signed evidence before the answer. The answer carries a bearer token: serve it only over TLS. Without an Entra configuration the route answers 501.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
+func (c *Client) IssueKnowledgeDelegationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueKnowledgeDelegationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// IssueKnowledgeDelegation Act for the person behind an Entra token, through their own agent (service call)
+//
+// Service call from the knowledge service only, never a user identity: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under a key derived from the tenant's knowledge-service secret for this direction and tenant alone (HMAC-SHA256 of "muistamo/v1 knowledge→control-plane", a line feed and the tenant id, under the secret). Signatures older than five minutes, and any nonce already seen, are refused. The token is validated, the person's link, agent and identity are checked at this moment, and the decision is recorded in signed evidence before the answer. The answer carries a bearer token: serve it only over TLS. Without an Entra configuration the route answers 501.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
+func (c *Client) IssueKnowledgeDelegation(ctx context.Context, body IssueKnowledgeDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueKnowledgeDelegationRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6135,6 +6264,46 @@ func NewTransitionInstanceRequestWithBody(server string, name Name, params *Tran
 		}
 
 	}
+
+	return req, nil
+}
+
+// NewIssueKnowledgeDelegationRequest calls the generic IssueKnowledgeDelegation builder with application/json body
+func NewIssueKnowledgeDelegationRequest(server string, body IssueKnowledgeDelegationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewIssueKnowledgeDelegationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewIssueKnowledgeDelegationRequestWithBody constructs an http.Request for the IssueKnowledgeDelegation method, with any body, and a specified content type
+func NewIssueKnowledgeDelegationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/internal/knowledge/delegations")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -7752,6 +7921,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/instances/{name}/transitions (the `TransitionInstance` operationId).
 	TransitionInstanceWithResponse(ctx context.Context, name Name, params *TransitionInstanceParams, body TransitionInstanceJSONRequestBody, reqEditors ...RequestEditorFn) (*TransitionInstanceResponse, error)
 
+	// IssueKnowledgeDelegationWithBodyWithResponse Act for the person behind an Entra token, through their own agent (service call)
+	//
+	// Service call from the knowledge service only, never a user identity: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under a key derived from the tenant's knowledge-service secret for this direction and tenant alone (HMAC-SHA256 of "muistamo/v1 knowledge→control-plane", a line feed and the tenant id, under the secret). Signatures older than five minutes, and any nonce already seen, are refused. The token is validated, the person's link, agent and identity are checked at this moment, and the decision is recorded in signed evidence before the answer. The answer carries a bearer token: serve it only over TLS. Without an Entra configuration the route answers 501.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
+	IssueKnowledgeDelegationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueKnowledgeDelegationResponse, error)
+
+	// IssueKnowledgeDelegationWithResponse Act for the person behind an Entra token, through their own agent (service call)
+	//
+	// Service call from the knowledge service only, never a user identity: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under a key derived from the tenant's knowledge-service secret for this direction and tenant alone (HMAC-SHA256 of "muistamo/v1 knowledge→control-plane", a line feed and the tenant id, under the secret). Signatures older than five minutes, and any nonce already seen, are refused. The token is validated, the person's link, agent and identity are checked at this moment, and the decision is recorded in signed evidence before the answer. The answer carries a bearer token: serve it only over TLS. Without an Entra configuration the route answers 501.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
+	IssueKnowledgeDelegationWithResponse(ctx context.Context, body IssueKnowledgeDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueKnowledgeDelegationResponse, error)
+
 	// ListLinksWithResponse List every agent link
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -9107,6 +9294,75 @@ func (r TransitionInstanceResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r TransitionInstanceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// IssueKnowledgeDelegationResponse200Headers the declared response headers of an HTTP 200 response for IssueKnowledgeDelegation
+type IssueKnowledgeDelegationResponse200Headers struct {
+	CacheControl string
+}
+
+type IssueKnowledgeDelegationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *KnowledgeDelegation
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *KnowledgeDelegationRefusal
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *KnowledgeDelegationRefusal
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *IssueKnowledgeDelegationResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r IssueKnowledgeDelegationResponse) GetJSON200() *KnowledgeDelegation {
+	return r.JSON200
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r IssueKnowledgeDelegationResponse) GetJSON403() *KnowledgeDelegationRefusal {
+	return r.JSON403
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r IssueKnowledgeDelegationResponse) GetJSON503() *KnowledgeDelegationRefusal {
+	return r.JSON503
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r IssueKnowledgeDelegationResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r IssueKnowledgeDelegationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r IssueKnowledgeDelegationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r IssueKnowledgeDelegationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r IssueKnowledgeDelegationResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11127,6 +11383,36 @@ func (c *ClientWithResponses) TransitionInstanceWithResponse(ctx context.Context
 	return ParseTransitionInstanceResponse(rsp)
 }
 
+// IssueKnowledgeDelegationWithBodyWithResponse Act for the person behind an Entra token, through their own agent (service call)
+//
+// Service call from the knowledge service only, never a user identity: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under a key derived from the tenant's knowledge-service secret for this direction and tenant alone (HMAC-SHA256 of "muistamo/v1 knowledge→control-plane", a line feed and the tenant id, under the secret). Signatures older than five minutes, and any nonce already seen, are refused. The token is validated, the person's link, agent and identity are checked at this moment, and the decision is recorded in signed evidence before the answer. The answer carries a bearer token: serve it only over TLS. Without an Entra configuration the route answers 501.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
+func (c *ClientWithResponses) IssueKnowledgeDelegationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueKnowledgeDelegationResponse, error) {
+	rsp, err := c.IssueKnowledgeDelegationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueKnowledgeDelegationResponse(rsp)
+}
+
+// IssueKnowledgeDelegationWithResponse Act for the person behind an Entra token, through their own agent (service call)
+//
+// Service call from the knowledge service only, never a user identity: X-Muistamo-Tenant names the tenant and X-Muistamo-Signature carries t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under a key derived from the tenant's knowledge-service secret for this direction and tenant alone (HMAC-SHA256 of "muistamo/v1 knowledge→control-plane", a line feed and the tenant id, under the secret). Signatures older than five minutes, and any nonce already seen, are refused. The token is validated, the person's link, agent and identity are checked at this moment, and the decision is recorded in signed evidence before the answer. The answer carries a bearer token: serve it only over TLS. Without an Entra configuration the route answers 501.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
+func (c *ClientWithResponses) IssueKnowledgeDelegationWithResponse(ctx context.Context, body IssueKnowledgeDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueKnowledgeDelegationResponse, error) {
+	rsp, err := c.IssueKnowledgeDelegation(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueKnowledgeDelegationResponse(rsp)
+}
+
 // ListLinksWithResponse List every agent link
 //
 // Returns a wrapper object for the known response body format(s).
@@ -12526,6 +12812,66 @@ func ParseTransitionInstanceResponse(rsp *http.Response) (*TransitionInstanceRes
 	return response, nil
 }
 
+// ParseIssueKnowledgeDelegationResponse parses an HTTP response from a IssueKnowledgeDelegationWithResponse call
+func ParseIssueKnowledgeDelegationResponse(rsp *http.Response) (*IssueKnowledgeDelegationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &IssueKnowledgeDelegationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest KnowledgeDelegation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest KnowledgeDelegationRefusal
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest KnowledgeDelegationRefusal
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers IssueKnowledgeDelegationResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListLinksResponse parses an HTTP response from a ListLinksWithResponse call
 func ParseListLinksResponse(rsp *http.Response) (*ListLinksResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -13806,6 +14152,9 @@ type ServerInterface interface {
 	// TransitionInstance Move an instance to another lifecycle state
 	// (POST /v1/instances/{name}/transitions)
 	TransitionInstance(w http.ResponseWriter, r *http.Request, name Name, params TransitionInstanceParams)
+	// IssueKnowledgeDelegation Act for the person behind an Entra token, through their own agent (service call)
+	// (POST /v1/internal/knowledge/delegations)
+	IssueKnowledgeDelegation(w http.ResponseWriter, r *http.Request)
 	// ListLinks List every agent link
 	// (GET /v1/links)
 	ListLinks(w http.ResponseWriter, r *http.Request)
@@ -14462,6 +14811,20 @@ func (siw *ServerInterfaceWrapper) TransitionInstance(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TransitionInstance(w, r, name, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// IssueKnowledgeDelegation operation middleware
+func (siw *ServerInterfaceWrapper) IssueKnowledgeDelegation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.IssueKnowledgeDelegation(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -15509,6 +15872,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/privacy/erasures", wrapper.ErasePersonalData)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/privacy/erasures/{id}", wrapper.GetErasure)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/people/{personId}/entra-link", wrapper.GetEntraUserLink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/internal/knowledge/delegations", wrapper.IssueKnowledgeDelegation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/privacy/access", wrapper.ExportPersonalData)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events", wrapper.ListEvents)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/hr/events", wrapper.ReceiveHrEvent)
@@ -16418,6 +16782,81 @@ type TransitionInstancedefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response TransitionInstancedefaultApplicationProblemPlusJSONResponse) VisitTransitionInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueKnowledgeDelegationRequestObject struct {
+	Body *IssueKnowledgeDelegationJSONRequestBody
+}
+
+type IssueKnowledgeDelegationResponseObject interface {
+	VisitIssueKnowledgeDelegationResponse(w http.ResponseWriter) error
+}
+
+type IssueKnowledgeDelegation200ResponseHeaders struct {
+	CacheControl string
+}
+
+type IssueKnowledgeDelegation200JSONResponse struct {
+	Body    KnowledgeDelegation
+	Headers IssueKnowledgeDelegation200ResponseHeaders
+}
+
+func (response IssueKnowledgeDelegation200JSONResponse) VisitIssueKnowledgeDelegationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueKnowledgeDelegation403JSONResponse KnowledgeDelegationRefusal
+
+func (response IssueKnowledgeDelegation403JSONResponse) VisitIssueKnowledgeDelegationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueKnowledgeDelegation503JSONResponse KnowledgeDelegationRefusal
+
+func (response IssueKnowledgeDelegation503JSONResponse) VisitIssueKnowledgeDelegationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueKnowledgeDelegationdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response IssueKnowledgeDelegationdefaultApplicationProblemPlusJSONResponse) VisitIssueKnowledgeDelegationResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -17890,6 +18329,9 @@ type StrictServerInterface interface {
 	// TransitionInstance Move an instance to another lifecycle state
 	// (POST /v1/instances/{name}/transitions)
 	TransitionInstance(ctx context.Context, request TransitionInstanceRequestObject) (TransitionInstanceResponseObject, error)
+	// IssueKnowledgeDelegation Act for the person behind an Entra token, through their own agent (service call)
+	// (POST /v1/internal/knowledge/delegations)
+	IssueKnowledgeDelegation(ctx context.Context, request IssueKnowledgeDelegationRequestObject) (IssueKnowledgeDelegationResponseObject, error)
 	// ListLinks List every agent link
 	// (GET /v1/links)
 	ListLinks(ctx context.Context, request ListLinksRequestObject) (ListLinksResponseObject, error)
@@ -18577,6 +19019,37 @@ func (sh *strictHandler) TransitionInstance(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TransitionInstanceResponseObject); ok {
 		if err := validResponse.VisitTransitionInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// IssueKnowledgeDelegation operation middleware
+func (sh *strictHandler) IssueKnowledgeDelegation(w http.ResponseWriter, r *http.Request) {
+	var request IssueKnowledgeDelegationRequestObject
+
+	var body IssueKnowledgeDelegationJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.IssueKnowledgeDelegation(ctx, request.(IssueKnowledgeDelegationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "IssueKnowledgeDelegation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(IssueKnowledgeDelegationResponseObject); ok {
+		if err := validResponse.VisitIssueKnowledgeDelegationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

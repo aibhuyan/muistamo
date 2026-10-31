@@ -23,9 +23,15 @@ const (
 )
 
 // Handler returns the full HTTP handler: authentication, contract validation, then the API.
-// hr may be nil, in which case every HR event is refused.
+// hr may be nil, in which case every HR event is refused. Delegation requests answer 501.
 func Handler(svc *registry.Service, resolver TenantResolver, hr HRIntake, log *slog.Logger) http.Handler {
-	s := &server{svc: svc, hr: hr, log: log}
+	return HandlerWithDelegator(svc, resolver, hr, nil, log)
+}
+
+// HandlerWithDelegator is Handler with the knowledge service's delegation route served by
+// delegator. A nil delegator answers 501, after the request's signature is checked.
+func HandlerWithDelegator(svc *registry.Service, resolver TenantResolver, hr HRIntake, delegator Delegator, log *slog.Logger) http.Handler {
+	s := &server{svc: svc, hr: hr, delegator: delegator, log: log}
 	strict := muistamov1.NewStrictHandlerWithOptions(s, nil, muistamov1.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			writeProblem(w, http.StatusBadRequest, "Bad request", err.Error())
@@ -37,13 +43,17 @@ func Handler(svc *registry.Service, resolver TenantResolver, hr HRIntake, log *s
 	})
 	mux := http.NewServeMux()
 	routes := muistamov1.HandlerWithOptions(strict, muistamov1.StdHTTPServerOptions{BaseRouter: mux})
-	return authenticate(resolver, hr, log, validateDocuments(routes))
+	secrets := func(ctx context.Context, tenant uuid.UUID) ([]byte, error) {
+		return svc.KnowledgeSecret(ctx, registry.Actor{Tenant: tenant, Name: "knowledge:" + tenant.String()})
+	}
+	return authenticate(resolver, hr, secrets, log, validateDocuments(routes))
 }
 
 type server struct {
-	svc *registry.Service
-	hr  HRIntake
-	log *slog.Logger
+	svc       *registry.Service
+	hr        HRIntake
+	delegator Delegator
+	log       *slog.Logger
 }
 
 var _ muistamov1.StrictServerInterface = (*server)(nil)
