@@ -396,7 +396,7 @@ resource "muistamo_knowledge_pack" "basics" {
 }
 resource "muistamo_knowledge_source" "finance" {
   name = "finance-site"
-  spec = jsonencode({ pack = muistamo_knowledge_pack.basics.name, connector = "sharepoint", sharepoint = { siteUrl = "https://example.invalid/sites/finance" } })
+  spec = jsonencode({ pack = muistamo_knowledge_pack.basics.name, connector = "sharepoint", sharepoint = { siteUrl = "https://example.sharepoint.com/sites/finance" } })
 }
 `
 	resource.Test(t, resource.TestCase{
