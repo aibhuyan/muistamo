@@ -1595,6 +1595,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             person: string;
+            /** @description The agent instance the read was made through, for a person who signed in with Entra (the delegation's agent). */
+            agent?: string;
             /** Format: date-time */
             at: string;
             /** @enum {string} */
@@ -2172,6 +2174,29 @@ export interface components {
                 sourcesUnavailable: string[];
                 /** @description Sources served by the in-memory test connector, not a real system. */
                 testConnectors: string[];
+                /** @description Requested packs that the acting agent's template does not include (mandatory packs are never outside it). Nothing from them was searched or returned. */
+                packsOutsideAgentScope?: string[];
+                /** @description Packs of the acting agent's template that this knowledge service does not hold, so could not be searched. */
+                packsUnavailable?: string[];
+                /**
+                 * RetrievalDelegation
+                 * @description Entra callers only: whether retrieval ran as the person's own agent. Without a delegation only the caller's personal layer and mandatory packs are searched, and every source is reported unavailable.
+                 */
+                delegation?: {
+                    /**
+                     * RetrievalDelegationStatus
+                     * @enum {string}
+                     */
+                    status: "issued" | "refused" | "unavailable";
+                    /** @description The acting agent instance, when issued. */
+                    agent?: string;
+                    /**
+                     * RetrievalDelegationReason
+                     * @description Why there is no delegation: the control plane's refusal reason, or unavailable when it could not be asked.
+                     * @enum {string}
+                     */
+                    reason?: "token-invalid" | "user-unlinked" | "no-active-agent" | "agent-ambiguous" | "identity-not-ready" | "exchange-refused" | "evidence-unavailable" | "not-configured" | "unavailable";
+                };
             };
         };
         /**

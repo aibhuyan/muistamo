@@ -2,14 +2,20 @@
 
 HUMAN REVIEW REQUIRED (CLAUDE.md): the authorisation path in retrieve().
 
-retrieve() works in three steps:
+retrieve() works in these steps:
 
+0. For an Entra caller, the delegation first: the control plane decides now whether the person's
+   own agent may act for them, and names the agent's template packs. Without one, only the
+   caller's personal layer and mandatory packs are searched and every source is reported
+   unavailable. With one, the packs in scope are the template's packs the caller asked for (all
+   of them if none were named) plus mandatory packs; requested packs outside the template are
+   reported and nothing from them is returned (invariant 2).
 1. Candidates: full-text search over the caller's effective entries (resolve() precedence, so
    other people's personal layers never appear) and over the indexed documents of the packs in
    scope.
 2. Authorisation, live and per person: candidates are grouped by source and each source's
-   connector answers authorise(person, ids) under the acting person's own rights. Nothing is
-   cached.
+   connector answers authorise(principal, ids) under the acting person's own rights (for an
+   Entra caller, with the token delegated to their agent). Nothing is cached.
 3. Only documents named in that same answer are returned. If a source cannot answer, all its
    documents are withheld and the source is reported unavailable; there is no fallback to a
    broader index (PRD section 12a).
@@ -21,6 +27,7 @@ need the model gateway (D28) and come later.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -29,12 +36,16 @@ from typing import Any
 from psycopg import Cursor
 from psycopg.types.json import Jsonb
 
-from muistamo_knowledge.connectors import Connector, NotBuilt
+from muistamo_knowledge.connectors import Connector, NotBuilt, Principal
+from muistamo_knowledge.delegation import Outcome
 from muistamo_knowledge.service import Actor, Forbidden, Invalid, Knowledge, NotFound
 
 log = logging.getLogger("muistamo.knowledge.retrieval")
 
 AUTHORISE_TIMEOUT_SECONDS = 5.0
+DELEGATION_TIMEOUT_SECONDS = 5.0
+# Every source's authorisation together, after the delegation: what is left over is withheld.
+RETRIEVAL_BUDGET_SECONDS = 15.0
 CANDIDATE_POOL = 200
 HEADLINE = "MaxWords=35, MinWords=12, StartSel=, StopSel=, HighlightAll=false"
 
@@ -189,7 +200,36 @@ class Sources:
         tool: str = "rest.retrieve",
     ) -> dict[str, Any]:
         items: list[dict[str, Any]] = []
+        coverage: dict[str, Any] = {}
+        principal = Principal(person=actor.name)
+        searchable = True
+        agent: str | None = None
+        template: set[str] | None = None
+        deadline = time.monotonic() + RETRIEVAL_BUDGET_SECONDS
+        # Every Entra caller is delegated: an entra: identity never gets development scope, even
+        # if its token was somehow not carried along (fail closed).
+        if actor.name.startswith("entra:"):
+            outcome = (
+                self._delegate(actor) if actor.bearer is not None else Outcome(None, "unavailable")
+            )
+            if outcome.delegation is None:
+                coverage["delegation"] = {
+                    "status": "unavailable"
+                    if outcome.reason in ("unavailable", "not-configured")
+                    else "refused",
+                    "reason": outcome.reason or "unavailable",
+                }
+                # Only the person's own layer and what everyone must see; no source is asked.
+                packs, searchable = [], False
+            else:
+                delegation = outcome.delegation
+                agent = delegation.instance
+                coverage["delegation"] = {"status": "issued", "agent": agent}
+                template = set(delegation.packs)
+                principal = Principal(person=actor.name, graph_token=delegation.graph_token)
         with self.k.db.in_tenant(actor.tenant) as cur:
+            if template is not None:
+                packs = self._within_template(cur, packs, template, coverage)
             names, effective = self.k._resolve(cur, actor, packs)
             items += self._entry_hits(cur, query, effective)
             cur.execute(
@@ -197,7 +237,7 @@ class Sources:
                 (names,),
             )
             sources = {r[0]: r[1] for r in cur.fetchall()}
-            candidates = self._document_candidates(cur, query, list(sources))
+            candidates = self._document_candidates(cur, query, list(sources)) if searchable else []
         # Remote authorisation runs outside the transaction, so no database lock waits on a source.
 
         unavailable: list[str] = []
@@ -206,6 +246,9 @@ class Sources:
         for c in candidates:
             by_source.setdefault(c["source"], []).append(c)
         for source, document in sources.items():
+            if not searchable:
+                unavailable.append(source)
+                continue
             try:
                 connector = self.connector(source, document)
             except Invalid:
@@ -216,12 +259,19 @@ class Sources:
             hits = by_source.get(source, [])
             if not hits:
                 continue
-            allowed = self._authorise(connector, actor.name, [h["externalId"] for h in hits])
-            if allowed is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                # The retrieval budget is spent: the rest are withheld, never returned unchecked.
+                unavailable.append(source)
+                continue
+            permitted = self._authorise(
+                connector, principal, [h["externalId"] for h in hits], remaining
+            )
+            if permitted is None:
                 unavailable.append(source)
                 continue
             for h in hits:
-                if h["externalId"] in allowed:
+                if h["externalId"] in permitted:
                     items.append(_document_item(h, connector.name))
 
         items.sort(key=lambda i: i["score"], reverse=True)
@@ -232,27 +282,56 @@ class Sources:
                 "sourcesQueried": sorted(sources),
                 "sourcesUnavailable": sorted(unavailable),
                 "testConnectors": sorted(test_sources),
+                **coverage,
             },
         }
-        self.record_read(actor, tool, result["items"])
+        self.record_read(actor, tool, result["items"], agent)
         return result
 
-    def record_read(self, actor: Actor, tool: str, items: list[dict[str, Any]]) -> None:
-        """Record what the person was shown: citations only, never the query (invariant 5)."""
+    def record_read(
+        self, actor: Actor, tool: str, items: list[dict[str, Any]], agent: str | None = None
+    ) -> None:
+        """Record what the person was shown, and through which agent: citations only, never the
+        query (invariant 5)."""
         keep = ("type", "entryKey", "layer", "pack", "version", "source", "externalId")
         citations = [{k: v for k, v in i["citation"].items() if k in keep} for i in items]
         with self.k.db.in_tenant(actor.tenant) as cur:
             cur.execute(
-                "INSERT INTO knowledge.reads (tenant_id, id, person, tool, result_count, citations)"
-                " VALUES (%s, %s, %s, %s, %s, %s)",
-                (actor.tenant, uuid.uuid4(), actor.name, tool, len(items), Jsonb(citations)),
+                "INSERT INTO knowledge.reads (tenant_id, id, person, tool, result_count, citations, agent)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (actor.tenant, uuid.uuid4(), actor.name, tool, len(items), Jsonb(citations), agent),
             )
+
+    @staticmethod
+    def _within_template(
+        cur: Cursor, packs: list[str], template: set[str], coverage: dict[str, Any]
+    ) -> list[str]:
+        """The packs a delegated agent searches: the template's packs the caller asked for (all
+        of them if none), of those that exist. Mandatory packs are added by _resolve and are
+        never outside scope. Template packs missing here are reported, not fatal, and a requested
+        pack outside the template is reported without saying whether it exists."""
+        cur.execute(
+            "SELECT name, mandatory FROM knowledge.packs WHERE mandatory OR name = ANY(%s)",
+            (sorted(template),),
+        )
+        rows = cur.fetchall()
+        existing = {name for name, _ in rows}
+        mandatory = {name for name, is_mandatory in rows if is_mandatory}
+        requested = set(packs)
+        outside = sorted(requested - template - mandatory)
+        missing = sorted(template - existing)
+        if outside:
+            coverage["packsOutsideAgentScope"] = outside
+        if missing:
+            coverage["packsUnavailable"] = missing
+        scope = (requested & template) if requested else template
+        return sorted(scope & existing)
 
     def reads(self, actor: Actor, limit: int = 100) -> list[dict[str, Any]]:
         """The caller's own reads, newest first."""
         with self.k.db.in_tenant(actor.tenant) as cur:
             cur.execute(
-                "SELECT id, person, at, tool, result_count, citations FROM knowledge.reads"
+                "SELECT id, person, at, tool, result_count, citations, agent FROM knowledge.reads"
                 " WHERE person = %s ORDER BY at DESC LIMIT %s",
                 (actor.name, limit),
             )
@@ -264,25 +343,46 @@ class Sources:
                     "tool": r[3],
                     "resultCount": r[4],
                     "citations": r[5],
+                    **({"agent": r[6]} if r[6] is not None else {}),
                 }
                 for r in cur.fetchall()
             ]
 
-    @staticmethod
-    def _authorise(connector: Connector, person: str, ids: list[str]) -> set[str] | None:
-        """The person's permitted subset of ids, or None if the source could not answer."""
-        future = _pool.submit(connector.authorise, person, ids)
+    def _delegate(self, actor: Actor) -> Outcome:
+        """The control plane's delegation for this request, or why there is none, within a
+        wall-clock deadline."""
+        client = self.k.delegations
+        bearer = actor.bearer
+        if client is None or bearer is None:
+            return Outcome(None, "not-configured")
+        future = _pool.submit(client.request, actor.tenant, bearer)
         try:
-            allowed = future.result(timeout=AUTHORISE_TIMEOUT_SECONDS)
+            return future.result(timeout=DELEGATION_TIMEOUT_SECONDS)
+        except FutureTimeout:
+            log.warning("delegation timed out; no sources", extra={"tenant": str(actor.tenant)})
+            return Outcome(None, "unavailable")
+
+    @staticmethod
+    def _authorise(
+        connector: Connector,
+        principal: Principal,
+        ids: list[str],
+        budget: float = AUTHORISE_TIMEOUT_SECONDS,
+    ) -> set[str] | None:
+        """The person's permitted subset of ids, or None if the source could not answer."""
+        future = _pool.submit(connector.authorise, principal, ids)
+        try:
+            allowed = future.result(timeout=min(budget, AUTHORISE_TIMEOUT_SECONDS))
         except FutureTimeout:
             log.warning(
                 "authorisation timed out; withholding source", extra={"connector": connector.name}
             )
             return None
         except Exception as exc:  # noqa: BLE001 - any failure withholds the source (fail closed)
+            # Only the error's type: a source's message may carry the delegated token.
             log.warning(
                 "authorisation failed; withholding source",
-                extra={"connector": connector.name, "error": str(exc)},
+                extra={"connector": connector.name, "error": type(exc).__name__},
             )
             return None
         # Never trust a connector to return only what it was asked about.

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
 from . import citation as citation_1, entrydecay, provenance as provenance_1
+from enum import StrEnum
 
 
 class RetrievalItem(BaseModel):
@@ -19,6 +20,41 @@ class RetrievalItem(BaseModel):
     provenance: Annotated[
         provenance_1.Provenance | None,
         Field(description="Knowledge entries only; documents carry their source's own metadata."),
+    ] = None
+
+
+class RetrievalDelegationStatus(StrEnum):
+    issued = "issued"
+    refused = "refused"
+    unavailable = "unavailable"
+
+
+class RetrievalDelegationReason(StrEnum):
+    token_invalid = "token-invalid"
+    user_unlinked = "user-unlinked"
+    no_active_agent = "no-active-agent"
+    agent_ambiguous = "agent-ambiguous"
+    identity_not_ready = "identity-not-ready"
+    exchange_refused = "exchange-refused"
+    evidence_unavailable = "evidence-unavailable"
+    not_configured = "not-configured"
+    unavailable = "unavailable"
+
+
+class RetrievalDelegation(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    status: Annotated[RetrievalDelegationStatus, Field(title="RetrievalDelegationStatus")]
+    agent: Annotated[str | None, Field(description="The acting agent instance, when issued.")] = (
+        None
+    )
+    reason: Annotated[
+        RetrievalDelegationReason | None,
+        Field(
+            description="Why there is no delegation: the control plane's refusal reason, or unavailable when it could not be asked.",
+            title="RetrievalDelegationReason",
+        ),
     ] = None
 
 
@@ -37,6 +73,25 @@ class RetrievalCoverage(BaseModel):
         list[str],
         Field(description="Sources served by the in-memory test connector, not a real system."),
     ]
+    packsOutsideAgentScope: Annotated[
+        list[str] | None,
+        Field(
+            description="Requested packs that the acting agent's template does not include (mandatory packs are never outside it). Nothing from them was searched or returned."
+        ),
+    ] = None
+    packsUnavailable: Annotated[
+        list[str] | None,
+        Field(
+            description="Packs of the acting agent's template that this knowledge service does not hold, so could not be searched."
+        ),
+    ] = None
+    delegation: Annotated[
+        RetrievalDelegation | None,
+        Field(
+            description="Entra callers only: whether retrieval ran as the person's own agent. Without a delegation only the caller's personal layer and mandatory packs are searched, and every source is reported unavailable.",
+            title="RetrievalDelegation",
+        ),
+    ] = None
 
 
 class RetrievalResult(BaseModel):

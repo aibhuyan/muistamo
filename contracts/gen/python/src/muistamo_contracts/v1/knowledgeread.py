@@ -37,6 +37,12 @@ class KnowledgeRead(BaseModel):
     )
     id: UUID
     person: str
+    agent: Annotated[
+        str | None,
+        Field(
+            description="The agent instance the read was made through, for a person who signed in with Entra (the delegation's agent)."
+        ),
+    ] = None
     at: AwareDatetime
     tool: Tool
     resultCount: Annotated[int, Field(ge=0)]

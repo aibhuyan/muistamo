@@ -21,6 +21,10 @@
     "person": {
       "type": "string"
     },
+    "agent": {
+      "description": "The agent instance the read was made through, for a person who signed in with Entra (the delegation's agent).",
+      "type": "string"
+    },
     "at": {
       "type": "string",
       "format": "date-time"

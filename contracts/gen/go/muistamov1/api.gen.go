@@ -1644,6 +1644,66 @@ func (e ResolvedEntryOverridesLayer) Valid() bool {
 	}
 }
 
+// Defines values for RetrievalResultCoverageDelegationReason.
+const (
+	RetrievalResultCoverageDelegationReasonAgentAmbiguous      RetrievalResultCoverageDelegationReason = "agent-ambiguous"
+	RetrievalResultCoverageDelegationReasonEvidenceUnavailable RetrievalResultCoverageDelegationReason = "evidence-unavailable"
+	RetrievalResultCoverageDelegationReasonExchangeRefused     RetrievalResultCoverageDelegationReason = "exchange-refused"
+	RetrievalResultCoverageDelegationReasonIdentityNotReady    RetrievalResultCoverageDelegationReason = "identity-not-ready"
+	RetrievalResultCoverageDelegationReasonNoActiveAgent       RetrievalResultCoverageDelegationReason = "no-active-agent"
+	RetrievalResultCoverageDelegationReasonNotConfigured       RetrievalResultCoverageDelegationReason = "not-configured"
+	RetrievalResultCoverageDelegationReasonTokenInvalid        RetrievalResultCoverageDelegationReason = "token-invalid"
+	RetrievalResultCoverageDelegationReasonUnavailable         RetrievalResultCoverageDelegationReason = "unavailable"
+	RetrievalResultCoverageDelegationReasonUserUnlinked        RetrievalResultCoverageDelegationReason = "user-unlinked"
+)
+
+// Valid indicates whether the value is a known member of the RetrievalResultCoverageDelegationReason enum.
+func (e RetrievalResultCoverageDelegationReason) Valid() bool {
+	switch e {
+	case RetrievalResultCoverageDelegationReasonAgentAmbiguous:
+		return true
+	case RetrievalResultCoverageDelegationReasonEvidenceUnavailable:
+		return true
+	case RetrievalResultCoverageDelegationReasonExchangeRefused:
+		return true
+	case RetrievalResultCoverageDelegationReasonIdentityNotReady:
+		return true
+	case RetrievalResultCoverageDelegationReasonNoActiveAgent:
+		return true
+	case RetrievalResultCoverageDelegationReasonNotConfigured:
+		return true
+	case RetrievalResultCoverageDelegationReasonTokenInvalid:
+		return true
+	case RetrievalResultCoverageDelegationReasonUnavailable:
+		return true
+	case RetrievalResultCoverageDelegationReasonUserUnlinked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RetrievalResultCoverageDelegationStatus.
+const (
+	RetrievalResultCoverageDelegationStatusIssued      RetrievalResultCoverageDelegationStatus = "issued"
+	RetrievalResultCoverageDelegationStatusRefused     RetrievalResultCoverageDelegationStatus = "refused"
+	RetrievalResultCoverageDelegationStatusUnavailable RetrievalResultCoverageDelegationStatus = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the RetrievalResultCoverageDelegationStatus enum.
+func (e RetrievalResultCoverageDelegationStatus) Valid() bool {
+	switch e {
+	case RetrievalResultCoverageDelegationStatusIssued:
+		return true
+	case RetrievalResultCoverageDelegationStatusRefused:
+		return true
+	case RetrievalResultCoverageDelegationStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RolloutEvaluationStatus.
 const (
 	RolloutEvaluationStatusNotRun RolloutEvaluationStatus = "not-run"
@@ -2744,6 +2804,8 @@ type KnowledgePackRef struct {
 
 // KnowledgeRead One retrieval a person made: what they were shown, never the query text (invariant 5).
 type KnowledgeRead struct {
+	// Agent The agent instance the read was made through, for a person who signed in with Entra (the delegation's agent).
+	Agent     *string   `json:"agent,omitempty"`
 	At        time.Time `json:"at"`
 	Citations []struct {
 		EntryKey   *string                    `json:"entryKey,omitempty"`
@@ -3340,7 +3402,22 @@ type ResolvedEntryPage struct {
 // RetrievalResult Results the caller may see, each cited, and which sources were consulted.
 type RetrievalResult struct {
 	Coverage struct {
-		SourcesQueried []string `json:"sourcesQueried"`
+		// Delegation Entra callers only: whether retrieval ran as the person's own agent. Without a delegation only the caller's personal layer and mandatory packs are searched, and every source is reported unavailable.
+		Delegation *struct {
+			// Agent The acting agent instance, when issued.
+			Agent *string `json:"agent,omitempty"`
+
+			// Reason Why there is no delegation: the control plane's refusal reason, or unavailable when it could not be asked.
+			Reason *RetrievalResultCoverageDelegationReason `json:"reason,omitempty"`
+			Status RetrievalResultCoverageDelegationStatus  `json:"status"`
+		} `json:"delegation,omitempty"`
+
+		// PacksOutsideAgentScope Requested packs that the acting agent's template does not include (mandatory packs are never outside it). Nothing from them was searched or returned.
+		PacksOutsideAgentScope *[]string `json:"packsOutsideAgentScope,omitempty"`
+
+		// PacksUnavailable Packs of the acting agent's template that this knowledge service does not hold, so could not be searched.
+		PacksUnavailable *[]string `json:"packsUnavailable,omitempty"`
+		SourcesQueried   []string  `json:"sourcesQueried"`
 
 		// SourcesUnavailable Sources whose authorisation failed; their documents were withheld, never returned unchecked.
 		SourcesUnavailable []string `json:"sourcesUnavailable"`
@@ -3363,6 +3440,12 @@ type RetrievalResult struct {
 	} `json:"items"`
 	Query string `json:"query"`
 }
+
+// RetrievalResultCoverageDelegationReason Why there is no delegation: the control plane's refusal reason, or unavailable when it could not be asked.
+type RetrievalResultCoverageDelegationReason string
+
+// RetrievalResultCoverageDelegationStatus defines model for RetrievalResult.Coverage.Delegation.Status.
+type RetrievalResultCoverageDelegationStatus string
 
 // RollbackInput Publish a new version with an earlier version's content.
 type RollbackInput struct {

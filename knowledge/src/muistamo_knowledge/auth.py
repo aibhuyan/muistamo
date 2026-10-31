@@ -55,6 +55,14 @@ def insecure_dev_headers(headers: Mapping[str, str]) -> tuple[UUID, str]:
     return tenant, "dev:" + actor
 
 
+def entra_bearer(name: str, headers: Mapping[str, str]) -> str | None:
+    """The bearer token of a caller the Entra resolver accepted (entra: identities), else None."""
+    if not name.startswith("entra:"):
+        return None
+    scheme, _, token = _header(headers, "Authorization").partition(" ")
+    return token if scheme.lower() == "bearer" and token else None
+
+
 def no_identity_map(_: str) -> str:
     raise UnmappedIdentity("no identity mapping is configured")
 
