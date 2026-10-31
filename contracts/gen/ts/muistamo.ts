@@ -1872,13 +1872,16 @@ export interface components {
                 /** @description The pack whose readers search this source. */
                 pack: string;
                 /**
-                 * @description sharepoint is release 1's one source (not built yet). test is an in-memory connector for development and the adversarial suite, refused unless explicitly enabled.
+                 * @description sharepoint is release 1's one source: indexed by the tenant's read-only Sites.Selected indexer app, authorised live per document with the token delegated to the acting person's own agent. test is an in-memory connector for development and the adversarial suite, refused unless explicitly enabled.
                  * @enum {string}
                  */
                 connector: "sharepoint" | "test";
                 /** SharePointSourceConfig */
                 sharepoint?: {
+                    /** @description https://<tenant>.sharepoint.com/sites/<site> (or /teams/<site>). */
                     siteUrl: string;
+                    /** @description Document libraries to index, by name. All of the site's libraries when absent. */
+                    libraries?: string[];
                 };
                 /** TestSourceConfig */
                 test?: {

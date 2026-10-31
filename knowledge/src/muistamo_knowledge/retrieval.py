@@ -43,6 +43,8 @@ from muistamo_knowledge.service import Actor, Forbidden, Invalid, Knowledge, Not
 log = logging.getLogger("muistamo.knowledge.retrieval")
 
 AUTHORISE_TIMEOUT_SECONDS = 5.0
+# The best-ranked candidates a source is asked about per retrieval; the rest are not returned.
+AUTHORISE_MAX_PER_SOURCE = 40
 DELEGATION_TIMEOUT_SECONDS = 5.0
 # Every source's authorisation together, after the delegation: what is left over is withheld.
 RETRIEVAL_BUDGET_SECONDS = 15.0
@@ -58,14 +60,14 @@ class Sources:
 
     # Sources --------------------------------------------------------------------------------
 
-    def connector(self, source: str, document: dict[str, Any]) -> Connector:
+    def connector(self, source: str, document: dict[str, Any], tenant: uuid.UUID) -> Connector:
         spec = document["spec"]
         factory = self.k.connectors.get(spec["connector"])
         if factory is None:
             raise Invalid(f"connector {spec['connector']!r} is not enabled on this service")
         try:
-            return factory(source, spec)
-        except NotBuilt as exc:
+            return factory(source, spec, tenant)
+        except (NotBuilt, ValueError) as exc:
             raise Invalid(str(exc)) from exc
 
     def apply(
@@ -76,7 +78,9 @@ class Sources:
                 f"path name {name!r} does not match metadata.name {document['metadata']['name']!r}"
             )
         spec = document["spec"]
-        self.connector(name, document)  # refuses unknown, disabled or unbuilt connectors
+        self.connector(
+            name, document, actor.tenant
+        )  # refuses unknown, disabled or unbuilt connectors
         with self.k.db.in_tenant(actor.tenant) as cur:
             self._require_reviewer(cur, actor, spec["pack"])
             cur.execute(
@@ -127,7 +131,9 @@ class Sources:
         with self.k.db.in_tenant(actor.tenant) as cur:
             document = self._document(cur, name)
             self._require_reviewer(cur, actor, document["spec"]["pack"])
-        listed = self.connector(name, document).list_documents()  # outside the transaction
+        listed = self.connector(
+            name, document, actor.tenant
+        ).list_documents()  # outside the transaction
         with self.k.db.in_tenant(actor.tenant) as cur:
             self._require_reviewer(cur, actor, document["spec"]["pack"])
             ids = [d.external_id for d in listed]
@@ -250,13 +256,13 @@ class Sources:
                 unavailable.append(source)
                 continue
             try:
-                connector = self.connector(source, document)
+                connector = self.connector(source, document, actor.tenant)
             except Invalid:
                 unavailable.append(source)
                 continue
             if connector.is_test:
                 test_sources.append(source)
-            hits = by_source.get(source, [])
+            hits = by_source.get(source, [])[:AUTHORISE_MAX_PER_SOURCE]
             if not hits:
                 continue
             remaining = deadline - time.monotonic()

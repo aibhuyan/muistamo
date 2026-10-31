@@ -38,7 +38,7 @@ def doc(i: str, readers: list[str]) -> dict:
 
 def test_sync_indexes_and_removes_vanished_documents(world) -> None:
     instance = InMemoryConnector(documents=[doc("d1", [A]), doc("d2", [A])])
-    world.knowledge.connectors = {"test": lambda s, spec: instance}
+    world.knowledge.connectors = {"test": lambda s, spec, tenant=None: instance}
     r = world.client(R)
     r.put("/v1/knowledge/packs/finance", json=PACK)
     assert r.put("/v1/knowledge/sources/fin-docs", json=source()).status_code == 201
@@ -69,7 +69,7 @@ def test_sync_indexes_and_removes_vanished_documents(world) -> None:
 
 def test_retrieve_cites_entries_and_documents(world) -> None:
     instance = InMemoryConnector(documents=[doc("d1", [A])])
-    world.knowledge.connectors = {"test": lambda s, spec: instance}
+    world.knowledge.connectors = {"test": lambda s, spec, tenant=None: instance}
     r, a = world.client(R), world.client(A)
     r.put("/v1/knowledge/packs/finance", json=PACK)
     r.put("/v1/knowledge/sources/fin-docs", json=source())
@@ -113,12 +113,12 @@ def test_retrieve_cites_entries_and_documents(world) -> None:
     }
 
 
-def test_unbuilt_and_disabled_connectors_are_refused(world) -> None:
+def test_misconfigured_and_disabled_connectors_are_refused(world) -> None:
     r = world.client(R)
     r.put("/v1/knowledge/packs/finance", json=PACK)
     world.knowledge.connectors = default_factories(enable_test=False)
     sharepoint = r.put("/v1/knowledge/sources/fin-docs", json=source("sharepoint"))
-    assert sharepoint.status_code == 422 and "not built yet" in sharepoint.json()["detail"]
+    assert sharepoint.status_code == 422 and "siteUrl" in sharepoint.json()["detail"]
     disabled = r.put("/v1/knowledge/sources/fin-docs", json=source("test"))
     assert disabled.status_code == 422 and "not enabled" in disabled.json()["detail"]
     world.knowledge.connectors = default_factories(enable_test=True)
