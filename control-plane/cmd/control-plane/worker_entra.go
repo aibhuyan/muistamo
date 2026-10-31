@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -73,6 +74,24 @@ func readEntraWorkerBindings(cmd *cobra.Command, paths []string, credentialStdin
 }
 
 func validateEntraWorkerBindings(ctx context.Context, service *registry.Service, configs []workerEntraBinding) (*entra.Adapter, error) {
+	clients, err := checkEntraBindings(ctx, service, configs)
+	if err != nil {
+		return nil, err
+	}
+	return entra.NewAdapter(service, clients...)
+}
+
+// entraDelegator serves knowledge delegations with the tenants' enrolled bindings only: a
+// historical binding cannot validate tokens or exchange them.
+func entraDelegator(ctx context.Context, service *registry.Service, configs []workerEntraBinding, log *slog.Logger) (*entra.Delegator, error) {
+	clients, err := checkEntraBindings(ctx, service, configs)
+	if err != nil {
+		return nil, err
+	}
+	return entra.NewDelegator(service, log, clients...)
+}
+
+func checkEntraBindings(ctx context.Context, service *registry.Service, configs []workerEntraBinding) ([]*entra.Client, error) {
 	clients := make([]*entra.Client, 0, len(configs))
 	for _, config := range configs {
 		actor := registry.Actor{Tenant: uuid.MustParse(config.Binding.TenantId), Name: "operator:worker-start", RequestID: uuid.NewString()}
@@ -90,5 +109,5 @@ func validateEntraWorkerBindings(ctx context.Context, service *registry.Service,
 		}
 		clients = append(clients, config.Client)
 	}
-	return entra.NewAdapter(service, clients...)
+	return clients, nil
 }

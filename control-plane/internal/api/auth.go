@@ -52,9 +52,10 @@ func actorFrom(ctx context.Context) (registry.Actor, bool) {
 	return actor, ok
 }
 
-// authenticate resolves the actor for every request except the health check. HR events carry
-// their own HMAC credential and never use the user resolver.
-func authenticate(resolver TenantResolver, hr HRIntake, log *slog.Logger, next http.Handler) http.Handler {
+// authenticate resolves the actor for every request except the health check. HR events and the
+// knowledge service's delegation requests carry their own HMAC credentials and never use the user
+// resolver; no other route accepts either.
+func authenticate(resolver TenantResolver, hr HRIntake, knowledge knowledgeSecret, log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/healthz" {
 			next.ServeHTTP(w, r)
@@ -66,10 +67,14 @@ func authenticate(resolver TenantResolver, hr HRIntake, log *slog.Logger, next h
 		var tenant uuid.UUID
 		var name string
 		var err error
-		if r.URL.Path == hrEventsPath {
+		switch r.URL.Path {
+		case hrEventsPath:
 			tenant, err = verifyHR(r, hr, time.Now())
 			name = "hris:" + tenant.String()
-		} else {
+		case delegationsPath:
+			tenant, err = verifyKnowledge(r, knowledge, time.Now())
+			name = "knowledge:" + tenant.String()
+		default:
 			tenant, name, err = resolver.Resolve(r)
 		}
 		if err != nil {
