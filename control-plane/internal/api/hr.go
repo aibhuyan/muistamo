@@ -46,23 +46,10 @@ func verifyHR(r *http.Request, intake HRIntake, now time.Time) (uuid.UUID, error
 	if err != nil {
 		return uuid.Nil, errors.New("missing or malformed X-Muistamo-Tenant")
 	}
-	ts, sig, err := parseSignature(r.Header.Get("X-Muistamo-Signature"))
+	ts, sig, body, err := readSigned(r, now)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	sent, err := strconv.ParseInt(ts, 10, 64)
-	if err != nil {
-		return uuid.Nil, errors.New("signature timestamp is not a number")
-	}
-	if skew := now.Sub(time.Unix(sent, 0)); skew > signatureTolerance || skew < -signatureTolerance {
-		return uuid.Nil, fmt.Errorf("signature timestamp outside %s", signatureTolerance)
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxBody+1))
-	if err != nil || len(body) > maxBody {
-		return uuid.Nil, errors.New("unreadable or oversized body")
-	}
-	r.Body = io.NopCloser(bytes.NewReader(body))
-
 	secret, err := intake.Secret(r.Context(), tenant)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("load HR secret: %w", err)
@@ -71,6 +58,28 @@ func verifyHR(r *http.Request, intake HRIntake, now time.Time) (uuid.UUID, error
 		return uuid.Nil, errors.New("signature does not match")
 	}
 	return tenant, nil
+}
+
+// readSigned reads a signed request's fresh timestamp, its signature and its body, which it
+// leaves readable for the handler. The signature itself is checked by the caller.
+func readSigned(r *http.Request, now time.Time) (ts string, sig, body []byte, err error) {
+	ts, sig, err = parseSignature(r.Header.Get("X-Muistamo-Signature"))
+	if err != nil {
+		return "", nil, nil, err
+	}
+	sent, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return "", nil, nil, errors.New("signature timestamp is not a number")
+	}
+	if skew := now.Sub(time.Unix(sent, 0)); skew > signatureTolerance || skew < -signatureTolerance {
+		return "", nil, nil, fmt.Errorf("signature timestamp outside %s", signatureTolerance)
+	}
+	body, err = io.ReadAll(io.LimitReader(r.Body, maxBody+1))
+	if err != nil || len(body) > maxBody {
+		return "", nil, nil, errors.New("unreadable or oversized body")
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	return ts, sig, body, nil
 }
 
 func parseSignature(header string) (ts string, sig []byte, err error) {

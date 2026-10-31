@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -108,8 +110,13 @@ func TestWorkerEntraRequiresEnrolledHistoricalConfiguration(t *testing.T) {
 		}
 		return configs
 	}
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 	if _, err := validateEntraWorkerBindings(ctx, service, load()); err == nil {
 		t.Fatal("worker started without persisted enrollment")
+	}
+	// serve's delegations take the same checks: only an enrolled binding validates tokens.
+	if _, err := entraDelegator(ctx, service, load(), quiet); err == nil {
+		t.Fatal("delegations served without persisted enrollment")
 	}
 	actor := registry.Actor{Tenant: tenant, Name: "operator:test", RequestID: "worker-config"}
 	if _, _, err := service.RegisterIdentityBinding(ctx, actor, b); err != nil {
@@ -120,6 +127,9 @@ func TestWorkerEntraRequiresEnrolledHistoricalConfiguration(t *testing.T) {
 	}
 	if _, err := validateEntraWorkerBindings(ctx, service, load()); err != nil {
 		t.Fatalf("exact enrolled binding refused: %v", err)
+	}
+	if _, err := entraDelegator(ctx, service, load(), quiet); err != nil {
+		t.Fatalf("delegations refused the exact enrolled binding: %v", err)
 	}
 	for _, field := range []string{"version", "digest"} {
 		changed := b
@@ -137,6 +147,9 @@ func TestWorkerEntraRequiresEnrolledHistoricalConfiguration(t *testing.T) {
 		}
 		if _, err := validateEntraWorkerBindings(ctx, service, load()); err == nil {
 			t.Fatalf("worker started with mismatched historical %s", field)
+		}
+		if _, err := entraDelegator(ctx, service, load(), quiet); err == nil {
+			t.Fatalf("delegations served with mismatched %s", field)
 		}
 	}
 }

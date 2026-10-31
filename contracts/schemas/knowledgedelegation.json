@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/knowledgedelegation.json",
+  "title": "KnowledgeDelegation",
+  "description": "A delegation issued to the knowledge service: the person's active agent, the knowledge packs its template allows, and a Microsoft Graph token that names both the agent and the person. It was authorised at the moment of the request and its evidence is recorded; the knowledge service uses it for one retrieval and asks again for the next.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["instance", "agentIdentity", "person", "packs", "graphToken", "expiresAt"],
+  "properties": {
+    "instance": { "type": "string" },
+    "agentIdentity": { "description": "The agent's Entra agent identity (object id).", "type": "string", "format": "uuid" },
+    "person": { "description": "The HR person the agent acts for.", "type": "string" },
+    "packs": {
+      "description": "The knowledge packs of the agent's effective template. Retrieval never reaches outside them.",
+      "type": "array",
+      "items": { "$ref": "knowledgepackref.json" }
+    },
+    "graphToken": { "description": "Delegated Microsoft Graph access token. A credential: never log or store it.", "type": "string" },
+    "expiresAt": { "type": "string", "format": "date-time" }
+  }
+}

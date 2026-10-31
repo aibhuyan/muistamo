@@ -1435,6 +1435,46 @@ export interface components {
             to: components["schemas"]["InstanceState"];
         };
         /**
+         * KnowledgeDelegation
+         * @description A delegation issued to the knowledge service: the person's active agent, the knowledge packs its template allows, and a Microsoft Graph token that names both the agent and the person. It was authorised at the moment of the request and its evidence is recorded; the knowledge service uses it for one retrieval and asks again for the next.
+         */
+        KnowledgeDelegation: {
+            instance: string;
+            /**
+             * Format: uuid
+             * @description The agent's Entra agent identity (object id).
+             */
+            agentIdentity: string;
+            /** @description The HR person the agent acts for. */
+            person: string;
+            /** @description The knowledge packs of the agent's effective template. Retrieval never reaches outside them. */
+            packs: components["schemas"]["KnowledgePackRef"][];
+            /** @description Delegated Microsoft Graph access token. A credential: never log or store it. */
+            graphToken: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        /**
+         * KnowledgeDelegationRefusal
+         * @description Why no delegation was issued. token-invalid: the user token failed validation. user-unlinked: the token's user is not linked to an HR person by their current joiner. no-active-agent: the person has no active agent (or not the one named). agent-ambiguous: the person has more than one active agent and none was named. identity-not-ready: the agent's identity is not enabled for the person's current HR generation. exchange-refused: Entra refused or failed the on-behalf-of exchange. evidence-unavailable: the decision could not be recorded, so nothing is issued. Every refusal except evidence-unavailable is recorded in signed evidence.
+         */
+        KnowledgeDelegationRefusal: {
+            /** @enum {string} */
+            reason: "token-invalid" | "user-unlinked" | "no-active-agent" | "agent-ambiguous" | "identity-not-ready" | "exchange-refused" | "evidence-unavailable";
+        };
+        /**
+         * KnowledgeDelegationRequest
+         * @description The knowledge service asks the control plane to act for the person who sent userToken, through that person's own agent (on-behalf-of). A signed service call: the signature, its time window and the single-use nonce together refuse replays.
+         */
+        KnowledgeDelegationRequest: {
+            /** @description The person's Entra access token for Muistamo, as the knowledge service received it. Never stored or recorded. */
+            userToken: string;
+            /** @description Which of the person's agents acts. Needed only when the person has more than one active agent. */
+            instance?: string;
+            /** @description 128 random bits, hex encoded. Each nonce is accepted once. */
+            nonce: string;
+        };
+        /**
          * KnowledgeEntry
          * @description An immutable entry revision.
          */

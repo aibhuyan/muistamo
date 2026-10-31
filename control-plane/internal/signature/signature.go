@@ -21,6 +21,20 @@ func Sign(secret, body []byte, t time.Time) string {
 	return "t=" + ts + ",v1=" + hex.EncodeToString(MAC(secret, ts, body))
 }
 
+// KnowledgeToControlPlane names the key the knowledge service signs control-plane calls with.
+// Calls the other way are signed with the tenant secret itself, so a request signed for one
+// direction is never accepted in the other.
+const KnowledgeToControlPlane = "muistamo/v1 knowledge→control-plane"
+
+// DirectionKey derives a tenant's signing key for one direction from its shared secret:
+// HMAC-SHA256 of "<direction>\n<tenant id>" under the secret. The tenant id is bound in too, so
+// two tenants given the same secret by mistake still cannot replay each other's requests.
+func DirectionKey(secret []byte, direction, tenant string) []byte {
+	h := hmac.New(sha256.New, secret)
+	h.Write([]byte(direction + "\n" + tenant))
+	return h.Sum(nil)
+}
+
 // MAC is HMAC-SHA256 of "ts.body" under secret.
 func MAC(secret []byte, ts string, body []byte) []byte {
 	h := hmac.New(sha256.New, secret)

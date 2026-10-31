@@ -11,6 +11,7 @@ package entra
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +36,10 @@ const (
 	identitySelect     = "id,agentIdentityBlueprintId,servicePrincipalType,tags,accountEnabled"
 	readAttempts       = 6
 	maxResponse        = 1 << 20
+	graphScope         = "https://graph.microsoft.com/.default"
+	exchangeScope      = "api://AzureADTokenExchange/.default"
+	jwtBearerGrant     = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+	assertionType      = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 )
 
 var (
@@ -96,6 +101,16 @@ type Client struct {
 	mu      sync.Mutex
 	token   string
 	expiry  time.Time
+	// The directory's signing keys, for user tokens (usertoken.go).
+	keysMu      sync.Mutex
+	keys        map[string]*rsa.PublicKey
+	keysFetched time.Time
+	keysTried   time.Time
+	// Exchange caches (delegation.go): T1 per agent identity, delegated tokens per agent and user
+	// token digest.
+	cacheMu    sync.Mutex
+	assertions map[uuid.UUID]cachedToken
+	delegated  map[delegatedKey]cachedToken
 }
 
 // String and GoString keep tokens out of ordinary diagnostic formatting.
@@ -471,24 +486,75 @@ func (c *Client) accessToken(ctx context.Context) (string, error) {
 	if err != nil || secret == "" {
 		return "", &Error{Operation: "authenticate", Code: "credential_unavailable", kind: ErrProvider}
 	}
-	form := url.Values{"grant_type": {"client_credentials"}, "client_id": {c.binding.BlueprintAppId}, "scope": {"https://graph.microsoft.com/.default"}, "client_secret": {secret}}
-	started := time.Now()
-	id := uuid.New()
-	reply, err := c.send(ctx, "authenticate", http.MethodPost, "https://login.microsoftonline.com/"+c.binding.EntraTenantId+"/oauth2/v2.0/token", http.Header{"Content-Type": {"application/x-www-form-urlencoded"}}, []byte(form.Encode()), id, false)
+	form := url.Values{"grant_type": {"client_credentials"}, "client_id": {c.binding.BlueprintAppId}, "scope": {graphScope}, "client_secret": {secret}}
+	token, expiry, err := c.requestToken(ctx, "authenticate", form)
 	if err != nil {
 		return "", err
+	}
+	c.token, c.expiry = token, expiry
+	return c.token, nil
+}
+
+// requestToken posts one allowed form to the tenant's token endpoint and returns a well-formed
+// bearer token and when it expires. Only the provider's OAuth error code, from a fixed list,
+// leaves this function; the response body never does.
+func (c *Client) requestToken(ctx context.Context, operation string, form url.Values) (string, time.Time, error) {
+	id := uuid.New()
+	if !c.allowedTokenForm(form) {
+		return "", time.Time{}, &Error{Operation: operation, Code: "destination_refused", RequestID: id, kind: ErrProvider}
+	}
+	started := time.Now()
+	reply, err := c.send(ctx, operation, http.MethodPost, "https://login.microsoftonline.com/"+c.binding.EntraTenantId+"/oauth2/v2.0/token", http.Header{"Content-Type": {"application/x-www-form-urlencoded"}}, []byte(form.Encode()), id, false)
+	if err != nil {
+		return "", time.Time{}, err
 	}
 	var payload struct {
 		Token   string `json:"access_token"`
 		Type    string `json:"token_type"`
 		Seconds int    `json:"expires_in"`
+		Error   string `json:"error"`
 	}
 	if reply.status != 200 || json.Unmarshal(reply.body, &payload) != nil || payload.Token == "" || len(payload.Token) > 16384 || strings.IndexFunc(payload.Token, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 || !strings.EqualFold(payload.Type, "Bearer") || payload.Seconds <= 60 || payload.Seconds > 86400 {
-		return "", &Error{Operation: "authenticate", Status: reply.status, Code: "authentication_failed", RequestID: id, ServerRequestID: reply.serverID, kind: ErrProvider}
+		code := "authentication_failed"
+		if slices.Contains(oauthErrors, payload.Error) {
+			code = payload.Error
+		}
+		return "", time.Time{}, &Error{Operation: operation, Status: reply.status, Code: code, RequestID: id, ServerRequestID: reply.serverID, kind: ErrProvider}
 	}
-	c.token = payload.Token
-	c.expiry = started.Add(time.Duration(payload.Seconds) * time.Second)
-	return c.token, nil
+	return payload.Token, started.Add(time.Duration(payload.Seconds) * time.Second), nil
+}
+
+// oauthErrors are the token endpoint's error codes worth recording (RFC 6749 section 5.2 and
+// Entra's consent and interaction errors).
+var oauthErrors = []string{"invalid_request", "invalid_client", "invalid_grant", "unauthorized_client", "unsupported_grant_type", "invalid_scope", "consent_required", "interaction_required", "temporarily_unavailable"}
+
+// allowedTokenForm admits exactly three requests to the token endpoint: the blueprint's own Graph
+// token, the blueprint's exchange assertion for one agent identity (T1), and that agent identity's
+// on-behalf-of exchange of a user token. Every parameter is named and has one value.
+func (c *Client) allowedTokenForm(form url.Values) bool {
+	for _, values := range form {
+		if len(values) != 1 || values[0] == "" {
+			return false
+		}
+	}
+	switch form.Get("grant_type") {
+	case "client_credentials":
+		if form.Get("client_id") != c.binding.BlueprintAppId || form.Get("client_secret") == "" {
+			return false
+		}
+		switch form.Get("scope") {
+		case graphScope:
+			return len(form) == 4
+		case exchangeScope:
+			_, agent := canonicalID(form.Get("fmi_path"))
+			return agent && len(form) == 5
+		}
+	case jwtBearerGrant:
+		_, agent := canonicalID(form.Get("client_id"))
+		return agent && len(form) == 7 && form.Get("scope") == graphScope && form.Get("requested_token_use") == "on_behalf_of" &&
+			form.Get("client_assertion_type") == assertionType && form.Get("client_assertion") != "" && form.Get("assertion") != ""
+	}
+	return false
 }
 
 func (c *Client) send(ctx context.Context, operation, method, target string, headers http.Header, body []byte, requestID uuid.UUID, mutation bool) (providerReply, error) {
@@ -525,7 +591,11 @@ func (c *Client) allowedDestination(req *http.Request) bool {
 		return false
 	}
 	if u.Host == "login.microsoftonline.com" {
-		return req.Method == http.MethodPost && u.Path == "/"+c.binding.EntraTenantId+"/oauth2/v2.0/token" && u.RawQuery == "" && !u.ForceQuery
+		if u.RawQuery != "" || u.ForceQuery {
+			return false
+		}
+		return (req.Method == http.MethodPost && u.Path == "/"+c.binding.EntraTenantId+"/oauth2/v2.0/token") ||
+			(req.Method == http.MethodGet && u.Path == "/"+c.binding.EntraTenantId+"/discovery/v2.0/keys")
 	}
 	if u.Host != "graph.microsoft.com" || !strings.HasPrefix(u.Path, "/v1.0/") {
 		return false

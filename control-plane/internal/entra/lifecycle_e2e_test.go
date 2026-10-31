@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,7 +36,9 @@ func TestAdapterEntraLifecycleEndToEnd(t *testing.T) {
 	f := setupAdapterSeed(t, false)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	upstream := f.graph.transport(t)
+	// The fake directory answers the login host (signing keys, assertion, exchange); Graph the rest.
+	dir := newDirectory(t)
+	upstream := dir.transport(f.graph.transport(t))
 	graph := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Scheme, r.URL.Host = "https", r.Host
 		response, err := upstream.RoundTrip(r)
@@ -76,7 +79,15 @@ func TestAdapterEntraLifecycleEndToEnd(t *testing.T) {
 	if err := store.SetHRSecret(ctx, f.db.OwnerURL, f.actor.Tenant, secret); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(api.Handler(f.svc, api.InsecureDevHeaders{}, intake, slog.New(slog.NewTextHandler(io.Discard, nil))))
+	knowledgeSecret := []byte("obviously-fake-knowledge-secret-at-least-32-bytes")
+	if err := store.SetKnowledgeSecret(ctx, f.db.OwnerURL, f.actor.Tenant, knowledgeSecret); err != nil {
+		t.Fatal(err)
+	}
+	delegator, err := NewDelegator(f.svc, quiet, f.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(api.HandlerWithDelegator(f.svc, api.InsecureDevHeaders{}, intake, delegator, slog.New(slog.NewTextHandler(io.Discard, nil))))
 	defer server.Close()
 	at := time.Now().UTC().Truncate(time.Second)
 	person := "LIVE-EMPLOYEE"
@@ -126,6 +137,31 @@ func TestAdapterEntraLifecycleEndToEnd(t *testing.T) {
 		return accepted
 	}
 	name := lifecycle.InstanceName("analyst", person, 1)
+	// The knowledge service's signed delegation request, as PR D will send it.
+	delegate := func() (int, map[string]any) {
+		t.Helper()
+		raw, err := json.Marshal(muistamov1.KnowledgeDelegationRequest{UserToken: dir.token(userClaims(entraUser)), Nonce: strings.ReplaceAll(uuid.NewString(), "-", "")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/v1/internal/knowledge/delegations", bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Muistamo-Tenant", f.actor.Tenant.String())
+		req.Header.Set("X-Muistamo-Signature", signature.Sign(signature.DirectionKey(knowledgeSecret, signature.KnowledgeToControlPlane, f.actor.Tenant.String()), raw, time.Now()))
+		res, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = res.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		return res.StatusCode, body
+	}
 	wait := func(state muistamov1.InstanceState, generation int64) {
 		t.Helper()
 		for deadline := time.Now().Add(25 * time.Second); time.Now().Before(deadline); {
@@ -142,8 +178,14 @@ func TestAdapterEntraLifecycleEndToEnd(t *testing.T) {
 	}
 	post("live-join", "joiner", 0)
 	wait("active", 1)
+	if status, body := delegate(); status != http.StatusOK || body["instance"] != name || body["person"] != person || body["graphToken"] == "" {
+		t.Fatalf("joiner delegation = %d %v", status, body["reason"])
+	}
 	post("live-leave", "leaver", 1)
 	wait("suspended", 0)
+	if status, body := delegate(); status != http.StatusForbidden || body["graphToken"] != nil {
+		t.Fatalf("leaver delegation = %d %v", status, body["reason"])
+	}
 	// Observe completion of the leaver's initial disable/coverage/setup steps before
 	// exercising the ordinary rehire path. Rapid supersession has separate fence tests.
 	setupDone := false
@@ -167,6 +209,9 @@ func TestAdapterEntraLifecycleEndToEnd(t *testing.T) {
 	}
 	post("live-rehire", "joiner", 2)
 	wait("active", 3)
+	if status, body := delegate(); status != http.StatusOK || body["instance"] != name {
+		t.Fatalf("rehire delegation = %d %v", status, body["reason"])
+	}
 	for _, id := range workflows {
 		if err := temporal.GetWorkflow(ctx, id, "").Get(ctx, nil); err != nil {
 			t.Fatalf("live workflow %s failed: %v", id, err)
@@ -199,7 +244,8 @@ func TestAdapterEntraLifecycleEndToEnd(t *testing.T) {
 	for _, event := range events {
 		counts[event.Action]++
 	}
-	if counts["hr.event.setup-completed"] != 3 || counts["identity.operation.intent"] != 4 || counts["personal-layer.review-not-opened"] != 1 {
+	if counts["hr.event.setup-completed"] != 3 || counts["identity.operation.intent"] != 4 || counts["personal-layer.review-not-opened"] != 1 ||
+		counts["knowledge.delegation.issued"] != 2 || counts["knowledge.delegation.refused"] != 1 {
 		t.Fatalf("live lifecycle evidence incomplete: %v", counts)
 	}
 	// The joiner and the rehire each linked the person to their own Entra user.
