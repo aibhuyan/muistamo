@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from xml.etree import ElementTree
+from xml.parsers import expat
 
 from muistamo_knowledge.connectors import (
     Connector,
@@ -44,8 +45,8 @@ from muistamo_knowledge.connectors import (
 GRAPH = "https://graph.microsoft.com/v1.0"
 LOGIN = "login.microsoftonline.com"
 TIMEOUT = 10.0
-MAX_RESPONSE = 4 << 20
 MAX_FILE = 5 << 20
+MAX_RESPONSE = MAX_FILE + (1 << 20)  # a file download, or any Graph answer
 MAX_PAGES = 1000
 BATCH = 20
 TEXT_TYPES = (".txt", ".md")
@@ -115,6 +116,7 @@ def site_of(site_url: str) -> tuple[str, str]:
         or parts.query
         or parts.fragment
         or not re.fullmatch(r"/(sites|teams)/[A-Za-z0-9._-]{1,128}", path)
+        or set(path.rsplit("/", 1)[1]) <= {"."}
     ):
         raise ValueError("siteUrl must be https://<tenant>.sharepoint.com/sites/<site>")
     return parts.hostname or "", path
@@ -188,6 +190,9 @@ class SharePointConnector:
             raise ConnectorUnavailable("site not found or not granted to the indexer")
         site_id = urllib.parse.quote(site["id"], safe="")
         status, drives = self._call("GET", f"{GRAPH}/sites/{site_id}/drives?$select=id,name", token)
+        if isinstance(drives, dict) and "@odata.nextLink" in drives:
+            # More libraries than one page: refuse rather than silently index some of them.
+            raise ConnectorUnavailable("too many document libraries to list in one page")
         if (
             status != 200
             or not isinstance(drives, dict)
@@ -207,10 +212,11 @@ class SharePointConnector:
     def _drive(self, token: str, drive_id: str) -> list[SourceDocument]:
         first = f"{GRAPH}/drives/{drive_id}/root/delta"
         url: str | None = first
-        documents: list[SourceDocument] = []
+        # Delta may repeat an item; its last occurrence wins, and a deletion removes it.
+        documents: dict[str, SourceDocument] = {}
         for _ in range(MAX_PAGES):
             if url is None:
-                return documents
+                return list(documents.values())
             status, page = self._call("GET", url, token)
             if (
                 status != 200
@@ -219,9 +225,11 @@ class SharePointConnector:
             ):
                 raise ConnectorUnavailable("library listing unavailable")
             for item in page["value"]:
+                if isinstance(item, dict) and isinstance(item.get("id"), str):
+                    documents.pop(item["id"], None)
                 document = self._document(drive_id, item)
                 if document is not None:
-                    documents.append(document)
+                    documents[item["id"]] = document
             url = page.get("@odata.nextLink")
             # Only this drive's own delta pages are followed.
             if url is not None and (not isinstance(url, str) or not url.startswith(first + "?")):
@@ -252,8 +260,21 @@ class SharePointConnector:
         )
 
     def _text(self, item: dict[str, Any], title: str) -> str:
+        """The file's text, or empty (indexed by title only). A file that cannot be read never
+        stops the sync: removals from the source must still reach the index."""
+        try:
+            return self._read_text(item, title)
+        except Exception:  # noqa: BLE001 - one unreadable file is title-only, never fatal
+            return ""
+
+    def _read_text(self, item: dict[str, Any], title: str) -> str:
         lowered = title.lower()
         if not lowered.endswith((*TEXT_TYPES, ".docx")):
+            return ""
+        # Only the published version's text: a library with drafts (minor versions) may show some
+        # readers the published version only, and the download link is the current draft.
+        publication = item.get("publication")
+        if not isinstance(publication, dict) or publication.get("level") != "published":
             return ""
         size = item.get("size")
         link = item.get("@microsoft.graph.downloadUrl")
@@ -323,6 +344,10 @@ class SharePointConnector:
         return allowed
 
 
+def _refuse_doctype(*_: Any) -> None:
+    raise ValueError("a DTD in a document body")
+
+
 def docx_text(raw: bytes) -> str:
     """The paragraphs of a .docx document's body, from its XML. Anything unreadable is empty."""
     try:
@@ -331,11 +356,12 @@ def docx_text(raw: bytes) -> str:
             if info.file_size > MAX_FILE:
                 return ""
             xml = archive.read(info)
-        # A document body never declares a DTD; one that does is not parsed at all.
-        if b"<!DOCTYPE" in xml or b"<!ENTITY" in xml:
-            return ""
-        root = ElementTree.fromstring(xml)  # noqa: S314 - DTDs refused above
-    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError, ValueError):
+        # A document body never declares a DTD: refused before parsing, in any encoding.
+        scan = expat.ParserCreate()
+        scan.StartDoctypeDeclHandler = _refuse_doctype
+        scan.Parse(xml, True)
+        root = ElementTree.fromstring(xml)  # noqa: S314 - DTDs refused by the scan above
+    except Exception:  # noqa: BLE001 - encrypted, unsupported or malformed: no text
         return ""
     paragraphs = []
     for paragraph in root.iter(_WORD + "p"):

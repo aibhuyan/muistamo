@@ -43,6 +43,8 @@ from muistamo_knowledge.service import Actor, Forbidden, Invalid, Knowledge, Not
 log = logging.getLogger("muistamo.knowledge.retrieval")
 
 AUTHORISE_TIMEOUT_SECONDS = 5.0
+# The best-ranked candidates a source is asked about per retrieval; the rest are not returned.
+AUTHORISE_MAX_PER_SOURCE = 40
 DELEGATION_TIMEOUT_SECONDS = 5.0
 # Every source's authorisation together, after the delegation: what is left over is withheld.
 RETRIEVAL_BUDGET_SECONDS = 15.0
@@ -260,7 +262,7 @@ class Sources:
                 continue
             if connector.is_test:
                 test_sources.append(source)
-            hits = by_source.get(source, [])
+            hits = by_source.get(source, [])[:AUTHORISE_MAX_PER_SOURCE]
             if not hits:
                 continue
             remaining = deadline - time.monotonic()

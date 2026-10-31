@@ -168,9 +168,17 @@ def test_a_foreign_next_page_or_download_host_is_never_followed() -> None:
         c.list_documents()
     assert not any("attacker.invalid" in url for url in calls)
     assert (
-        c._text({"size": 5, "@microsoft.graph.downloadUrl": "https://attacker.invalid/x"}, "a.txt")
+        c._text(
+            {
+                "size": 5,
+                "publication": {"level": "published"},
+                "@microsoft.graph.downloadUrl": "https://attacker.invalid/x",
+            },
+            "a.txt",
+        )
         == ""
     )
+    assert not any("attacker.invalid" in url for url in calls), "a foreign download host was called"
 
 
 def test_only_the_drives_own_next_pages_are_followed() -> None:

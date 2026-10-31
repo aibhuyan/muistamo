@@ -10,6 +10,7 @@ carries a delegated Microsoft Graph token: it is used for one retrieval, never s
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -166,7 +167,31 @@ class DelegationClient:
             delegation.expires_at.tzinfo
         ):
             return Outcome(None, "unavailable")
+        if not delegated_person_token(delegation.graph_token):
+            log.warning("delegation answer is not a person's token", extra={"tenant": str(tenant)})
+            return Outcome(None, "unavailable")
         return Outcome(delegation)
+
+
+def delegated_person_token(token: str) -> bool:
+    """Whether a Graph token, read without verifying it, is a delegated token for a person:
+    delegated scopes, no application roles, not an app token. An app-only token would answer
+    for every document, so it is never passed to a source. The control plane checks the same
+    exchange; this is defence in depth."""
+    try:
+        payload = token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    except (IndexError, ValueError, UnicodeDecodeError):
+        return False
+    if not isinstance(claims, dict):
+        return False
+    scopes = claims.get("scp")
+    return (
+        isinstance(scopes, str)
+        and bool(scopes.split())
+        and not claims.get("roles")
+        and claims.get("idtyp") != "app"
+    )
 
 
 def _text(value: object) -> str:

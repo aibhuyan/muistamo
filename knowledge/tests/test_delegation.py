@@ -35,13 +35,31 @@ def test_the_signing_key_matches_the_control_planes() -> None:
     )
 
 
+def graph_token(**claims) -> str:
+    """An unsigned, JWT-shaped fake Graph token: only its claims are read here."""
+    import base64
+
+    def part(value: dict) -> str:
+        return base64.urlsafe_b64encode(json.dumps(value).encode()).rstrip(b"=").decode()
+
+    body = {
+        "aud": "https://graph.microsoft.com",
+        "scp": "Sites.Read.All",
+        "oid": str(PERSON),
+    } | claims
+    return f"{part({'alg': 'RS256'})}.{part({k: v for k, v in body.items() if v is not None})}.obviously-fake"
+
+
+GRAPH_TOKEN = graph_token()
+
+
 def issued(**changes) -> dict:
     answer = {
         "instance": "analyst-person",
         "agentIdentity": str(uuid.uuid4()),
         "person": "HR-PERSON",
         "packs": [{"name": "finance"}],
-        "graphToken": "obviously-fake-graph-token",
+        "graphToken": GRAPH_TOKEN,
         "expiresAt": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
     }
     answer.update(changes)
@@ -71,7 +89,7 @@ def test_a_request_is_signed_for_its_direction_and_tenant_with_a_fresh_nonce() -
     outcome = c.request(TENANT, "obviously-fake-user-token")
     c.request(TENANT, "obviously-fake-user-token", instance="analyst-person")
     assert outcome.delegation is not None and outcome.delegation.packs == ["finance"]
-    assert "obviously-fake-graph-token" not in repr(outcome)
+    assert GRAPH_TOKEN not in repr(outcome)
     (url, body, headers), (_, second, _) = transport.sent
     assert url == "https://control-plane.example.invalid/v1/internal/knowledge/delegations"
     sent = json.loads(body)
@@ -104,6 +122,16 @@ def test_a_request_is_signed_for_its_direction_and_tenant_with_a_fresh_nonce() -
         (Transport(401, {"title": "Unauthorized"}), SECRET, "unavailable"),
         (Transport(200, b"not json"), SECRET, "unavailable"),
         (Transport(200, issued(graphToken="")), SECRET, "unavailable"),
+        # Only a delegated person's Graph token is ever passed to a source.
+        (Transport(200, issued(graphToken="obviously-fake-opaque")), SECRET, "unavailable"),
+        (Transport(200, issued(graphToken=graph_token(scp=None))), SECRET, "unavailable"),
+        (Transport(200, issued(graphToken=graph_token(scp=" "))), SECRET, "unavailable"),
+        (
+            Transport(200, issued(graphToken=graph_token(roles=["Sites.Read.All"]))),
+            SECRET,
+            "unavailable",
+        ),
+        (Transport(200, issued(graphToken=graph_token(idtyp="app"))), SECRET, "unavailable"),
         (Transport(200, issued(agentIdentity="not-a-uuid")), SECRET, "unavailable"),
         (Transport(200, issued(packs=[{"version": "1.x"}])), SECRET, "unavailable"),
         (Transport(200, issued(expiresAt="2020-01-01T00:00:00+00:00")), SECRET, "unavailable"),

@@ -30,6 +30,7 @@ from starlette.concurrency import run_in_threadpool
 
 from muistamo_knowledge import auth, evidence
 from muistamo_knowledge.auth import Resolver, Unauthenticated, deny_all
+from muistamo_knowledge.connectors import ConnectorUnavailable
 from muistamo_knowledge.db import UnknownTenant
 from muistamo_knowledge.leavers import Leavers
 from muistamo_knowledge.mcp_server import build as build_mcp
@@ -57,6 +58,7 @@ _STATUS: list[tuple[type[Exception], int, str]] = [
     (Conflict, 409, "Conflict"),
     (Invalid, 422, "Invalid request"),
     (evidence.EvidenceNotRecorded, 503, "Evidence could not be recorded; nothing was changed"),
+    (ConnectorUnavailable, 503, "The source could not be reached; nothing was changed"),
 ]
 
 

@@ -380,12 +380,13 @@ class FakeGraph:
             items = [
                 {
                     "id": d["id"],
-                    "name": d["id"] + ".txt",
+                    "name": d.get("name", d["id"] + ".txt"),
                     "file": {},
                     "size": len(d["body"]),
                     "webUrl": self.web_url(d["id"]),
                     "lastModifiedDateTime": "2026-10-30T09:00:00Z",
                     "@microsoft.graph.downloadUrl": f"https://{self.HOST}/download/{d['id']}",
+                    "publication": {"level": d.get("publication", "published")},
                 }
                 for d in self.documents
             ]
