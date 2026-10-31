@@ -6,10 +6,11 @@ A connector does two separate things:
 
 - list_documents() feeds the index, using the connector's own indexing credential. The index is
   only a list of candidates; nothing in it reaches a person directly.
-- authorise(person, external_ids) is the use-time check: which of these documents the acting
+- authorise(principal, external_ids) is the use-time check: which of these documents the acting
   person can open right now, decided by the source under that person's own rights. A real
   connector must call the source as (or on behalf of) that person, never with a broadly
-  privileged service account.
+  privileged service account: for an Entra caller, principal carries the Graph token the
+  control plane delegated to the person's own agent for this request.
 
 Retrieval returns a document only if authorise() named it in the same request. If authorise()
 raises, every document from that source is withheld.
@@ -33,6 +34,15 @@ class SourceDocument:
     modified_at: datetime | None = None
 
 
+@dataclass(frozen=True)
+class Principal:
+    """Who a source is asked about: the acting person, and for an Entra caller the Graph token
+    delegated to their agent for this one request (never logged, never stored)."""
+
+    person: str
+    graph_token: str | None = field(default=None, repr=False)
+
+
 class ConnectorUnavailable(Exception):
     """The source could not answer. Its documents must be withheld."""
 
@@ -43,7 +53,7 @@ class Connector(Protocol):
 
     def list_documents(self) -> list[SourceDocument]: ...
 
-    def authorise(self, person: str, external_ids: list[str]) -> set[str]: ...
+    def authorise(self, principal: Principal, external_ids: list[str]) -> set[str]: ...
 
 
 # Builds a connector for one source from that source's current configuration.
@@ -82,13 +92,13 @@ class InMemoryConnector:
             for d in self.documents
         ]
 
-    def authorise(self, person: str, external_ids: list[str]) -> set[str]:
+    def authorise(self, principal: Principal, external_ids: list[str]) -> set[str]:
         with self._lock:
-            self.calls.append((person, tuple(external_ids)))
+            self.calls.append((principal.person, tuple(external_ids)))
         if self.unavailable:
             raise ConnectorUnavailable("test connector is simulating an outage")
         readers = {d["id"]: set(d.get("readers", [])) for d in self.documents}
-        return {i for i in external_ids if person in readers.get(i, set())}
+        return {i for i in external_ids if principal.person in readers.get(i, set())}
 
 
 def in_memory_factory(source: str, spec: dict[str, Any]) -> Connector:

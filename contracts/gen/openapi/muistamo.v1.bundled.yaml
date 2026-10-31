@@ -3172,6 +3172,10 @@ components:
           format: uuid
         person:
           type: string
+        agent:
+          description: The agent instance the read was made through, for a person
+            who signed in with Entra (the delegation's agent).
+          type: string
         at:
           type: string
           format: date-time
@@ -4494,6 +4498,54 @@ components:
               type: array
               items:
                 type: string
+            packsOutsideAgentScope:
+              description: Requested packs that the acting agent's template does not
+                include (mandatory packs are never outside it). Nothing from them
+                was searched or returned.
+              type: array
+              items:
+                type: string
+            packsUnavailable:
+              description: Packs of the acting agent's template that this knowledge
+                service does not hold, so could not be searched.
+              type: array
+              items:
+                type: string
+            delegation:
+              title: RetrievalDelegation
+              description: 'Entra callers only: whether retrieval ran as the person''s
+                own agent. Without a delegation only the caller''s personal layer
+                and mandatory packs are searched, and every source is reported unavailable.'
+              type: object
+              additionalProperties: false
+              required:
+              - status
+              properties:
+                status:
+                  title: RetrievalDelegationStatus
+                  type: string
+                  enum:
+                  - issued
+                  - refused
+                  - unavailable
+                agent:
+                  description: The acting agent instance, when issued.
+                  type: string
+                reason:
+                  title: RetrievalDelegationReason
+                  description: 'Why there is no delegation: the control plane''s refusal
+                    reason, or unavailable when it could not be asked.'
+                  type: string
+                  enum:
+                  - token-invalid
+                  - user-unlinked
+                  - no-active-agent
+                  - agent-ambiguous
+                  - identity-not-ready
+                  - exchange-refused
+                  - evidence-unavailable
+                  - not-configured
+                  - unavailable
     RollbackInput:
       title: RollbackInput
       description: Publish a new version with an earlier version's content.

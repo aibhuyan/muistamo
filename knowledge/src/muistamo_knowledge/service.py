@@ -15,7 +15,7 @@ import json
 import logging
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -26,6 +26,7 @@ from psycopg.types.json import Jsonb
 from muistamo_knowledge import checks, decay, evidence, skills
 from muistamo_knowledge.connectors import ConnectorFactory
 from muistamo_knowledge.db import Database
+from muistamo_knowledge.delegation import DelegationClient
 
 log = logging.getLogger("muistamo.knowledge")
 
@@ -53,6 +54,9 @@ class Actor:
     tenant: UUID
     name: str
     request_id: str
+    # An Entra caller's own access token, kept only to ask the control plane for a delegation
+    # in the same request (PR D). Never logged, stored or compared.
+    bearer: str | None = field(default=None, repr=False, compare=False)
 
 
 def bump_minor(version: str) -> str:
@@ -73,6 +77,8 @@ class Knowledge:
         self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
         self.signer = signer
         self.connectors = connectors or {}
+        # Entra callers' delegations (PR D); None refuses every Entra caller's sources.
+        self.delegations: DelegationClient | None = None
         # Called after a new pack version commits, with (actor, pack, version). Delivery targets
         # (Agent Skills destinations, FR-312) subscribe here; a failing hook never undoes a merge.
         self.on_publish: list[Callable[[Actor, str, str], None]] = []

@@ -73,6 +73,25 @@ def serve(_: argparse.Namespace) -> None:
         )
     host, _, port = os.environ.get("KNOWLEDGE_ADDR", "127.0.0.1:8001").rpartition(":")
     knowledge = Knowledge(db, key, default_factories(enable_test))
+    if entra_callers:
+        from muistamo_knowledge.delegation import DelegationClient
+        from muistamo_knowledge.leavers import Leavers
+
+        url = os.environ.get("MUISTAMO_CONTROL_PLANE_URL", "")
+        plaintext = os.environ.get("MUISTAMO_KNOWLEDGE_CONTROL_PLANE_PLAINTEXT") == "true"
+        if url and not url.startswith("https://") and not plaintext:
+            # Delegations carry bearer tokens: TLS, unless explicitly a development loopback.
+            sys.exit("knowledge: MUISTAMO_CONTROL_PLANE_URL must be https")
+        if url:
+            if plaintext:
+                logging.warning("INSECURE: delegations travel without TLS; development only")
+            leavers = Leavers(knowledge, auth.no_identity_map)
+            knowledge.delegations = DelegationClient(url, leavers.service_secret)
+        else:
+            logging.warning(
+                "MUISTAMO_CONTROL_PLANE_URL is not set: Entra callers get no delegation, so only"
+                " their personal layer and mandatory packs are searched and no source is asked"
+            )
     uvicorn.run(create_app(knowledge, resolver), host=host, port=int(port))
 
 
