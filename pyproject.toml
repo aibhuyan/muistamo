@@ -31,6 +31,9 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, and compose SQL from constant table names to attack every table.
 "**/tests/**" = ["S101", "S608"]
+# The separate-binary e2e harness: it asserts, runs the binaries it built, calls loopback URLs and
+# hands fake tokens to a fake Microsoft.
+"deploy/dev/e2e/**" = ["S101", "S105", "S310", "S603", "S607"]
 
 [tool.pytest.ini_options]
 testpaths = ["knowledge/tests", "runtime/tests", "contracts/tests"]
