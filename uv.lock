@@ -695,6 +695,7 @@ dependencies = [
     { name = "muistamo-contracts" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "rfc8785" },
     { name = "uvicorn" },
 ]
@@ -707,6 +708,7 @@ requires-dist = [
     { name = "muistamo-contracts", editable = "contracts/gen/python" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3,<3.4" },
     { name = "psycopg-pool", specifier = ">=3.3,<3.4" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.15,<3" },
     { name = "rfc8785", specifier = ">=0.1.4,<0.2" },
     { name = "uvicorn" },
 ]

@@ -38,6 +38,15 @@ class Database:
                 raise UnknownTenant(str(tenant))
             yield cur
 
+    def entra_tenant(self, directory: UUID) -> tuple[UUID, UUID] | None:
+        """The (tenant, audience) registered for an Entra directory, or None.
+
+        Read before any tenant is known, through knowledge.entra_tenant() (migration 0008)."""
+        with self.pool.connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT * FROM knowledge.entra_tenant(%s)", (directory,))
+            row = cur.fetchone()
+            return (row[0], row[1]) if row else None
+
     def key_registered(self, key_id: str) -> bool:
         with self.pool.connection() as conn, conn.cursor() as cur:
             cur.execute(
