@@ -10,8 +10,10 @@ tool resolves the caller again from the same headers.
 Retrieved text is returned as quoted source material with its citation. The assistant on the
 other side must treat it as data, not instructions; the tool results say so explicitly.
 
-MCP OAuth (per-user tokens from the identity provider) is not built: until Entra exists, only the
-development header resolver works, and it is off by default.
+With MUISTAMO_KNOWLEDGE_ENTRA=true the resolver is entra.EntraBearer: each request carries the
+person's Entra access token, and a request without a valid one is refused with a Bearer challenge.
+OAuth protected-resource metadata (RFC 9728) is not served: each tenant has its own directory and
+audience, so one public document cannot describe them; clients are configured per tenant.
 """
 
 from typing import Any
@@ -41,8 +43,10 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
         ),
     )
 
-    def actor(ctx: Context) -> Actor:
-        tenant, name = resolver(dict(ctx.headers or {}))
+    async def actor(ctx: Context) -> Actor:
+        # A token resolver reads the database and may fetch keys: never on the event loop.
+        headers = dict(ctx.headers or {})
+        tenant, name = await anyio.to_thread.run_sync(lambda: resolver(headers))
         return Actor(tenant=tenant, name=name, request_id=f"mcp:{ctx.request_id}")
 
     sources = Sources(knowledge)
@@ -58,7 +62,7 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
     async def search_knowledge(
         ctx: Context, query: str, packs: list[str] | None = None
     ) -> dict[str, Any]:
-        who = actor(ctx)
+        who = await actor(ctx)
         result = await anyio.to_thread.run_sync(
             lambda: sources.retrieve(who, query, packs or [], 10, tool="mcp.search_knowledge")
         )
@@ -78,7 +82,7 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
     async def remember(
         ctx: Context, key: str, title: str, body: str, type: str = "fact", source: str | None = None
     ) -> dict[str, Any]:
-        who = actor(ctx)
+        who = await actor(ctx)
         entry = {"key": key, "type": type, "title": title, "body": body}
         if source:
             entry["source"] = source
@@ -109,7 +113,7 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
         type: str = "fact",
         source: str | None = None,
     ) -> dict[str, Any]:
-        who = actor(ctx)
+        who = await actor(ctx)
         entry = {"key": key, "type": type, "title": title, "body": body}
         if source:
             entry["source"] = source
@@ -155,14 +159,17 @@ def require_identity(app: ASGIApp, resolver: Resolver, knowledge: Knowledge | No
             try:
                 if knowledge is None:
                     raise Unauthenticated("knowledge service not configured")
-                tenant, _ = resolver(headers)
+                # A token resolver may fetch the directory's keys: never on the event loop.
+                tenant, _ = await anyio.to_thread.run_sync(lambda: resolver(headers))
                 # The tenant must be registered, exactly as for REST.
                 await anyio.to_thread.run_sync(lambda: _check_tenant(knowledge, tenant))
             except (Unauthenticated, UnknownTenant):
+                challenge = getattr(resolver, "challenge", None)
                 response = JSONResponse(
                     {"title": "Unauthorized", "status": 401},
                     status_code=401,
                     media_type="application/problem+json",
+                    headers={"WWW-Authenticate": challenge} if challenge else None,
                 )
                 await response(scope, receive, send)
                 return

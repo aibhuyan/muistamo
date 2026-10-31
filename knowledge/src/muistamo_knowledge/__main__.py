@@ -23,6 +23,16 @@ def require(name: str) -> str:
     return value
 
 
+def caller_modes() -> tuple[bool, bool]:
+    """Whether callers use development headers or Entra tokens. Never both: a header could
+    otherwise claim what a token has to prove."""
+    dev_headers = os.environ.get("MUISTAMO_INSECURE_DEV_TENANT_HEADER") == "true"
+    entra_callers = os.environ.get("MUISTAMO_KNOWLEDGE_ENTRA") == "true"
+    if dev_headers and entra_callers:
+        sys.exit("knowledge: choose Entra callers or development headers, not both")
+    return dev_headers, entra_callers
+
+
 def serve(_: argparse.Namespace) -> None:
     import uvicorn
 
@@ -32,6 +42,7 @@ def serve(_: argparse.Namespace) -> None:
     from muistamo_knowledge.service import Knowledge
 
     logging.basicConfig(level=logging.INFO)
+    dev_headers, entra_callers = caller_modes()
     db = Database(require("MUISTAMO_KNOWLEDGE_DATABASE_URL"))
     # Fail closed: without a registered signing key no write could carry evidence.
     key = evidence.LocalKey.load(Path(require("MUISTAMO_KNOWLEDGE_EVIDENCE_KEY_FILE")))
@@ -40,11 +51,21 @@ def serve(_: argparse.Namespace) -> None:
             f"knowledge: evidence signing key {key.key_id} is not registered; run evidence keygen"
         )
     resolver: auth.Resolver = auth.deny_all
-    if os.environ.get("MUISTAMO_INSECURE_DEV_TENANT_HEADER") == "true":
+    if dev_headers:
         logging.warning(
             "INSECURE: trusting X-Muistamo-Tenant and X-Muistamo-Actor headers; development only"
         )
         resolver = auth.insecure_dev_headers
+    if entra_callers:
+        from muistamo_knowledge import entra
+
+        logging.info("callers authenticate with Entra access tokens (tenant entra registrations)")
+        logging.warning(
+            "ENTRA CALLERS ARE NOT YET LIFECYCLE-CHECKED: any person the blueprint admits is a"
+            " caller, and a leaver's personal layer is not frozen for review until callers are"
+            " matched to HR people. Require user assignment on the enterprise application."
+        )
+        resolver = entra.EntraBearer(entra.registrations(db))
     enable_test = os.environ.get("MUISTAMO_ENABLE_TEST_CONNECTOR") == "true"
     if enable_test:
         logging.warning(
@@ -104,6 +125,21 @@ def set_service_secret(args: argparse.Namespace) -> None:
     print(f"tenant {tenant} service secret stored")
 
 
+def set_entra_tenant(args: argparse.Namespace) -> None:
+    from muistamo_knowledge import entra
+
+    tenant = uuid.UUID(args.tenant)
+    directory, audience = uuid.UUID(args.entra_tenant), uuid.UUID(args.audience)
+    url = require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL")
+    try:
+        previous = entra.register(url, tenant, directory, audience, replace=args.replace)
+    except entra.AlreadyRegistered as exc:
+        sys.exit(f"knowledge: {exc}; pass --replace to re-point it (its callers lose access)")
+    if previous is not None and previous != (directory, audience):
+        print(f"tenant {tenant} replaced directory {previous[0]} audience {previous[1]}")
+    print(f"tenant {tenant} accepts Entra tokens of directory {directory} for audience {audience}")
+
+
 def set_privacy_officers(args: argparse.Namespace) -> None:
     from muistamo_knowledge.privacy import replace_officers
 
@@ -145,6 +181,16 @@ def main() -> None:
     ss.add_argument("tenant")
     ss.add_argument("secret", help="as printed by control-plane tenant knowledge-secret")
     ss.set_defaults(fn=set_service_secret)
+    en = tenant.add_parser(
+        "entra", help="accept Entra access tokens of a directory for a tenant (owner URL)"
+    )
+    en.add_argument("tenant")
+    en.add_argument("entra_tenant", help="the Entra directory (tenant) id")
+    en.add_argument("audience", help="the tenant's Muistamo blueprint app id")
+    en.add_argument(
+        "--replace", action="store_true", help="re-point a tenant already mapped to a directory"
+    )
+    en.set_defaults(fn=set_entra_tenant)
     priv = sub.add_parser("privacy", help="privacy officers").add_subparsers(required=True)
     po = priv.add_parser("officers", help="replace the tenant's privacy officers (owner URL)")
     po.add_argument("tenant")

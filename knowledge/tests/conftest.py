@@ -161,3 +161,132 @@ def world(testdb: TestDB) -> Iterator[World]:
         yield w
     finally:
         database.close()
+
+
+# Entra callers (PR C): a fake directory that publishes its key and signs people's tokens.
+DIRECTORY = uuid.UUID("33333333-3333-4333-8333-333333333333")
+AUDIENCE = uuid.UUID("44444444-4444-4444-8444-444444444444")
+
+
+class FakeDirectory:
+    def __init__(self, directory: uuid.UUID = DIRECTORY, kid: str = "test-signing-key") -> None:
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        self.directory, self.kid = directory, kid
+        self.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        self.fetches = 0
+
+    def claims(self, user: uuid.UUID, **changes) -> dict:
+        import time
+
+        now = int(time.time())
+        claims = {
+            "iss": f"https://login.microsoftonline.com/{self.directory}/v2.0",
+            "aud": str(AUDIENCE),
+            "tid": str(self.directory),
+            "oid": str(user),
+            "sub": "obviously-fake-subject",
+            "ver": "2.0",
+            "scp": "openid Knowledge.Read",
+            "iat": now,
+            "nbf": now - 60,
+            "exp": now + 1800,
+        }
+        for name, value in changes.items():
+            if value is None:
+                claims.pop(name, None)
+            else:
+                claims[name] = value
+        return claims
+
+    def token(self, user: uuid.UUID, key=None, kid: str | None = None, **changes) -> str:
+        import jwt
+
+        return jwt.encode(
+            self.claims(user, **changes),
+            key or self.key,
+            algorithm="RS256",
+            headers={"kid": kid or self.kid},
+        )
+
+    def fetch(self, directory: uuid.UUID) -> bytes:
+        import json
+
+        import jwt
+
+        assert directory == self.directory, "keys fetched for another directory"
+        self.fetches += 1
+        jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(self.key.public_key()))
+        jwk.update({"kid": self.kid, "use": "sig", "alg": "RS256"})
+        return json.dumps({"keys": [jwk]}).encode()
+
+
+@dataclass
+class EntraWorld:
+    world: World
+    directory: FakeDirectory
+    resolver: object
+
+    def client(self, token: str | None) -> TestClient:
+        client = TestClient(
+            create_app(self.world.knowledge, self.resolver), raise_server_exceptions=False
+        )
+        if token is not None:
+            client.headers.update({"Authorization": "Bearer " + token})
+        return client
+
+    def mcp_refusal(self, token: str | None) -> tuple[int, str | None]:
+        """A raw MCP request's status and WWW-Authenticate challenge."""
+
+        async def post() -> tuple[int, str | None]:
+            app = create_app(self.world.knowledge, self.resolver)
+            headers = {"Authorization": "Bearer " + token} if token else {}
+            async with app.router.lifespan_context(app):
+                transport = httpx2.ASGITransport(app=app)
+                async with httpx2.AsyncClient(
+                    transport=transport, base_url="http://127.0.0.1:8001", headers=headers
+                ) as http:
+                    res = await http.post(
+                        "/mcp/knowledge/",
+                        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+                        headers={"Accept": "application/json, text/event-stream"},
+                    )
+                    return res.status_code, res.headers.get("WWW-Authenticate")
+
+        return anyio.run(post)
+
+    def mcp(self, token: str | None, tool: str | None = None, args: dict | None = None):
+        return anyio.run(self._mcp, token, tool, args or {})
+
+    async def _mcp(self, token, tool, args):
+        app = create_app(self.world.knowledge, self.resolver)
+        headers = {"Authorization": "Bearer " + token} if token else {}
+        async with app.router.lifespan_context(app):
+            transport = httpx2.ASGITransport(app=app)
+            async with httpx2.AsyncClient(
+                transport=transport, base_url="http://127.0.0.1:8001", headers=headers
+            ) as http:
+                async with streamable_http_client(
+                    "http://127.0.0.1:8001/mcp/knowledge/", http_client=http
+                ) as streams:
+                    async with ClientSession(streams[0], streams[1]) as session:
+                        await session.initialize()
+                        if tool is None:
+                            return sorted(t.name for t in (await session.list_tools()).tools)
+                        return await session.call_tool(tool, args)
+
+
+@pytest.fixture
+def entra_world(world: World) -> EntraWorld:
+    from muistamo_knowledge import entra
+
+    directory = FakeDirectory()
+    entra.register(world.db.owner_url, world.tenant, DIRECTORY, AUDIENCE)
+    resolver = entra.EntraBearer(entra.registrations(world.knowledge.db), fetch=directory.fetch)
+    return EntraWorld(world=world, directory=directory, resolver=resolver)
+
+
+@pytest.fixture
+def new_directory():
+    """Makes fake Entra directories (FakeDirectory)."""
+    return FakeDirectory

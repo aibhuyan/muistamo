@@ -60,16 +60,23 @@ _STATUS: list[tuple[type[Exception], int, str]] = [
 ]
 
 
-def problem(status: int, title: str, detail: str | None = None) -> JSONResponse:
+def problem(
+    status: int, title: str, detail: str | None = None, headers: dict[str, str] | None = None
+) -> JSONResponse:
     body: dict[str, Any] = {"title": title, "status": status}
     if detail:
         body["detail"] = detail
-    return JSONResponse(body, status_code=status, media_type="application/problem+json")
+    return JSONResponse(
+        body, status_code=status, media_type="application/problem+json", headers=headers
+    )
 
 
 def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> FastAPI:
     """Without a Knowledge service (no database or key), every /v1 and MCP call is refused."""
     mcp = build_mcp(knowledge, resolver) if knowledge is not None else None
+    # A bearer-token resolver says how to authenticate on every 401 (RFC 6750 section 3).
+    challenge = getattr(resolver, "challenge", None)
+    unauthorized_headers = {"WWW-Authenticate": challenge} if challenge else None
     mcp_app = (
         mcp.streamable_http_app(streamable_http_path="/", stateless_http=True, json_response=True)
         if mcp is not None
@@ -97,7 +104,12 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
                 if status >= 500:
                     log.error("request failed", extra={"path": request.url.path, "error": str(exc)})
                 # 401 never says why; others explain to the caller.
-                return problem(status, title, None if status in (401, 503) else str(exc))
+                return problem(
+                    status,
+                    title,
+                    None if status in (401, 503) else str(exc),
+                    unauthorized_headers if status == 401 else None,
+                )
         log.exception("unhandled error", extra={"path": request.url.path})
         return problem(500, "Internal error")
 
@@ -320,7 +332,7 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
 
         @app.api_route("/mcp/knowledge/{rest:path}", methods=["GET", "POST", "DELETE"])
         def mcp_refused(rest: str) -> JSONResponse:
-            return problem(401, "Unauthorized")
+            return problem(401, "Unauthorized", headers=unauthorized_headers)
 
     return app
 

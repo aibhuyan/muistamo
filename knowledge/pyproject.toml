@@ -11,6 +11,7 @@ dependencies = [
     "rfc8785>=0.1.4,<0.2",
     "cryptography>=50,<51",
     "mcp>=2.3,<2.4",
+    "pyjwt[crypto]>=2.15,<3",
 ]
 
 [tool.uv.sources]
