@@ -34,7 +34,7 @@ var PersonalDataTables = []string{
 	"catalogue_approvals", "policy_documents", "privacy_officers", "erasure_requests", "agent_clones",
 	"model_catalogue", "model_aliases", "rollouts", "evidence_events",
 	"entra_bindings", "instance_identities", "identity_operations",
-	"virtual_keys", "gateway_calls", "gateway_admins",
+	"virtual_keys", "gateway_calls", "gateway_admins", "person_entra_links",
 }
 
 type retention = struct {
@@ -232,6 +232,12 @@ func (s *Service) Erase(ctx context.Context, actor Actor, req muistamov1.Erasure
 			}
 			cancelledHR = int(tag.RowsAffected())
 		}
+		// The person's Entra user link, by HR id or by an entra:<object id> identity. Nothing else
+		// in the row identifies anyone, so it is deleted rather than pseudonymised.
+		links, err := tx.Exec(ctx, `DELETE FROM person_entra_links WHERE person_id = ANY($1::text[]) OR entra_user_object_id = ANY($2::uuid[])`, personIDs, entraObjectIDs(values))
+		if err != nil {
+			return fmt.Errorf("erase Entra user links: %w", err)
+		}
 		var countsJSON []byte
 		if err := tx.QueryRow(ctx, `SELECT erase_subject($1, $2)`, values, pseudonym).Scan(&countsJSON); err != nil {
 			return fmt.Errorf("erase subject: %w", err)
@@ -245,6 +251,7 @@ func (s *Service) Erase(ctx context.Context, actor Actor, req muistamov1.Erasure
 			return fmt.Errorf("decode erasure counts: %w", err)
 		}
 		proof.Counts["hr_events.pending_dispatch"] += cancelledHR
+		proof.Counts["person_entra_links"] = int(links.RowsAffected())
 		body, err := json.Marshal(proof)
 		if err != nil {
 			return fmt.Errorf("encode proof: %w", err)
@@ -315,6 +322,13 @@ func (s *Service) ExportPersonalData(ctx context.Context, actor Actor, subject m
 				return err
 			}
 			rows = mergeRows(rows, related)
+			if table == "person_entra_links" {
+				byIdentity, err := entraLinkRowsByIdentity(ctx, tx, values)
+				if err != nil {
+					return err
+				}
+				rows = mergeRows(rows, byIdentity)
+			}
 			if officer && subject.HrPersonId != nil {
 				byHR, err := rowsForHRPerson(ctx, tx, table, *subject.HrPersonId)
 				if err != nil {
@@ -402,9 +416,10 @@ func RowsMentioning(ctx context.Context, tx pgx.Tx, table string, values []strin
 // hrPersonQueries find rows keyed by an HR person id. An HR id can be short ("1"), so it is
 // matched only where it is a person key, never as an arbitrary value.
 var hrPersonQueries = map[string]string{
-	"hr_events":       `SELECT to_jsonb(t) FROM hr_events t WHERE t.tenant_id = current_setting('muistamo.tenant_id', true)::uuid AND person_id = $1`,
-	"agent_instances": `SELECT to_jsonb(t) FROM agent_instances t WHERE t.tenant_id = current_setting('muistamo.tenant_id', true)::uuid AND document -> 'metadata' -> 'labels' ->> '` + PersonLabel + `' = $1`,
-	"evidence_events": `SELECT to_jsonb(t) FROM evidence_events t WHERE t.tenant_id = current_setting('muistamo.tenant_id', true)::uuid AND subject_kind = 'HRPerson' AND subject_name = $1`,
+	"hr_events":          `SELECT to_jsonb(t) FROM hr_events t WHERE t.tenant_id = current_setting('muistamo.tenant_id', true)::uuid AND person_id = $1`,
+	"agent_instances":    `SELECT to_jsonb(t) FROM agent_instances t WHERE t.tenant_id = current_setting('muistamo.tenant_id', true)::uuid AND document -> 'metadata' -> 'labels' ->> '` + PersonLabel + `' = $1`,
+	"evidence_events":    `SELECT to_jsonb(t) FROM evidence_events t WHERE t.tenant_id = current_setting('muistamo.tenant_id', true)::uuid AND subject_kind = 'HRPerson' AND subject_name = $1`,
+	"person_entra_links": `SELECT to_jsonb(t) FROM person_entra_links t WHERE t.tenant_id = current_setting('muistamo.tenant_id', true)::uuid AND person_id = $1`,
 }
 
 func rowsForHRPerson(ctx context.Context, tx pgx.Tx, table, personID string) ([]map[string]any, error) {

@@ -176,7 +176,11 @@ func workerActivities(service *registry.Service, sim *lifecycle.Simulated) *life
 }
 
 func entraWorkerActivities(service *registry.Service, identity lifecycle.IdentityAdapter) *lifecycle.EntraActivities {
-	return &lifecycle.EntraActivities{Registry: service, Identity: identity, Revoker: lifecycle.KeyRevoker{Registry: service}}
+	acts := &lifecycle.EntraActivities{Registry: service, Identity: identity, Revoker: lifecycle.KeyRevoker{Registry: service}}
+	if users, ok := identity.(lifecycle.UserDirectory); ok {
+		acts.Users = users
+	}
+	return acts
 }
 
 func migrateCmd() *cobra.Command {

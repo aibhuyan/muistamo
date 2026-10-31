@@ -863,6 +863,27 @@ paths:
                 $ref: '#/components/schemas/ErasureProof'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/people/{personId}/entra-link:
+    parameters:
+    - name: personId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    get:
+      operationId: getEntraUserLink
+      summary: Which Entra user an HR person was matched to (privacy officers only)
+      responses:
+        '200':
+          description: The link, including unmatched, ambiguous and conflict outcomes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntraUserLink'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/privacy/access:
     post:
       operationId: exportPersonalData
@@ -1961,6 +1982,53 @@ components:
         receiptId:
           type: string
           format: uuid
+    EntraUserLink:
+      title: EntraUserLink
+      description: 'Which Entra user an HR person is, as the person''s latest live
+        joiner found it: the user whose employeeId equals the HR person id, keyed
+        by the user''s immutable object id. Requests made with an Entra token are
+        matched to a person only through a matched link, never by name or email. unmatched:
+        no user carries the id, or the HR id cannot be an Entra employeeId. ambiguous:
+        more than one user carries it. conflict: the user also matched another person;
+        neither person is linked until a later joiner finds them unambiguously. unavailable:
+        the lookup was refused or failed, so no earlier link is kept. Only matched
+        links carry entraUserObjectId.'
+      type: object
+      additionalProperties: false
+      required:
+      - personId
+      - status
+      - entraTenantId
+      - receiptId
+      - matchedAt
+      properties:
+        personId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          type: string
+          enum:
+          - matched
+          - unmatched
+          - ambiguous
+          - conflict
+          - unavailable
+        entraUserObjectId:
+          type: string
+          format: uuid
+        entraTenantId:
+          type: string
+          format: uuid
+        receiptId:
+          description: The HR receipt whose joiner recorded this outcome. A conflict
+            found by another person's joiner keeps this person's receipt.
+          type: string
+          format: uuid
+        matchedAt:
+          description: When this outcome was recorded.
+          type: string
+          format: date-time
     EntryDecay:
       title: EntryDecay
       description: 'How recently a reviewer vouched for a pack entry (FR-307). current

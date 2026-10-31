@@ -336,3 +336,29 @@ func mustConn(t *testing.T, url string) *pgx.Conn {
 	t.Cleanup(func() { _ = conn.Close(context.Background()) })
 	return conn
 }
+
+func TestEntraUserLinksAreForPrivacyOfficers(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a := h.tenant(t, "tenant-a")
+	b := h.tenant(t, "tenant-b")
+	seedPerson(t, h, a)
+	user := uuid.New()
+	version, directory := uuid.New(), uuid.New()
+	testdb.Exec(t, h.db.OwnerURL, `INSERT INTO entra_bindings (tenant_id,binding_version,config_digest,entra_tenant_id,blueprint_app_id)
+		VALUES ($1,$2,repeat('a',64),$3,gen_random_uuid())`, a, version, directory)
+	testdb.Exec(t, h.db.OwnerURL, `INSERT INTO person_entra_links (tenant_id,person_id,status,binding_version,entra_tenant_id,entra_user_object_id,receipt_id)
+		VALUES ($1,'A-PERSON','matched',$2,$3,$4,gen_random_uuid())`, a, version, directory, user)
+	got := h.call(t, a, http.MethodGet, "/v1/people/A-PERSON/entra-link", "", asOfficer()...)
+	if got.status != http.StatusOK || got.body["entraUserObjectId"] != user.String() || got.body["status"] != "matched" {
+		t.Fatalf("officer read = %d %s", got.status, got.body)
+	}
+	if got := h.call(t, a, http.MethodGet, "/v1/people/A-PERSON/entra-link", "", "X-Muistamo-Actor", "person-a@example.invalid"); got.status != http.StatusForbidden {
+		t.Errorf("the person's own read = %d, want 403", got.status)
+	}
+	if got := h.call(t, a, http.MethodGet, "/v1/people/NOBODY/entra-link", "", asOfficer()...); got.status != http.StatusNotFound {
+		t.Errorf("unknown person = %d, want 404", got.status)
+	}
+	if got := h.call(t, b, http.MethodGet, "/v1/people/A-PERSON/entra-link", "", asOfficer()...); got.status == http.StatusOK {
+		t.Errorf("another tenant read the link: %s", got.body)
+	}
+}

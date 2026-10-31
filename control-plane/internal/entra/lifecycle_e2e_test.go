@@ -23,8 +23,10 @@ import (
 	"muistamo.dev/muistamo/control-plane/evidencechain"
 	"muistamo.dev/muistamo/control-plane/internal/api"
 	"muistamo.dev/muistamo/control-plane/internal/lifecycle"
+	"muistamo.dev/muistamo/control-plane/internal/registry"
 	"muistamo.dev/muistamo/control-plane/internal/signature"
 	"muistamo.dev/muistamo/control-plane/internal/store"
+	"muistamo.dev/muistamo/control-plane/internal/testdb"
 )
 
 // Exercise the production HTTP handler, new named workflows/activities, real Temporal and
@@ -64,7 +66,7 @@ func TestAdapterEntraLifecycleEndToEnd(t *testing.T) {
 	w.RegisterWorkflow(lifecycle.EntraHRDispatch)
 	w.RegisterWorkflow(lifecycle.EntraJoiner)
 	w.RegisterWorkflow(lifecycle.EntraLeaver)
-	w.RegisterActivity(&lifecycle.EntraActivities{Registry: f.svc, Identity: f.adapter, Revoker: &lifecycle.Simulated{}})
+	w.RegisterActivity(&lifecycle.EntraActivities{Registry: f.svc, Identity: f.adapter, Revoker: &lifecycle.Simulated{}, Users: f.adapter})
 	if err := w.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +80,10 @@ func TestAdapterEntraLifecycleEndToEnd(t *testing.T) {
 	defer server.Close()
 	at := time.Now().UTC().Truncate(time.Second)
 	person := "LIVE-EMPLOYEE"
+	entraUser := uuid.New()
+	f.graph.mu.Lock()
+	f.graph.users = []map[string]any{{"id": entraUser.String(), "employeeId": person}, {"id": uuid.NewString(), "employeeId": "SOMEONE-ELSE"}}
+	f.graph.mu.Unlock()
 	var workflows []string
 	post := func(id string, kind muistamov1.HREventType, offset int64) muistamov1.HREventAccepted {
 		t.Helper()
@@ -195,6 +201,15 @@ func TestAdapterEntraLifecycleEndToEnd(t *testing.T) {
 	}
 	if counts["hr.event.setup-completed"] != 3 || counts["identity.operation.intent"] != 4 || counts["personal-layer.review-not-opened"] != 1 {
 		t.Fatalf("live lifecycle evidence incomplete: %v", counts)
+	}
+	// The joiner and the rehire each linked the person to their own Entra user.
+	testdb.Exec(t, f.db.OwnerURL, `INSERT INTO privacy_officers (tenant_id, officer) VALUES ($1, $2)`, f.actor.Tenant, officer)
+	link, err := f.svc.GetEntraUserLink(ctx, registry.Actor{Tenant: f.actor.Tenant, Name: officer, RequestID: "e2e-link"}, person)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if link.Status != "matched" || link.EntraUserObjectId == nil || *link.EntraUserObjectId != entraUser || counts["identity.user.linked"] != 2 || counts["identity.user.unmatched"] != 0 {
+		t.Fatalf("live joiner link = %+v, evidence %v", link, counts)
 	}
 	posts := 0
 	f.graph.mu.Lock()

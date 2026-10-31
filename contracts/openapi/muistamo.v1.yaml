@@ -887,6 +887,28 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/people/{personId}/entra-link:
+    parameters:
+      - name: personId
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+    get:
+      operationId: getEntraUserLink
+      summary: Which Entra user an HR person was matched to (privacy officers only)
+      responses:
+        "200":
+          description: The link, including unmatched, ambiguous and conflict outcomes.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/entrauserlink.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/privacy/access:
     post:
       operationId: exportPersonalData
