@@ -728,6 +728,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/people/{personId}/entra-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        /** Which Entra user an HR person was matched to (privacy officers only) */
+        get: operations["getEntraUserLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/privacy/access": {
         parameters: {
             query?: never;
@@ -1264,6 +1283,29 @@ export interface components {
             tenantId: string;
             /** Format: uuid */
             receiptId: string;
+        };
+        /**
+         * EntraUserLink
+         * @description Which Entra user an HR person is, as the person's latest live joiner found it: the user whose employeeId equals the HR person id, keyed by the user's immutable object id. Requests made with an Entra token are matched to a person only through a matched link, never by name or email. unmatched: no user carries the id, or the HR id cannot be an Entra employeeId. ambiguous: more than one user carries it. conflict: the user also matched another person; neither person is linked until a later joiner finds them unambiguously. unavailable: the lookup was refused or failed, so no earlier link is kept. Only matched links carry entraUserObjectId.
+         */
+        EntraUserLink: {
+            personId: string;
+            /** @enum {string} */
+            status: "matched" | "unmatched" | "ambiguous" | "conflict" | "unavailable";
+            /** Format: uuid */
+            entraUserObjectId?: string;
+            /** Format: uuid */
+            entraTenantId: string;
+            /**
+             * Format: uuid
+             * @description The HR receipt whose joiner recorded this outcome. A conflict found by another person's joiner keeps this person's receipt.
+             */
+            receiptId: string;
+            /**
+             * Format: date-time
+             * @description When this outcome was recorded.
+             */
+            matchedAt: string;
         };
         /**
          * EntryDecay
@@ -3698,6 +3740,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErasureProof"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getEntraUserLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link, including unmatched, ambiguous and conflict outcomes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntraUserLink"];
                 };
             };
             default: components["responses"]["Problem"];

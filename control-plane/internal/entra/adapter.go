@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -201,4 +202,39 @@ func (a *Adapter) Reconcile(ctx context.Context, actor registry.Actor, id uuid.U
 		return op, err
 	}
 	return a.confirmGlobalState(ctx, actor, stored)
+}
+
+// LookupUser finds the person's Entra user with the client of the joiner's binding version,
+// after checking the version's stored configuration digest, as clientFor does for an identity.
+func (a *Adapter) LookupUser(ctx context.Context, actor registry.Actor, version uuid.UUID, employeeID string) (registry.EntraUserMatch, error) {
+	c := a.clients[version]
+	if c == nil || c.binding.TenantId != actor.Tenant.String() {
+		return registry.EntraUserMatch{}, ErrConfiguration
+	}
+	stored, err := a.registry.IdentityBinding(ctx, actor, version)
+	if err != nil {
+		return registry.EntraUserMatch{}, err
+	}
+	raw, err := json.Marshal(c.binding)
+	if err != nil {
+		return registry.EntraUserMatch{}, ErrConfiguration
+	}
+	sum := sha256.Sum256(raw)
+	if hex.EncodeToString(sum[:]) != stored.ConfigDigest {
+		return registry.EntraUserMatch{}, ErrConfiguration
+	}
+	match, err := c.LookupUserByEmployeeID(ctx, actor.Tenant, employeeID)
+	var provider *Error
+	if errors.As(err, &provider) && (provider.Status == 400 || provider.Status == 401 || provider.Status == 403 || provider.Status == 404) {
+		return registry.EntraUserMatch{}, &registry.ProviderRefusal{Code: fmt.Sprintf("%d %s", provider.Status, provider.Code)}
+	}
+	if err != nil {
+		return registry.EntraUserMatch{}, err
+	}
+	out := registry.EntraUserMatch{Status: match.Status}
+	if match.Status == "matched" {
+		id := match.ObjectID
+		out.ObjectID = &id
+	}
+	return out, nil
 }
