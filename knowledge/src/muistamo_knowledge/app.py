@@ -6,6 +6,7 @@ defined inside create_app at definition time.
 
 import logging
 import os
+import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from mcp.server.transport_security import TransportSecuritySettings
 from muistamo_contracts.v1.accessrequest import AccessRequest
 from muistamo_contracts.v1.common.healthstatus import HealthStatus, Status
 from muistamo_contracts.v1.erasurerequest import ErasureRequest
@@ -29,12 +31,12 @@ from muistamo_contracts.v1.rollbackinput import RollbackInput
 from muistamo_contracts.v1.verificationinput import VerificationInput
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
+from starlette.routing import Route
 
-from muistamo_knowledge import auth, evidence
+from muistamo_knowledge import auth, evidence, oauth
 from muistamo_knowledge.auth import Resolver, Unauthenticated, deny_all
 from muistamo_knowledge.connectors import ConnectorUnavailable
 from muistamo_knowledge.db import UnknownTenant
-from muistamo_knowledge.entra import KNOWLEDGE_SCOPE
 from muistamo_knowledge.leavers import Leavers
 from muistamo_knowledge.mcp_server import build as build_mcp
 from muistamo_knowledge.mcp_server import require_identity
@@ -90,8 +92,27 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     # A bearer-token resolver says how to authenticate on every 401 (RFC 6750 section 3).
     challenge = getattr(resolver, "challenge", None)
     unauthorized_headers = {"WWW-Authenticate": challenge} if challenge else None
+    # The service's public URL, checked (a bad one stops startup): assistants reach the MCP
+    # endpoints and sign-in there (docs/assistants-plan.md).
+    public = oauth.public_url(os.environ.get("MUISTAMO_KNOWLEDGE_PUBLIC_URL"))
+    # DNS-rebinding protection stays on: loopback, as the SDK allows by default, and the public
+    # host the service is configured with, nothing else.
+    hosts, origins = (
+        ["127.0.0.1:*", "localhost:*", "[::1]:*"],
+        ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"],
+    )
+    if public:
+        hosts.append(urllib.parse.urlsplit(public).netloc)
+        origins.append(public)
     mcp_app = (
-        mcp.streamable_http_app(streamable_http_path="/", stateless_http=True, json_response=True)
+        mcp.streamable_http_app(
+            streamable_http_path="/",
+            stateless_http=True,
+            json_response=True,
+            transport_security=TransportSecuritySettings(
+                enable_dns_rebinding_protection=True, allowed_hosts=hosts, allowed_origins=origins
+            ),
+        )
         if mcp is not None
         else None
     )
@@ -374,56 +395,116 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
             )
         return ok(await run_in_threadpool(leavers().fence, tenant, doc.user, doc.generation))
 
-    # Sign-in discovery for a tenant's MCP endpoint (RFC 9728; docs/assistants-plan.md). Served
-    # only when the service knows its public URL and the tenant has an Entra directory.
-    public = os.environ.get("MUISTAMO_KNOWLEDGE_PUBLIC_URL", "").rstrip("/")
+    # Sign-in for assistants (docs/assistants-plan.md): per tenant, RFC 9728 metadata for the
+    # MCP endpoint and a thin authorization server in front of the tenant's Entra (oauth.py).
+    # Offered only when the service knows its public URL (checked here: a bad one stops startup)
+    # and the tenant has an Entra directory; otherwise every one of these answers 404.
+    signin = oauth.SignIn(
+        public,
+        knowledge.db.entra_registration if knowledge is not None else (lambda _: None),
+    )
 
-    def discovery(tenant: uuid.UUID) -> dict[str, Any] | None:
-        if not public or knowledge is None:
+    def canonical_tenant(value: str) -> uuid.UUID | None:
+        try:
+            parsed = uuid.UUID(value)
+        except ValueError:
             return None
-        registration = knowledge.db.entra_registration(tenant)
-        if registration is None:
-            return None
-        directory, audience = registration
-        return {
-            "resource": f"{public}/mcp/t/{tenant}/knowledge",
-            "authorization_servers": [f"https://login.microsoftonline.com/{directory}/v2.0"],
-            # Fully qualified: Entra does not take the resource parameter.
-            "scopes_supported": [f"api://{audience}/{KNOWLEDGE_SCOPE}"],
-            "bearer_methods_supported": ["header"],
-            "resource_name": "Muistamo knowledge",
-        }
+        return parsed if str(parsed) == value else None
 
-    def tenant_challenge(tenant: uuid.UUID) -> str | None:
-        found = discovery(tenant)
+    def tenant_challenge(tenant: uuid.UUID, token_presented: bool) -> str | None:
+        try:
+            return signin.challenge(tenant, token_presented)
+        except Exception:  # noqa: BLE001 - the 401 is still sent, with the generic challenge
+            log.exception(
+                "sign-in discovery unavailable for a challenge", extra={"tenant": str(tenant)}
+            )
+            return None
+
+    async def metadata(tenant: str, build) -> JSONResponse:
+        parsed = canonical_tenant(tenant)
+        found = await run_in_threadpool(build, parsed) if parsed is not None else None
         if found is None:
-            return None
-        return (
-            f'Bearer realm="muistamo-knowledge",'
-            f' resource_metadata="{public}/.well-known/oauth-protected-resource/mcp/t/{tenant}/knowledge",'
-            f' scope="{found["scopes_supported"][0]}"'
-        )
+            return problem(404, "Not found", headers={"Cache-Control": "no-store"})
+        return JSONResponse(found, headers={"Cache-Control": "public, max-age=300"})
 
     @app.get("/.well-known/oauth-protected-resource/mcp/t/{tenant}/knowledge")
     async def protected_resource_metadata(tenant: str) -> JSONResponse:
-        try:
-            parsed = uuid.UUID(tenant)
-        except ValueError:
-            parsed = None
-        found = (
-            await run_in_threadpool(discovery, parsed)
-            if parsed is not None and str(parsed) == tenant
-            else None
+        return await metadata(tenant, signin.protected_resource)
+
+    # RFC 8414 path-inserted, and appended to the issuer, as MCP clients try both.
+    @app.get("/.well-known/oauth-authorization-server/oauth/t/{tenant}")
+    @app.get("/oauth/t/{tenant}/.well-known/oauth-authorization-server")
+    async def authorization_server_metadata(tenant: str) -> JSONResponse:
+        return await metadata(tenant, signin.authorization_server)
+
+    def oauth_error(exc: oauth.OAuthError) -> JSONResponse:
+        return JSONResponse(
+            {"error": exc.error, "error_description": exc.description},
+            status_code=exc.status,
+            headers={"Cache-Control": "no-store"},
         )
-        if found is None:
-            return problem(404, "Not found")
-        return JSONResponse(found)
+
+    @app.get("/oauth/t/{tenant}/authorize")
+    async def oauth_authorize(tenant: str, request: Request) -> Response:
+        parsed = canonical_tenant(tenant)
+        if parsed is None:
+            return oauth_error(oauth.OAuthError(404, "invalid_request", "no sign-in here"))
+        params = dict(request.query_params)
+        try:
+            redirect = await run_in_threadpool(signin.authorize, parsed, params)
+        except oauth.OAuthError as exc:
+            return oauth_error(exc)
+        return Response(
+            status_code=302, headers={"Location": redirect.location, "Cache-Control": "no-store"}
+        )
+
+    @app.post("/oauth/t/{tenant}/token")
+    async def oauth_token(tenant: str, request: Request) -> Response:
+        parsed = canonical_tenant(tenant)
+        if parsed is None:
+            return oauth_error(oauth.OAuthError(404, "invalid_request", "no sign-in here"))
+        raw = await request.body()
+        if len(raw) > oauth.MAX_BODY:
+            return oauth_error(oauth.OAuthError(400, "invalid_request", "request too large"))
+        form = {
+            k: v for k, v in urllib.parse.parse_qsl(raw.decode("latin-1"), keep_blank_values=True)
+        }
+        try:
+            status, body = await run_in_threadpool(
+                signin.token, parsed, form, request.headers.get("Authorization")
+            )
+        except oauth.OAuthError as exc:
+            return oauth_error(exc)
+        return Response(
+            content=body,
+            status_code=status,
+            media_type="application/json",
+            headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+        )
 
     if mcp_app is not None:
         app.mount("/mcp/knowledge", require_identity(mcp_app, resolver, knowledge))
-        app.mount(
-            "/mcp/t/{tenant}/knowledge",
-            require_identity(mcp_app, resolver, knowledge, tenant_challenge=tenant_challenge),
+        tenant_mcp = require_identity(
+            mcp_app, resolver, knowledge, tenant_challenge=tenant_challenge
+        )
+        app.mount("/mcp/t/{tenant}/knowledge", tenant_mcp)
+
+        class Slashless:
+            """The endpoint as its metadata names it, without the trailing slash: served directly,
+            never redirected (a redirect behind a TLS proxy would name the internal host). A class,
+            so Starlette routes to it as an ASGI app rather than a request handler."""
+
+            async def __call__(self, scope, receive, send) -> None:
+                path = scope["path"]
+                inner = dict(scope, root_path=scope.get("root_path", "") + path, path=path + "/")
+                await tenant_mcp(inner, receive, send)
+
+        app.router.routes.append(
+            Route(
+                "/mcp/t/{tenant}/knowledge",
+                endpoint=Slashless(),
+                methods=["GET", "POST", "DELETE"],
+            )
         )
     else:
 
