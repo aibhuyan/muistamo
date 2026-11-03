@@ -11,7 +11,14 @@ class LeaverReviewPerson(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    email: Annotated[str, Field(min_length=3)]
+    email: Annotated[str | None, Field(min_length=3)] = None
+    user: Annotated[
+        str | None,
+        Field(
+            description="Live (Entra) mode: the identity the knowledge service knows the person by.",
+            pattern="^entra:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        ),
+    ] = None
     hrPersonId: Annotated[str | None, Field(max_length=200, min_length=1)] = None
 
 
@@ -24,7 +31,14 @@ class LeaverReviewDecider(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    email: Annotated[str, Field(min_length=3)]
+    email: Annotated[str | None, Field(min_length=3)] = None
+    user: Annotated[
+        str | None,
+        Field(
+            description="Live (Entra) mode: the decider's identity.",
+            pattern="^entra:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        ),
+    ] = None
     kind: Kind
 
 
@@ -40,10 +54,17 @@ class LeaverReviewOpen(BaseModel):
             min_length=1,
         ),
     ]
+    generation: Annotated[
+        int | None,
+        Field(
+            description="Live (Entra) mode: the leaver's HR generation, which orders this call against a rehire's fence. Required with person.user; absent for a legacy leaver.",
+            ge=1,
+        ),
+    ] = None
     person: Annotated[LeaverReviewPerson, Field(title="LeaverReviewPerson")]
     deciders: Annotated[
         list[LeaverReviewDecider],
         Field(
-            description="Candidate deciders in order of preference: the manager, then instance sponsors. The first who is not the leaver decides; with none, the tenant's privacy officers do."
+            description="Candidate deciders in order of preference: the manager, then instance sponsors. The first who is not the leaver decides; with none, the tenant's privacy officers do. A live leaver names deciders by user."
         ),
     ]

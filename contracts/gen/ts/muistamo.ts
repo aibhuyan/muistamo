@@ -1925,6 +1925,8 @@ export interface components {
             id: string;
             /** @description The leaver's identity. */
             person: string;
+            /** @description Live (Entra) mode: the leaver's HR generation the review was opened at. */
+            generation?: number;
             /** @enum {string} */
             status: "open" | "closed";
             /**
@@ -1969,20 +1971,47 @@ export interface components {
             summary?: string;
         };
         /**
+         * LeaverReviewFence
+         * @description Sent by the control plane when a live (Entra) person is rehired, signed with the tenant's service secret. Raises the person's fence to this HR generation, never lowering it, and cancels any open review from an earlier generation, unfreezing the layer. From then on a review call from an earlier generation is refused as superseded. Repeating it is safe.
+         */
+        LeaverReviewFence: {
+            /** @description The rehired person's identity. */
+            user: string;
+            /** @description The rehire's HR generation. */
+            generation: number;
+        };
+        /**
+         * LeaverReviewFenced
+         * @description The person's fence after a fence call, and the reviews it cancelled.
+         */
+        LeaverReviewFenced: {
+            user: string;
+            /** @description The person's fence now: the highest generation ever sent for them, which may be later than the one in this call. */
+            generation: number;
+            /** @description Ids of the reviews this call cancelled. */
+            cancelled: string[];
+        };
+        /**
          * LeaverReviewOpen
-         * @description Sent by the control plane's leaver workflow, signed with the tenant's service secret: open the review of a leaver's personal knowledge layer and freeze it. Repeating an id is safe.
+         * @description Sent by the control plane's leaver workflow, signed with the tenant's service secret: open the review of a leaver's personal knowledge layer and freeze it. Repeating an id is safe. A live (Entra) leaver names the person and deciders by user and carries the leaving's HR generation; once the person is fenced at a later generation, it is refused as superseded.
          */
         LeaverReviewOpen: {
             /** @description The leaver workflow's id and run id: unique per leaving, stable across retries. */
             id: string;
+            /** @description Live (Entra) mode: the leaver's HR generation, which orders this call against a rehire's fence. Required with person.user; absent for a legacy leaver. */
+            generation?: number;
             /** LeaverReviewPerson */
             person: {
-                email: string;
+                email?: string;
+                /** @description Live (Entra) mode: the identity the knowledge service knows the person by. */
+                user?: string;
                 hrPersonId?: string;
             };
-            /** @description Candidate deciders in order of preference: the manager, then instance sponsors. The first who is not the leaver decides; with none, the tenant's privacy officers do. */
+            /** @description Candidate deciders in order of preference: the manager, then instance sponsors. The first who is not the leaver decides; with none, the tenant's privacy officers do. A live leaver names deciders by user. */
             deciders: {
-                email: string;
+                email?: string;
+                /** @description Live (Entra) mode: the decider's identity. */
+                user?: string;
                 /** @enum {string} */
                 kind: "manager" | "sponsor";
             }[];

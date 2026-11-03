@@ -616,6 +616,33 @@ paths:
                 $ref: '#/components/schemas/LeaverReview'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/knowledge/internal/leaver-reviews/fence:
+    post:
+      operationId: fenceLeaverReviews
+      summary: A live person was rehired; order every earlier review call before this
+        generation (service call)
+      description: 'Service call from the control plane only: authenticated by X-Muistamo-Tenant
+        and X-Muistamo-Signature (t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body">
+        under the tenant''s service secret), never by a user identity. Raises the
+        person''s fence, never lowering it, and cancels their open reviews from earlier
+        generations. From then on an open, expire or decision for an earlier generation
+        is refused with 409 and problem type https://muistamo.dev/problems/superseded,
+        and changes nothing.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaverReviewFence'
+      responses:
+        '200':
+          description: The person's fence now, and what this call cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaverReviewFenced'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/knowledge/events:
     get:
       operationId: listEvents
@@ -3073,6 +3100,11 @@ components:
         person:
           description: The leaver's identity.
           type: string
+        generation:
+          description: 'Live (Entra) mode: the leaver''s HR generation the review
+            was opened at.'
+          type: integer
+          minimum: 1
         status:
           type: string
           enum:
@@ -3178,11 +3210,56 @@ components:
             - entryIds
           - required:
             - summary
+    LeaverReviewFence:
+      title: LeaverReviewFence
+      description: Sent by the control plane when a live (Entra) person is rehired,
+        signed with the tenant's service secret. Raises the person's fence to this
+        HR generation, never lowering it, and cancels any open review from an earlier
+        generation, unfreezing the layer. From then on a review call from an earlier
+        generation is refused as superseded. Repeating it is safe.
+      type: object
+      additionalProperties: false
+      required:
+      - user
+      - generation
+      properties:
+        user:
+          description: The rehired person's identity.
+          type: string
+          pattern: ^entra:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+        generation:
+          description: The rehire's HR generation.
+          type: integer
+          minimum: 1
+    LeaverReviewFenced:
+      title: LeaverReviewFenced
+      description: The person's fence after a fence call, and the reviews it cancelled.
+      type: object
+      additionalProperties: false
+      required:
+      - user
+      - generation
+      - cancelled
+      properties:
+        user:
+          type: string
+        generation:
+          description: 'The person''s fence now: the highest generation ever sent
+            for them, which may be later than the one in this call.'
+          type: integer
+          minimum: 1
+        cancelled:
+          description: Ids of the reviews this call cancelled.
+          type: array
+          items:
+            type: string
     LeaverReviewOpen:
       title: LeaverReviewOpen
       description: 'Sent by the control plane''s leaver workflow, signed with the
         tenant''s service secret: open the review of a leaver''s personal knowledge
-        layer and freeze it. Repeating an id is safe.'
+        layer and freeze it. Repeating an id is safe. A live (Entra) leaver names
+        the person and deciders by user and carries the leaving''s HR generation;
+        once the person is fenced at a later generation, it is refused as superseded.'
       type: object
       additionalProperties: false
       required:
@@ -3196,41 +3273,85 @@ components:
           type: string
           minLength: 1
           maxLength: 255
+        generation:
+          description: 'Live (Entra) mode: the leaver''s HR generation, which orders
+            this call against a rehire''s fence. Required with person.user; absent
+            for a legacy leaver.'
+          type: integer
+          minimum: 1
         person:
           title: LeaverReviewPerson
           type: object
           additionalProperties: false
-          required:
-          - email
           properties:
             email:
               type: string
               minLength: 3
+            user:
+              description: 'Live (Entra) mode: the identity the knowledge service
+                knows the person by.'
+              type: string
+              pattern: ^entra:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             hrPersonId:
               type: string
               minLength: 1
               maxLength: 200
+          if:
+            required:
+            - user
+          then:
+            not:
+              required:
+              - email
+          else:
+            required:
+            - email
         deciders:
           description: 'Candidate deciders in order of preference: the manager, then
             instance sponsors. The first who is not the leaver decides; with none,
-            the tenant''s privacy officers do.'
+            the tenant''s privacy officers do. A live leaver names deciders by user.'
           type: array
           items:
             title: LeaverReviewDecider
             type: object
             additionalProperties: false
             required:
-            - email
             - kind
             properties:
               email:
                 type: string
                 minLength: 3
+              user:
+                description: 'Live (Entra) mode: the decider''s identity.'
+                type: string
+                pattern: ^entra:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
               kind:
                 type: string
                 enum:
                 - manager
                 - sponsor
+            if:
+              required:
+              - user
+            then:
+              not:
+                required:
+                - email
+            else:
+              required:
+              - email
+      if:
+        properties:
+          person:
+            required:
+            - user
+      then:
+        required:
+        - generation
+      else:
+        not:
+          required:
+          - generation
     LeaverReviewPage:
       title: LeaverReviewPage
       description: The reviews the caller decides, open first.

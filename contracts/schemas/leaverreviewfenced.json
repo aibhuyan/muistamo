@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/leaverreviewfenced.json",
+  "title": "LeaverReviewFenced",
+  "description": "The person's fence after a fence call, and the reviews it cancelled.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "user",
+    "generation",
+    "cancelled"
+  ],
+  "properties": {
+    "user": {
+      "type": "string"
+    },
+    "generation": {
+      "description": "The person's fence now: the highest generation ever sent for them, which may be later than the one in this call.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "cancelled": {
+      "description": "Ids of the reviews this call cancelled.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

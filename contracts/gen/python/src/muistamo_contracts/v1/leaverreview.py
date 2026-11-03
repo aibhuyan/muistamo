@@ -34,6 +34,13 @@ class LeaverReview(BaseModel):
     )
     id: str
     person: Annotated[str, Field(description="The leaver's identity.")]
+    generation: Annotated[
+        int | None,
+        Field(
+            description="Live (Entra) mode: the leaver's HR generation the review was opened at.",
+            ge=1,
+        ),
+    ] = None
     status: Status
     outcome: Annotated[
         Outcome | None,

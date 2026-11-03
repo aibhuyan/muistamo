@@ -163,11 +163,11 @@ func TestReviewOpensWithManagerThenSponsorSigned(t *testing.T) {
 	if err := json.Unmarshal(fake.requests[0].body, &sent); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(sent.Id, "wf-test:") || sent.Person.Email != leaver.Email || *sent.Person.HrPersonId != "e-1" {
+	if !strings.HasPrefix(sent.Id, "wf-test:") || sent.Person.Email == nil || *sent.Person.Email != leaver.Email || sent.Person.User != nil || sent.Generation != nil || *sent.Person.HrPersonId != "e-1" {
 		t.Errorf("sent = %+v", sent)
 	}
-	if len(sent.Deciders) != 2 || sent.Deciders[0].Email != "manager-m@example.invalid" || sent.Deciders[0].Kind != "manager" ||
-		sent.Deciders[1].Email != "sponsor-s@example.invalid" || sent.Deciders[1].Kind != "sponsor" {
+	if len(sent.Deciders) != 2 || sent.Deciders[0].Email == nil || *sent.Deciders[0].Email != "manager-m@example.invalid" || sent.Deciders[0].Kind != "manager" ||
+		sent.Deciders[1].Email == nil || *sent.Deciders[1].Email != "sponsor-s@example.invalid" || sent.Deciders[1].Kind != "sponsor" {
 		t.Errorf("deciders = %+v, want manager then sponsor", sent.Deciders)
 	}
 	if after := lastAfter(t, f, "personal-layer.review-opened"); after["review"] != "wf-test:run" || after["status"] != "open" {

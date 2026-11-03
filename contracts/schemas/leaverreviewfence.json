@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/leaverreviewfence.json",
+  "title": "LeaverReviewFence",
+  "description": "Sent by the control plane when a live (Entra) person is rehired, signed with the tenant's service secret. Raises the person's fence to this HR generation, never lowering it, and cancels any open review from an earlier generation, unfreezing the layer. From then on a review call from an earlier generation is refused as superseded. Repeating it is safe.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "user",
+    "generation"
+  ],
+  "properties": {
+    "user": {
+      "description": "The rehired person's identity.",
+      "type": "string",
+      "pattern": "^entra:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "generation": {
+      "description": "The rehire's HR generation.",
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}
