@@ -7,7 +7,12 @@ package lifecycle_test
 // testdata/histories holds, per release, histories recorded by history_record_test.go:
 //   - pre-45-*: left in flight by the release before live leaver reviews (#45): a leaver in
 //     grace, a leaver rehired in grace, a joiner after its user-link step;
-//   - current-*: the same from today's code, plus a leaver waiting for a kept review.
+//   - current-*: the same from today's code, plus the dispatch (a rehire's, which signals the
+//     earlier leaver run, and a leaver's), a leaver waiting for a kept review, and one rehired
+//     during that wait.
+//
+// Replay compares the commands a workflow issues, not timer durations: a change to the grace
+// period, or to how long a kept review waits, is not caught here.
 //
 // When a release changes these workflows, record its histories as a new set first (they become
 // the next release's in-flight state), and keep every older set.
@@ -39,13 +44,14 @@ func TestRecordedHistoriesReplayDeterministically(t *testing.T) {
 		}
 		return n
 	}
-	if count("pre-45-") < 3 || count("current-") < 4 {
+	if count("pre-45-") < 3 || count("current-") < 7 {
 		t.Fatalf("histories = %v; want the pre-45 and current sets", files)
 	}
 	logger := log.NewStructuredLogger(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	for _, f := range files {
 		t.Run(filepath.Base(f), func(t *testing.T) {
 			replayer := worker.NewWorkflowReplayer()
+			replayer.RegisterWorkflow(lifecycle.EntraHRDispatch)
 			replayer.RegisterWorkflow(lifecycle.EntraLeaver)
 			replayer.RegisterWorkflow(lifecycle.EntraJoiner)
 			if err := replayer.ReplayWorkflowHistoryFromJSONFile(logger, f); err != nil {

@@ -12,7 +12,8 @@ package lifecycle_test
 // Activities are stubs registered under the workflows' activity names, so this file compiles
 // against older trees too: to record what an earlier release left in flight, copy it into a
 // worktree at that commit and run it there without the e2e tag (MUISTAMO_RECORD_SET=<name>).
-// Histories hold only fixed test identifiers.
+// Histories hold only fixed test identifiers; the worker identity is fixed and the host name,
+// which Temporal puts in sticky task queue names, is scrubbed.
 
 import (
 	"bytes"
@@ -42,8 +43,23 @@ var (
 
 type ref = muistamov1.EntraLifecycleRef
 
+// scenario is one history to record.
+type scenario struct {
+	name     string
+	workflow any
+	// Stub results.
+	instances []string
+	kept      bool   // the decider kept the layer: expiry returns a later deadline
+	kind      string // the HR event kind a dispatch reads
+	prior     []string
+	// signalAfter, if not zero, sends the rehire signal once that many timers have started.
+	signalAfter int
+	// until reports the history is ready to record.
+	until func([]*historypb.HistoryEvent) bool
+}
+
 // stubs registers every live activity a release may call, by name, with fixed results.
-func stubs(w worker.Worker, instances []string, kept bool) {
+func stubs(w worker.Worker, s scenario) {
 	none := func(context.Context, ref) error { return nil }
 	named := func(context.Context, ref, string) error { return nil }
 	for _, name := range []string{"EntraRecordReviewCoverage", "EntraSettleSetup", "EntraLinkUser", "EntraUnlinkUser", "EntraFenceReview", "EntraRecordFenceFailure"} {
@@ -52,14 +68,16 @@ func stubs(w worker.Worker, instances []string, kept bool) {
 	for _, name := range []string{"EntraDisable", "EntraRevoke", "EntraRetire", "EntraCreate", "EntraEnable", "EntraActivate"} {
 		w.RegisterActivityWithOptions(named, activity.RegisterOptions{Name: name})
 	}
-	w.RegisterActivityWithOptions(func(context.Context, ref) ([]string, error) { return instances, nil }, activity.RegisterOptions{Name: "EntraPrepareLeaver"})
+	w.RegisterActivityWithOptions(func(context.Context, ref) (string, error) { return s.kind, nil }, activity.RegisterOptions{Name: "EntraEventKind"})
+	w.RegisterActivityWithOptions(func(context.Context, ref) ([]string, error) { return s.prior, nil }, activity.RegisterOptions{Name: "EntraPriorLeavers"})
+	w.RegisterActivityWithOptions(func(context.Context, ref) ([]string, error) { return s.instances, nil }, activity.RegisterOptions{Name: "EntraPrepareLeaver"})
 	w.RegisterActivityWithOptions(func(context.Context, ref, ref) error { return nil }, activity.RegisterOptions{Name: "EntraConfirmRehire"})
 	w.RegisterActivityWithOptions(func(context.Context, ref) (lifecycle.ReviewOpened, error) {
 		return lifecycle.ReviewOpened{ID: "entra-leaver:" + recordRef.ReceiptId.String(), Opened: true}, nil
 	}, activity.RegisterOptions{Name: "EntraOpenReview"})
 	w.RegisterActivityWithOptions(func(context.Context, ref, string) (lifecycle.ReviewState, error) {
-		if kept {
-			return lifecycle.ReviewState{Deadline: time.Now().Add(30 * 24 * time.Hour)}, nil
+		if s.kept {
+			return lifecycle.ReviewState{Deadline: time.Now().UTC().Add(30 * 24 * time.Hour)}, nil
 		}
 		return lifecycle.ReviewState{Closed: true}, nil
 	}, activity.RegisterOptions{Name: "EntraExpireReview"})
@@ -84,46 +102,45 @@ func TestRecordHistories(t *testing.T) {
 	defer c.Close()
 	ctx := context.Background()
 
-	scenarios := []struct {
-		name      string
-		workflow  any
-		instances []string
-		kept      bool
-		// until reports the history is ready to record; signal, if set, runs once the leaver waits.
-		until  func([]*historypb.HistoryEvent) bool
-		signal bool
-	}{
+	scenarios := []scenario{
 		{name: "leaver-in-grace", workflow: lifecycle.EntraLeaver, instances: []string{"one"}, until: timers(1)},
-		{name: "leaver-rehired-in-grace", workflow: lifecycle.EntraLeaver, instances: []string{"one"}, until: completed, signal: true},
+		{name: "leaver-rehired-in-grace", workflow: lifecycle.EntraLeaver, instances: []string{"one"}, signalAfter: 1, until: completed},
 		{name: "joiner", workflow: lifecycle.EntraJoiner, until: completed},
+		// A rehire's dispatch signals the person's earlier leaver run (here long gone) first.
+		{name: "dispatch-joiner", workflow: lifecycle.EntraHRDispatch, kind: "joiner", prior: []string{"entra-leaver-gone"}, until: completed},
+		{name: "dispatch-leaver", workflow: lifecycle.EntraHRDispatch, kind: "leaver", instances: []string{"one"}, until: completed},
 	}
 	if set == "current" {
-		// Grace elapses (e2e build, short grace); the decider kept the layer, so the run waits.
-		scenarios = append(scenarios, struct {
-			name      string
-			workflow  any
-			instances []string
-			kept      bool
-			until     func([]*historypb.HistoryEvent) bool
-			signal    bool
-		}{name: "leaver-waiting-for-a-kept-review", workflow: lifecycle.EntraLeaver, kept: true, until: timers(2)})
+		// The grace period elapses (an e2e build's short grace); the decider kept the layer, so
+		// the run waits for the later deadline, and a rehire may end that wait.
+		scenarios = append(scenarios,
+			scenario{name: "leaver-waiting-for-a-kept-review", workflow: lifecycle.EntraLeaver, kept: true, until: timers(2)},
+			scenario{name: "leaver-rehired-waiting-for-a-kept-review", workflow: lifecycle.EntraLeaver, kept: true, signalAfter: 2, until: completed},
+		)
 	}
 	for _, s := range scenarios {
 		queue := "history-record-" + uuid.NewString()
 		w := worker.New(c, queue, worker.Options{Identity: "history-recorder"})
+		w.RegisterWorkflow(lifecycle.EntraHRDispatch)
 		w.RegisterWorkflow(lifecycle.EntraLeaver)
 		w.RegisterWorkflow(lifecycle.EntraJoiner)
-		stubs(w, s.instances, s.kept)
+		stubs(w, s)
 		if err := w.Start(); err != nil {
 			t.Fatal(err)
 		}
 		id := "history-" + set + "-" + s.name + "-" + uuid.NewString()
-		run, err := c.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: id, TaskQueue: queue}, s.workflow, recordRef)
+		input := recordRef
+		if s.kind != "" {
+			// A dispatch starts its child under an id derived from the receipt, never reusable on
+			// the server: a fresh (fake) receipt per recording.
+			input.ReceiptId = uuid.New()
+		}
+		run, err := c.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: id, TaskQueue: queue}, s.workflow, input)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if s.signal {
-			wait(t, c, id, timers(1))
+		if s.signalAfter > 0 {
+			wait(t, c, id, timers(s.signalAfter))
 			if err := c.SignalWorkflow(ctx, id, run.GetRunID(), lifecycle.EntraRehiredSignal, recordRehire); err != nil {
 				t.Fatal(err)
 			}
@@ -144,6 +161,9 @@ func TestRecordHistories(t *testing.T) {
 			t.Fatal(err)
 		}
 		_ = c.TerminateWorkflow(ctx, id, "", "history recorded")
+		if s.kind != "" {
+			_ = c.TerminateWorkflow(ctx, lifecycle.EntraChildWorkflowID(input, s.kind), "", "history recorded")
+		}
 		w.Stop()
 		t.Logf("recorded %s-%s: %d events", set, s.name, len(events))
 	}
