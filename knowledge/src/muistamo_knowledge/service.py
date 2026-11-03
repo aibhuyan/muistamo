@@ -340,7 +340,7 @@ class Knowledge:
         )
         return [_entry(r) for r in cur.fetchall()]
 
-    def _ensure_not_frozen(self, cur: Cursor, person: str) -> None:
+    def _frozen(self, cur: Cursor, person: str) -> bool:
         """A leaver's personal layer is frozen while their review is open (E4.2)."""
         cur.execute(
             "SELECT EXISTS (SELECT 1 FROM knowledge.leaver_reviews"
@@ -348,7 +348,10 @@ class Knowledge:
             (person,),
         )
         row = cur.fetchone()
-        if row and row[0]:
+        return bool(row and row[0])
+
+    def _ensure_not_frozen(self, cur: Cursor, person: str) -> None:
+        if self._frozen(cur, person):
             raise Conflict(
                 "this personal layer is frozen while its leaver review is open; nothing can be"
                 " added, proposed or deleted"
@@ -520,6 +523,7 @@ class Knowledge:
                 raise Conflict(f"proposal is {status}; only proposals in review can be decided")
 
             merged_version = None
+            retired: list[str] = []
             if decision == "approve":
                 if info["requires_eval"]:
                     raise Conflict(
@@ -528,6 +532,7 @@ class Knowledge:
                 merged_version = self._merge(
                     cur, actor, pack, info["latest"], proposal_id, edits or []
                 )
+                retired = self._retire_merged_sources(cur, contributor, proposal_id)
             elif edits:
                 raise Invalid("edits are only allowed when approving")
             cur.execute(
@@ -553,12 +558,38 @@ class Knowledge:
                     "reason": reason,
                     "mergedVersion": merged_version,
                     "edited": [e["key"] for e in edits or []],
+                    **({"retiredPersonalEntries": retired} if decision == "approve" else {}),
                 },
             )
             result = self._proposal(cur, proposal_id)
         if merged_version is not None:
             self._published(actor, pack, merged_version)
         return result
+
+    def _retire_merged_sources(self, cur: Cursor, contributor: str, proposal_id: UUID) -> list[str]:
+        """Retire the author's personal entries this merged proposal was made from: the pack now
+        holds them, and as the most specific layer a personal copy would shadow later changes to
+        the pack entry for its author alone. Only those exact entries go; a newer personal note
+        on the same key stays. A layer frozen for a leaver review is left to that review."""
+        if self._frozen(cur, contributor):
+            return []
+        cur.execute(
+            "DELETE FROM knowledge.personal_entries p USING knowledge.entries c"
+            " JOIN knowledge.proposal_entries pe ON pe.tenant_id = c.tenant_id AND pe.entry_id = c.id"
+            " WHERE pe.proposal_id = %s AND p.tenant_id = c.tenant_id AND p.owner = %s"
+            " AND p.entry_id = c.derived_from RETURNING p.entry_id",
+            (proposal_id, contributor),
+        )
+        ids = sorted(str(r[0]) for r in cur.fetchall())
+        if ids:
+            # As a person's own delete does; the proposal's copies keep the lineage.
+            cur.execute(
+                "DELETE FROM knowledge.entries e WHERE e.id = ANY(%s::uuid[])"
+                " AND NOT EXISTS (SELECT 1 FROM knowledge.proposal_entries p WHERE p.tenant_id = e.tenant_id AND p.entry_id = e.id)"
+                " AND NOT EXISTS (SELECT 1 FROM knowledge.pack_version_entries v WHERE v.tenant_id = e.tenant_id AND v.entry_id = e.id)",
+                (ids,),
+            )
+        return ids
 
     def _merge(
         self,

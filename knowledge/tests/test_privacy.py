@@ -75,7 +75,12 @@ def seed(world) -> dict:
     capture(a, "private-note", "Remind me about the dentist.")
     r = a.get("/v1/knowledge/retrieve", params={"q": "fiscal", "packs": "basics"})
     assert r.status_code == 200, r.text
-    return {"phone": phone}
+    # Merging retired A's personal copies, so an officer redacts the merged entry itself, as the
+    # access export lists it.
+    v1 = b.get("/v1/knowledge/packs/basics/versions/0.1.0").json()["entries"]
+    merged_phone = next(e["entry"]["id"] for e in v1 if e["entry"]["key"] == "desk-phone")
+    assert phone not in [e["id"] for e in a.get("/v1/knowledge/personal/entries").json()["items"]]
+    return {"phone": merged_phone}
 
 
 def erase(world, request_id: uuid.UUID, redact: list[str] | None = None, reason: str = "DSR-7"):
@@ -205,7 +210,8 @@ def test_only_officers_erase_and_never_themselves(world) -> None:
     assert erase(world, uuid.uuid4(), reason=f"asked by {A}").status_code == 422
     assert erase(world, uuid.uuid4(), redact=[str(uuid.uuid4())]).status_code == 422
     # None of the refusals erased anything.
-    assert remaining(world, ["dev:" + A, A]).get("personal_entries") == 3
+    # Only the private note is still personal: the two merged copies were retired on merge.
+    assert remaining(world, ["dev:" + A, A]).get("personal_entries") == 1
 
 
 def test_access_export(world) -> None:
@@ -213,7 +219,7 @@ def test_access_export(world) -> None:
     own = world.client(A).post("/v1/knowledge/privacy/access", json={"subject": subject()})
     assert own.status_code == 200, own.text
     sections = own.json()["sections"]
-    assert len(sections["personal_entries"]) == 3 and len(sections["reads"]) == 1
+    assert len(sections["personal_entries"]) == 1 and len(sections["reads"]) == 1
     assert sections["evidence_events"], "the person's evidence events belong in their export"
     # Anyone else's data needs an officer; an officer sees everything erasure would act on.
     other = world.client(B).post("/v1/knowledge/privacy/access", json={"subject": subject()})

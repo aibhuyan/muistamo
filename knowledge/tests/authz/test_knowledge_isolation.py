@@ -123,10 +123,10 @@ def test_personal_layer_is_private_to_its_owner(world) -> None:
     assert stolen.status_code == 404
     resolved = b.get("/v1/knowledge/resolve").json()["items"]
     assert all(i["entry"]["key"] != "a-private" for i in resolved)
-    # A's entry still exists for A.
+    # A's entry still exists for A (the merged report-deadline copy was retired on merge).
     assert [
         e["key"] for e in world.client(A).get("/v1/knowledge/personal/entries").json()["items"]
-    ] == ["a-private", "fiscal-year", "report-deadline"]
+    ] == ["a-private", "fiscal-year"]
 
 
 def test_proposals_are_visible_to_contributor_and_reviewers_only(world) -> None:
