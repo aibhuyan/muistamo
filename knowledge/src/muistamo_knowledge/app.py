@@ -323,8 +323,16 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
         body = await request.body()
         tenant = auth.service_tenant(request.headers)
         secret = await run_in_threadpool(leavers().service_secret, tenant)
+        # scope["path"]: the decoded path the router matched, not request.url.path (rebuilt, so
+        # it re-quotes some characters and drops others).
         auth.verify_service(
-            request.headers, body, secret, request.method, request.url.path, accept_v1=accept_v1
+            request.headers,
+            body,
+            secret,
+            request.method,
+            request.scope["path"],
+            accept_v1=accept_v1,
+            tenant=tenant,
         )
         return tenant, body
 

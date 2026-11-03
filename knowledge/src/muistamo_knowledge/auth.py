@@ -113,6 +113,12 @@ def service_tenant(headers: Mapping[str, str]) -> UUID:
         raise Unauthenticated("missing or malformed X-Muistamo-Tenant") from exc
 
 
+def _signable_path(path: str) -> bool:
+    """A path that v2 can bind unambiguously: no control characters (the fields are newline-
+    joined, and the path is the last before the body)."""
+    return bool(path) and not any(ord(c) < 0x20 or ord(c) == 0x7F for c in path)
+
+
 def verify_service(
     headers: Mapping[str, str],
     body: bytes,
@@ -121,18 +127,26 @@ def verify_service(
     path: str,
     now: float | None = None,
     accept_v1: bool = False,
+    tenant: UUID | None = None,
 ) -> None:
     """Refuse unless headers carry a fresh v2 signature of this method, path and body under
     secret. A v1-only signature (body and time only) is accepted only with accept_v1, for a
-    rollout where the control plane predates v2 (MUISTAMO_KNOWLEDGE_ACCEPT_V1_SIGNATURES)."""
+    rollout where the control plane predates v2 (MUISTAMO_KNOWLEDGE_ACCEPT_V1_SIGNATURES).
+
+    path must be the request's own decoded path as the router matched it (ASGI scope["path"]),
+    the same bytes the control plane signs (its req.URL.Path)."""
     if not secret:
         raise Unauthenticated("the tenant has no service secret")
     parts = dict(
         p.split("=", 1) for p in _header(headers, "X-Muistamo-Signature").split(",") if "=" in p
     )
     ts = parts.get("t", "")
-    if not ts.isdigit() or not (parts.get("v2") or parts.get("v1")):
+    macs = [parts[k] for k in ("v1", "v2") if k in parts]
+    well_formed = ts.isascii() and ts.isdigit() and len(ts) <= 12
+    if not well_formed or not any(macs) or not all(m.isascii() for m in macs):
         raise Unauthenticated("missing or malformed X-Muistamo-Signature")
+    if not _signable_path(path):
+        raise Unauthenticated("the request path cannot be signed")
     if abs((time.time() if now is None else now) - int(ts)) > SIGNATURE_TOLERANCE:
         raise Unauthenticated("service signature is stale")
     if "v2" in parts:
@@ -145,4 +159,7 @@ def verify_service(
     want = hmac.new(secret, ts.encode() + b"." + body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(want, parts["v1"]):
         raise Unauthenticated("service signature does not match")
-    log.warning("accepted a v1-only service signature during the overlap", extra={"path": path})
+    log.warning(
+        "accepted a v1-only service signature during the overlap",
+        extra={"path": path, "tenant": str(tenant) if tenant else None},
+    )

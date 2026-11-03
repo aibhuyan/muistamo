@@ -136,6 +136,11 @@ func (c *KnowledgeClient) post(ctx context.Context, tenant uuid.UUID, secret []b
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Muistamo-Tenant", tenant.String())
 	// Method and path are signed too (v2), so the signature verifies for this review and call only.
+	// The fields are newline-joined, so a path with a control character is never signed (the
+	// knowledge service refuses one too).
+	if strings.ContainsFunc(req.URL.Path, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return fmt.Errorf("knowledge service path %q cannot be signed", req.URL.Path)
+	}
 	req.Header.Set("X-Muistamo-Signature", signature.SignRequest(secret, req.Method, req.URL.Path, body, time.Now()))
 	res, err := c.http.Do(req)
 	if err != nil {
