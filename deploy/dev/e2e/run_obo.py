@@ -4,19 +4,26 @@ Real binaries and services: the control plane (built with -tags e2e) serving the
 the Entra lifecycle worker on Temporal, the knowledge service (started through knowledge_e2e.py),
 PostgreSQL, and a loopback fake of Entra, Graph and SharePoint over verified TLS. The journey:
 
-1. An HR joiner links the person to their Entra user and activates their agent.
+1. An HR joiner links the person to their Entra user and activates their agent, which is issued a
+   gateway virtual key.
 2. An MCP search with the person's Entra token returns a cited SharePoint document they can open,
    and not one they cannot.
-3. Revoking the person's access at SharePoint hides the document at the next call.
-4. A pack outside the agent's template returns nothing.
-5. An HR leaver suspends the agent, so the next search gets no delegation, and opens the review
+3. A correction the person proposes through MCP is merged only on a pack reviewer's approval,
+   and the next search answers with it, cited to the pack version.
+4. Revoking the person's access at SharePoint hides the document at the next call.
+5. A pack outside the agent's template returns nothing.
+6. An HR leaver suspends the agent and revokes its key, so the next search gets no delegation,
+   and opens the review
    of the person's personal layer: frozen, and shown to their manager (by the manager's own
    Entra token) and no one else (docs/live-review-plan.md).
-6. A rehire fences the review: the layer is unfrozen, and a replayed open or expiry from the old
+7. A rehire fences the review: the layer is unfrozen, and a replayed open or expiry from the old
    leaving changes nothing.
-7. A second leaving runs its grace period to the end: the agent is retired and the undecided
-   layer purged at the review deadline (both shortened in these test builds only).
-8. Evidence verifies in both services.
+8. A second leaving runs its grace period to the end: the agent is retired and the undecided
+   layer purged at the review deadline (both shortened in these test builds only), while the
+   correction merged in step 3 still answers the colleague: the company keeps it.
+9. Evidence verifies in both services.
+
+Together this is the release 1 slice end to end (AGENTS.md), against fakes of Microsoft's services.
 
 Needs MUISTAMO_TEST_DATABASE_URL (a superuser) and Temporal on 127.0.0.1:7233 (make dev).
 Run: uv run --no-sync python deploy/dev/e2e/run_obo.py
@@ -60,6 +67,8 @@ PERSON, OTHER, REVIEWER, MANAGER = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uui
 # Test builds only: the leaver grace period (control plane, -tags e2e) and the review period
 # (knowledge_e2e.py). The grace period outlasts steps 5 and 6, and the review its deadline.
 GRACE_SECONDS, REVIEW_SECONDS = 60, 5
+# The leaver's personal layer: this note, and their own copy of the correction (step 3).
+NOTES = ["e2e-note", "quarterly-close"]
 NOTE = {"key": "e2e-note", "type": "fact", "title": "A note", "body": "Close the books in April."}
 TEMPLATE = {
     "apiVersion": "muistamo.dev/v1",
@@ -184,17 +193,20 @@ def start(args: list[str], env: dict[str, str], log: Path, stdin: str | None = N
     CHILDREN.append((child, log))
 
 
-async def mcp_search(url: str, token: str, packs: list[str]) -> dict:
+async def mcp_call(url: str, token: str, tool: str, args: dict) -> dict:
     async with httpx2.AsyncClient(
         headers={"Authorization": "Bearer " + token}, timeout=30
     ) as client:
         async with streamable_http_client(url, http_client=client) as streams:
             async with ClientSession(streams[0], streams[1]) as session:
                 await session.initialize()
-                result = await session.call_tool(
-                    "search_knowledge", {"query": "quarterly", "packs": packs}
-                )
+                result = await session.call_tool(tool, args)
+                assert not result.is_error, result
                 return result.structured_content
+
+
+async def mcp_search(url: str, token: str, packs: list[str]) -> dict:
+    return await mcp_call(url, token, "search_knowledge", {"query": "quarterly", "packs": packs})
 
 
 def main() -> None:
@@ -415,10 +427,32 @@ def main() -> None:
         hr_event(cp, tenant, hr_secret, "join-1", "joiner", 0)
         instance = wait_for("an active agent", lambda: _active(cp, operator), timeout=90)
         print(f"    agent {instance} active; agent identities at the fake: {len(ms.identities)}")
+        (identity,) = ms.identities  # the person's agent identity
         # The manager joins too (no template matches their job), so their own link stands.
         hr_event(cp, tenant, hr_secret, "mgr-join", "joiner", 10, MANAGER_HR)
         wait_for(
             "the manager linked", lambda: _link(cpdb, tenant, "E-3003") == "matched", timeout=90
+        )
+        # The agent's gateway key, issued by a gateway administrator; the leaver must revoke it.
+        run(
+            [binary, "gateway", "admins", "set", "--tenant", tenant, "--actor", "operator:e2e"]
+            + ["dev:operator@example.invalid"],
+            base,
+        )
+        key_request = {
+            "instance": instance,
+            "aliases": ["reasoning-default"],
+            "monthlyBudget": {"amount": "5", "currency": "EUR"},
+        }
+        status, issued = http("POST", cp + "/v1/virtual-keys", key_request, operator)
+        assert status == 201 and issued["key"]["status"] == "active", (status, issued)
+        key_id = issued["key"]["id"]
+        # A colleague in the same role gets their own agent of the same template.
+        hr_event(cp, tenant, hr_secret, "colleague-join", "joiner", 5, COLLEAGUE_HR)
+        wait_for(
+            "the colleague's agent active",
+            lambda: _state(cp, operator, "analyst-e-2002") == "active",
+            timeout=90,
         )
 
         step("2. MCP search as the person: their document, cited, and not another's")
@@ -432,26 +466,68 @@ def main() -> None:
         assert found["results"][0]["citation"]["url"].startswith(fake_microsoft.SITE)
         assert ms.exchanges and ms.exchanges[-1][1] == str(PERSON)
 
-        step("3. Revoked at SharePoint: hidden at the next call")
+        step(
+            "3. A correction through MCP, merged on a reviewer's approval, answers the next search"
+        )
+        correction = {
+            "pack": "finance",
+            "key": "quarterly-close",
+            "title": "Quarterly close",
+            "body": "The quarterly close is on the fifth working day.",
+            "summary": "The close moved to the fifth working day.",
+        }
+        proposed = anyio.run(
+            mcp_call, f"{kn}/mcp/knowledge/", token, "propose_knowledge", correction
+        )
+        assert proposed["status"] == "in-review", proposed
+        colleague = ms.user_token(OTHER)
+        # Nothing reaches a colleague before review (the author sees their own copy at once).
+        found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", colleague, ["finance"])
+        assert "Quarterly close" not in [r["title"] for r in found["results"]], (
+            "merged before review"
+        )
+        # The person cannot approve their own correction; the pack's reviewer can.
+        decision = {"decision": "approve", "reason": "Confirmed with the controller."}
+        path = f"{kn}/v1/knowledge/proposals/{proposed['proposalId']}/decision"
+        status, _ = http("POST", path, decision, bearer(token))
+        assert status in (403, 404), status
+        status, body = http("POST", path, decision, reviewer)
+        assert status == 200 and body["status"] == "approved" and body["mergedVersion"], (
+            status,
+            body,
+        )
+        found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", colleague, ["finance"])
+        merged = [r for r in found["results"] if r["title"] == "Quarterly close"]
+        assert merged and merged[0]["citation"] == {
+            "type": "entry",
+            "layer": "role",
+            "entryKey": "quarterly-close",
+            "pack": "finance",
+            "version": body["mergedVersion"],
+        }, found
+        # The author still sees their own personal copy: the most specific layer wins.
+        found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", token, ["finance"])
+        mine = [r for r in found["results"] if r["title"] == "Quarterly close"]
+        assert [r["citation"]["layer"] for r in mine] == ["personal"], found
+
+        step("4. Revoked at SharePoint: hidden at the next call")
         ms.libraries["Documents"][0]["readers"] = []
         checks = len(ms.checks)
         found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", token, ["finance"])
-        assert found["results"] == [], found
+        assert documents(found) == [], found
         # Delegated as before, so the empty result is SharePoint's answer, asked at this call.
         assert found["coverage"]["delegation"] == {"status": "issued", "agent": instance}, found[
             "coverage"
         ]
         assert (str(PERSON), "plan-open", 403) in ms.checks[checks:], ms.checks[checks:]
 
-        step("4. A pack outside the agent's template returns nothing")
+        step("5. A pack outside the agent's template returns nothing")
         found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", token, ["legal"])
-        assert found["results"] == [] and found["coverage"]["packsOutsideAgentScope"] == [
+        assert documents(found) == [] and found["coverage"]["packsOutsideAgentScope"] == [
             "legal"
         ], found
 
-        step(
-            "5. HR leaver: the agent is suspended, the next search gets no delegation, the layer is reviewed"
-        )
+        step("6. HR leaver: agent suspended, key revoked, no delegation, the layer is reviewed")
         ms.libraries["Documents"][0]["readers"] = [str(PERSON)]
         status, body = http("POST", f"{kn}/v1/knowledge/personal/entries", NOTE, bearer(token))
         assert status == 201, (status, body)
@@ -459,18 +535,30 @@ def main() -> None:
         wait_for(
             "the agent suspended", lambda: _state(cp, operator, instance) == "suspended", timeout=90
         )
+        revoked = wait_for(
+            "the key revoked",
+            lambda: (
+                (k := http("GET", f"{cp}/v1/virtual-keys/{key_id}", None, operator)[1])
+                and k.get("status") == "revoked"
+                and k
+            ),
+            timeout=60,
+        )
+        assert revoked["revokeReason"] == "leaver", revoked
         attempts = ms.exchange_attempts
         found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", token, ["finance"])
         # The leaver is now the person's latest HR event, so their Entra link no longer stands:
         # refused at the link, before the suspended agent is even looked up.
-        assert found["results"] == [] and found["coverage"]["delegation"] == {
+        assert documents(found) == [] and found["coverage"]["delegation"] == {
             "status": "refused",
             "reason": "user-unlinked",
         }, found["coverage"]
         # The control plane refused: Entra was never asked to exchange the leaver's token, not even
         # in an attempt the fake would have rejected for the disabled identity.
         assert ms.exchange_attempts == attempts, "a leaver's token reached the exchange"
-        assert not any(i["accountEnabled"] for i in ms.identities.values()), ms.identities
+        # The leaver's agent identity is disabled; the colleague's stays enabled.
+        assert not ms.identities[identity]["accountEnabled"], ms.identities
+        assert [i["accountEnabled"] for k, i in ms.identities.items() if k != identity] == [True]
         manager = bearer(ms.user_token(MANAGER))
         review = wait_for("the review opened", lambda: _review(kn, manager), timeout=60)
         assert review["status"] == "open" and review["person"] == f"entra:{PERSON}", review
@@ -478,13 +566,13 @@ def main() -> None:
         status, body = http(
             "GET", f"{kn}/v1/knowledge/leaver-reviews/{review['id']}", None, manager
         )
-        assert status == 200 and [e["key"] for e in body["entries"]] == ["e2e-note"], (status, body)
+        assert status == 200 and sorted(e["key"] for e in body["entries"]) == NOTES, (status, body)
         other = bearer(ms.user_token(OTHER))
         status, _ = http("GET", f"{kn}/v1/knowledge/leaver-reviews/{review['id']}", None, other)
         assert status == 404, status
         assert _frozen(kn, bearer(token)), "the leaver's layer is not frozen"
 
-        step("6. Rehire: the review is fenced; replayed calls from the old leaving change nothing")
+        step("7. Rehire: the review is fenced; replayed calls from the old leaving change nothing")
         hr_event(cp, tenant, hr_secret, "join-2", "joiner", 90)
         wait_for(
             "the agent active again", lambda: _state(cp, operator, instance) == "active", timeout=90
@@ -507,10 +595,10 @@ def main() -> None:
         expire = f"/v1/knowledge/internal/leaver-reviews/{review['id']}/expire"
         status, body = signed(kn, tenant, knowledge_secret, expire, None)
         assert status == 200 and body["outcome"] == "cancelled", (status, body)
-        assert _notes(kn, bearer(token)) == ["e2e-note"], "a replayed call touched the layer"
+        assert sorted(_notes(kn, bearer(token))) == NOTES, "a replayed call touched the layer"
         assert not _frozen(kn, bearer(token))
 
-        step("7. A second leaving ends its grace period: agent retired, undecided layer purged")
+        step("8. A second leaving ends its grace period: agent retired, undecided layer purged")
         left = time.monotonic()
         hr_event(cp, tenant, hr_secret, "leave-2", "leaver", 110)
         second = wait_for(
@@ -529,8 +617,12 @@ def main() -> None:
         wait_for(
             "the agent retired", lambda: _state(cp, operator, instance) == "retired", timeout=60
         )
+        # The leaver's layer is gone, and what they taught that was merged stays with the company.
+        found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", colleague, ["finance"])
+        kept = [r for r in found["results"] if r["title"] == "Quarterly close"]
+        assert [r["citation"].get("pack") for r in kept] == ["finance"], found
 
-        step("8. Evidence verifies in both services")
+        step("9. Evidence verifies in both services")
         export = work / "cp-evidence.jsonl"
         mst = {
             **os.environ,
@@ -561,6 +653,9 @@ def main() -> None:
             "personal-layer.review-opened",
             "personal-layer.review-fenced",
             "personal-layer.review-closed",
+            "gateway.key.issued",
+            "gateway.key.revoked",
+            "credentials.revoked",
         ):
             assert action in actions, (action, sorted(set(actions)))
         assert "personal-layer.review-not-opened" not in actions, "a live review was not opened"
@@ -602,6 +697,7 @@ PERSON_HR = {
     "jobCode": "ANALYST",
     "managerEmail": "Manager@example.invalid",
 }
+COLLEAGUE_HR = {"id": "E-2002", "email": "colleague@example.invalid", "jobCode": "ANALYST"}
 MANAGER_HR = {"id": "E-3003", "email": "manager@example.invalid", "jobCode": "MANAGER"}
 SUPERSEDED = "https://muistamo.dev/problems/superseded"
 
@@ -635,6 +731,11 @@ def _active(cp: str, operator: dict) -> str | None:
 def _state(cp: str, operator: dict, name: str) -> str | None:
     status, body = http("GET", f"{cp}/v1/instances/{name}", None, operator)
     return body["document"]["spec"]["state"] if status == 200 else None
+
+
+def documents(found: dict) -> list[dict]:
+    """The SharePoint results of a search: what per-person source authorisation decides."""
+    return [r for r in found["results"] if r["citation"]["type"] == "document"]
 
 
 def bearer(token: str) -> dict:
