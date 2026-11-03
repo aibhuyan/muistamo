@@ -39,15 +39,15 @@ def capture(client, key: str, body: str) -> str:
     return res.json()["id"]
 
 
-def merge(contributor, reviewer, ids: list[str]) -> dict:
+def merge(contributor, reviewer, ids: list[str], edits: list | None = None) -> dict:
     p = contributor.post(
         "/v1/knowledge/proposals", json={"pack": "basics", "entryIds": ids, "summary": "teach"}
     )
     assert p.status_code == 201, p.text
-    d = reviewer.post(
-        f"/v1/knowledge/proposals/{p.json()['id']}/decision",
-        json={"decision": "approve", "reason": "ok"},
-    )
+    decision = {"decision": "approve", "reason": "ok"}
+    if edits:
+        decision["edits"] = edits
+    d = reviewer.post(f"/v1/knowledge/proposals/{p.json()['id']}/decision", json=decision)
     assert d.status_code == 200, d.text
     return d.json()
 
@@ -70,13 +70,20 @@ def seed(world) -> dict:
     assert a.put("/v1/knowledge/packs/basics", json=PACK).status_code == 201
     fiscal = capture(a, "fiscal-year", "Our fiscal year ends on 30 June.")
     phone = capture(a, "desk-phone", "Call Person A on +358 40 000 0000 for approvals.")
-    merge(a, b, [fiscal, phone])
+    # A second proposal of the same entry, still in review: a sibling copy of the text.
+    sibling = a.post(
+        "/v1/knowledge/proposals", json={"pack": "basics", "entryIds": [phone], "summary": "again"}
+    )
+    assert sibling.status_code == 201, sibling.text
+    # The reviewer edits it on merge: a revision derived from the merged copy.
+    edit = {"key": "desk-phone", "body": "Call Person A on +358 40 000 0000, or their deputy."}
+    merge(a, b, [fiscal, phone], [edit])
     merge(c, a, [capture(c, "close", "Books close on day 5.")])
     capture(a, "private-note", "Remind me about the dentist.")
     r = a.get("/v1/knowledge/retrieve", params={"q": "fiscal", "packs": "basics"})
     assert r.status_code == 200, r.text
-    # Merging retired A's personal copies, so an officer redacts the merged entry itself, as the
-    # access export lists it.
+    # Merging retired A's personal copies, so an officer names the merged entry, as the access
+    # export lists it; redaction reaches the copy it was edited from and the sibling copy too.
     v1 = b.get("/v1/knowledge/packs/basics/versions/0.1.0").json()["entries"]
     merged_phone = next(e["entry"]["id"] for e in v1 if e["entry"]["key"] == "desk-phone")
     assert phone not in [e["id"] for e in a.get("/v1/knowledge/personal/entries").json()["items"]]

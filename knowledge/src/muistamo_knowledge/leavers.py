@@ -261,6 +261,9 @@ class Leavers:
         kind: str,
         generation: int | None,
     ) -> tuple[dict[str, Any], bool]:
+        # The same lock every personal-layer change takes: the layer counted and frozen here is
+        # the one the decider will see.
+        self.k._lock_layer(cur, person)
         existing = self._get(cur, review_id, lock=True)
         if existing is not None:
             return existing, False

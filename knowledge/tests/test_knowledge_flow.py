@@ -327,3 +327,60 @@ def test_a_frozen_layer_keeps_its_copy_when_a_correction_merges(world) -> None:
     )
     assert approved.status_code == 200 and approved.json()["mergedVersion"] == "0.1.0"
     assert [e["id"] for e in a.get("/v1/knowledge/personal/entries").json()["items"]] == [proposed]
+
+
+def _hold_layer_lock(world, person: str):
+    """Another transaction holding the person's personal-layer lock."""
+    conn = psycopg.connect(world.db.app_url)
+    conn.execute("SELECT set_config('muistamo.tenant_id', %s, false)", (str(world.tenant),))
+    conn.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended('muistamo/knowledge/personal-layer'"
+        " || chr(10) || current_setting('muistamo.tenant_id') || chr(10) || %s, 0))",
+        (person,),
+    )
+    return conn
+
+
+def _waits_for(conn, call) -> object:
+    import threading
+
+    out: list = []
+    worker = threading.Thread(target=lambda: out.append(call()))
+    worker.start()
+    worker.join(timeout=1.5)
+    assert worker.is_alive(), "the call did not wait for the personal-layer lock"
+    conn.rollback()
+    conn.close()
+    worker.join(timeout=30)
+    assert out, "the call did not finish once the lock was released"
+    return out[0]
+
+
+def test_a_merge_and_a_leaver_review_take_the_authors_layer_lock(world) -> None:
+    """A merge's retirement and a leaver review's freeze cannot interleave: the review would
+    count and show an entry the merge deletes underneath its decider."""
+    from muistamo_knowledge import auth
+    from muistamo_knowledge.leavers import Leavers
+
+    a, b = world.client(A), world.client(B)
+    a.put("/v1/knowledge/packs/equity-research-basics", json=PACK)
+    proposal = propose(a, [capture(a, "fiscal-year")])
+    held = _hold_layer_lock(world, "dev:" + A)
+    approved = _waits_for(
+        held,
+        lambda: b.post(
+            f"/v1/knowledge/proposals/{proposal['id']}/decision",
+            json={"decision": "approve", "reason": "ok"},
+        ),
+    )
+    assert approved.status_code == 200, approved.text
+
+    capture(a, "private-note")
+    held = _hold_layer_lock(world, "dev:" + A)
+    opened = _waits_for(
+        held,
+        lambda: Leavers(world.knowledge, auth.dev_identity).open(
+            world.tenant, {"id": "leave:a", "person": {"email": A}, "deciders": []}
+        ),
+    )
+    assert opened[0]["entryCount"] == 1

@@ -340,8 +340,21 @@ class Knowledge:
         )
         return [_entry(r) for r in cur.fetchall()]
 
+    @staticmethod
+    def _lock_layer(cur: Cursor, person: str) -> None:
+        """Serialise every change to a person's personal layer with a leaver review opening for
+        them, for the rest of the transaction: a layer is never changed underneath its decider."""
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended("
+            "'muistamo/knowledge/personal-layer' || chr(10) ||"
+            " current_setting('muistamo.tenant_id') || chr(10) || %s, 0))",
+            (person,),
+        )
+
     def _frozen(self, cur: Cursor, person: str) -> bool:
-        """A leaver's personal layer is frozen while their review is open (E4.2)."""
+        """A leaver's personal layer is frozen while their review is open (E4.2). Takes the
+        layer's lock first, so the answer holds until the caller's transaction ends."""
+        self._lock_layer(cur, person)
         cur.execute(
             "SELECT EXISTS (SELECT 1 FROM knowledge.leaver_reviews"
             " WHERE person = %s AND status = 'open')",
