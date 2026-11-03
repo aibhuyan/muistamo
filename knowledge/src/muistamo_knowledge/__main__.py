@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import logging
 import os
@@ -150,8 +151,13 @@ def set_service_secret(args: argparse.Namespace) -> None:
     from muistamo_knowledge.leavers import set_service_secret as store
 
     tenant = uuid.UUID(args.tenant)
-    # From stdin unless given, so it need not appear in the process list.
-    secret = args.secret if args.secret is not None else sys.stdin.readline().strip()
+    # From stdin unless given, so it need not appear in the process list; not echoed on a terminal.
+    if args.secret is not None:
+        secret = args.secret
+    elif sys.stdin.isatty():
+        secret = getpass.getpass("service secret: ").strip()
+    else:
+        secret = sys.stdin.readline().strip()
     store(require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant, secret.encode())
     print(f"tenant {tenant} service secret stored")
 

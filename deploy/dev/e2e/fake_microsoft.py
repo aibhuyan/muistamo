@@ -103,6 +103,10 @@ class Microsoft:
         # library name -> documents {"id", "body", "readers": [oid]}
         self.libraries: dict[str, list[dict[str, Any]]] = {"Documents": [], "Legal": []}
         self.exchanges: list[tuple[str, str]] = []  # (agent identity, person oid)
+        # Every on-behalf-of attempt, counted before any check, so a refused one still shows.
+        self.exchange_attempts = 0
+        # Every per-person $batch check: (person oid, item id, status).
+        self.checks: list[tuple[str, str, int]] = []
         # Graph tokens this fake issued: token -> (agent identity, person oid, expiry).
         self.issued: dict[str, tuple[str, str, int]] = {}
         self.lock = threading.Lock()
@@ -222,6 +226,7 @@ def serve(state: Microsoft, cert: str, key: str) -> ThreadingHTTPServer:
                     return bearer("e2e-t1." + form["fmi_path"])
                 return bearer("e2e-blueprint-token")
             if grant == "urn:ietf:params:oauth:grant-type:jwt-bearer":
+                state.exchange_attempts += 1
                 agent = client or ""
                 if (
                     form.get("client_assertion") != "e2e-t1." + agent
@@ -354,6 +359,7 @@ def serve(state: Microsoft, cert: str, key: str) -> ThreadingHTTPServer:
                 documents = state._drive(drive_id) or []
                 doc = next((d for d in documents if d["id"] == item), None)
                 status = 404 if doc is None else 200 if claims["oid"] in doc["readers"] else 403
+                state.checks.append((oid, item, status))
                 responses.append({"id": r["id"], "status": status, "body": {}})
             return self._send(200, {"responses": responses})
 

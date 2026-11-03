@@ -415,8 +415,14 @@ def main() -> None:
 
         step("3. Revoked at SharePoint: hidden at the next call")
         ms.libraries["Documents"][0]["readers"] = []
+        checks = len(ms.checks)
         found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", token, ["finance"])
         assert found["results"] == [], found
+        # Delegated as before, so the empty result is SharePoint's answer, asked at this call.
+        assert found["coverage"]["delegation"] == {"status": "issued", "agent": instance}, found[
+            "coverage"
+        ]
+        assert (str(PERSON), "plan-open", 403) in ms.checks[checks:], ms.checks[checks:]
 
         step("4. A pack outside the agent's template returns nothing")
         found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", token, ["legal"])
@@ -430,13 +436,17 @@ def main() -> None:
         wait_for(
             "the agent suspended", lambda: _state(cp, operator, instance) == "suspended", timeout=90
         )
-        exchanges = len(ms.exchanges)
+        attempts = ms.exchange_attempts
         found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", token, ["finance"])
-        assert found["results"] == [] and found["coverage"]["delegation"]["status"] == "refused", (
-            found
-        )
-        # The control plane refused: Entra was never asked to exchange the leaver's token.
-        assert len(ms.exchanges) == exchanges, "a leaver's token reached the exchange"
+        # The leaver is now the person's latest HR event, so their Entra link no longer stands:
+        # refused at the link, before the suspended agent is even looked up.
+        assert found["results"] == [] and found["coverage"]["delegation"] == {
+            "status": "refused",
+            "reason": "user-unlinked",
+        }, found["coverage"]
+        # The control plane refused: Entra was never asked to exchange the leaver's token, not even
+        # in an attempt the fake would have rejected for the disabled identity.
+        assert ms.exchange_attempts == attempts, "a leaver's token reached the exchange"
         assert not any(i["accountEnabled"] for i in ms.identities.values()), ms.identities
 
         step("6. Evidence verifies in both services")
