@@ -531,3 +531,54 @@ def test_no_other_grant_ever_reaches_entra(entra_world, public, entra_token, gra
     res = entra_world.client(None).post(f"/oauth/t/{tenant}/token", data=form)
     assert res.status_code == 400 and res.json()["error"] == "unsupported_grant_type"
     assert entra_token.calls == []
+
+
+def test_one_client_authentication_method_and_one_client(entra_world, public, entra_token) -> None:
+    tenant = entra_world.world.tenant
+    basic = "Basic " + base64.b64encode(f"{CLIENT}:fake-secret".encode()).decode()
+    url = f"/oauth/t/{tenant}/token"
+    client = entra_world.client(None)
+    both = client.post(
+        url,
+        data=token_form(tenant, client_secret="other"),  # noqa: S106 - a fake secret
+        headers={"Authorization": basic},
+    )
+    assert both.status_code == 400 and both.json()["error"] == "invalid_request"
+    other = str(uuid.uuid4())
+    mismatch = client.post(
+        url, data=token_form(tenant, client_id=other), headers={"Authorization": basic}
+    )
+    assert mismatch.status_code == 400 and mismatch.json()["error"] == "invalid_request"
+    assert entra_token.calls == []
+
+
+def test_an_entra_answer_that_is_not_json_is_a_temporary_failure(
+    entra_world, public, entra_token
+) -> None:
+    entra_token.status, entra_token.body = 502, b"<html>Bad gateway</html>"
+    tenant = entra_world.world.tenant
+    res = entra_world.client(None).post(f"/oauth/t/{tenant}/token", data=token_form(tenant))
+    assert res.status_code == 503 and res.json()["error"] == "temporarily_unavailable"
+
+
+def test_the_registration_cache_is_bounded() -> None:
+    lookups = []
+    signin = oauth.SignIn(PUBLIC, lambda t: lookups.append(t))
+    for _ in range(oauth.CACHE_ENTRIES + 50):
+        assert signin.registered(uuid.uuid4()) is None
+    assert len(signin._cache) == oauth.CACHE_ENTRIES
+    assert len(lookups) == oauth.CACHE_ENTRIES + 50
+
+
+def test_entras_answer_is_bounded_in_time_and_size(monkeypatch) -> None:
+    class Slow:
+        def __init__(self, chunks):
+            self.chunks = list(chunks)
+
+        def read(self, _n):
+            return self.chunks.pop(0) if self.chunks else b""
+
+    with pytest.raises(OSError):  # too slow as a whole, whatever each read takes
+        oauth._bounded(Slow([b"{", b"}"]), deadline=0)
+    with pytest.raises(ValueError):
+        oauth._bounded(Slow([b"x" * (oauth.MAX_BODY + 1)]), deadline=float("inf"))

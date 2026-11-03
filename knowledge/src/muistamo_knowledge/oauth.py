@@ -20,12 +20,14 @@ offered: a client is registered in advance in the customer's Entra.
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -40,6 +42,7 @@ SCOPES = (KNOWLEDGE_SCOPE, OFFLINE)  # what a client may ask for
 TIMEOUT = 10  # seconds, for Entra's token endpoint
 MAX_BODY = 64 * 1024
 CACHE_SECONDS = 60  # registrations, found or not: the unauthenticated endpoints read them
+CACHE_ENTRIES = 1024  # bounded: random tenant ids from anyone must not grow it
 
 # A tenant's (directory, audience), or None (migration 0011's knowledge.entra_registration).
 RegistrationLookup = Callable[[UUID], "tuple[UUID, UUID] | None"]
@@ -65,11 +68,24 @@ def entra_transport(url: str, form: bytes) -> tuple[int, bytes]:
         method="POST",
         headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
     )
+    deadline = time.monotonic() + TIMEOUT
     try:
         with _opener.open(request, timeout=TIMEOUT) as response:
-            return response.status, response.read(MAX_BODY + 1)[:MAX_BODY]
+            return response.status, _bounded(response, deadline)
     except urllib.error.HTTPError as exc:  # Entra's own error answers (400, 401) pass through
-        return exc.code, exc.read(MAX_BODY + 1)[:MAX_BODY]
+        return exc.code, _bounded(exc, deadline)
+
+
+def _bounded(response: Any, deadline: float) -> bytes:
+    """The body, bounded as a whole in size and time, not only between reads."""
+    body = b""
+    while chunk := response.read(16384):
+        body += chunk
+        if len(body) > MAX_BODY:
+            raise ValueError("Entra's answer is too large")
+        if time.monotonic() > deadline:
+            raise OSError("Entra's answer is too slow")
+    return body
 
 
 def public_url(value: str | None) -> str:
@@ -122,7 +138,7 @@ class SignIn:
         self._transport = transport
         self._clock = clock
         self._lock = threading.Lock()
-        self._cache: dict[UUID, tuple[float, tuple[UUID, UUID] | None]] = {}
+        self._cache: OrderedDict[UUID, tuple[float, tuple[UUID, UUID] | None]] = OrderedDict()
 
     # Names ------------------------------------------------------------------------------------
 
@@ -144,10 +160,14 @@ class SignIn:
         with self._lock:
             hit = self._cache.get(tenant)
             if hit is not None and now - hit[0] < CACHE_SECONDS:
+                self._cache.move_to_end(tenant)
                 return hit[1]
         found = self._registration(tenant)
         with self._lock:
             self._cache[tenant] = (now, found)
+            self._cache.move_to_end(tenant)
+            while len(self._cache) > CACHE_ENTRIES:
+                self._cache.popitem(last=False)
         return found
 
     # Metadata ---------------------------------------------------------------------------------
@@ -239,6 +259,8 @@ class SignIn:
         self._check_resource(tenant, form.get("resource"))
         client_id, secret = form.get("client_id"), form.get("client_secret")
         if authorization:  # client_secret_basic, sent to Entra as client_secret_post
+            if secret:
+                raise OAuthError(400, "invalid_request", "use one client authentication method")
             client_id, secret = _basic(authorization, client_id)
         forward = {
             "grant_type": grant,
@@ -259,12 +281,23 @@ class SignIn:
         url = f"{ENTRA}/{directory}/oauth2/v2.0/token"
         try:
             send = self._transport or entra_transport  # looked up per call: tests substitute it
-            return send(url, urllib.parse.urlencode(forward).encode())
+            status, body = send(url, urllib.parse.urlencode(forward).encode())
         except (OSError, ValueError) as exc:
             log.warning("Entra token endpoint unreachable", extra={"tenant": str(tenant)})
             raise OAuthError(
                 503, "temporarily_unavailable", "the sign-in service is unavailable"
             ) from exc
+        # Only Entra's JSON answers pass through; an error page or anything else does not.
+        try:
+            json.loads(body)
+        except ValueError as exc:
+            log.warning(
+                "Entra token endpoint gave no JSON", extra={"tenant": str(tenant), "status": status}
+            )
+            raise OAuthError(
+                503, "temporarily_unavailable", "the sign-in service is unavailable"
+            ) from exc
+        return status, body
 
     # Helpers ----------------------------------------------------------------------------------
 
@@ -312,7 +345,8 @@ def _basic(header: str, form_client: str | None) -> tuple[str, str]:
             raise ValueError
     except (ValueError, UnicodeDecodeError) as exc:
         raise OAuthError(401, "invalid_client", "malformed client authentication") from exc
-    client, secret = urllib.parse.unquote(user), urllib.parse.unquote(password)
+    # RFC 6749 §2.3.1: form-urlencoded, so "+" is a space.
+    client, secret = urllib.parse.unquote_plus(user), urllib.parse.unquote_plus(password)
     if form_client is not None and form_client != client:
         raise OAuthError(400, "invalid_request", "two different client ids")
     return client, secret
