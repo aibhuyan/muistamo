@@ -135,7 +135,8 @@ func (c *KnowledgeClient) post(ctx context.Context, tenant uuid.UUID, secret []b
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Muistamo-Tenant", tenant.String())
-	req.Header.Set("X-Muistamo-Signature", signature.Sign(secret, body, time.Now()))
+	// Method and path are signed too (v2), so the signature verifies for this review and call only.
+	req.Header.Set("X-Muistamo-Signature", signature.SignRequest(secret, req.Method, req.URL.Path, body, time.Now()))
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("knowledge service %s: %w", path, err)

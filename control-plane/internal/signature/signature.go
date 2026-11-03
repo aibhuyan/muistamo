@@ -43,3 +43,24 @@ func MAC(secret []byte, ts string, body []byte) []byte {
 	h.Write(body)
 	return h.Sum(nil)
 }
+
+// knowledgeV2 separates v2 MACs from v1 and from any other use of the secret.
+const knowledgeV2 = "muistamo/v2 control-plane→knowledge"
+
+// MACv2 is HMAC-SHA256 under secret of the v2 domain, ts, method, the decoded path (no query)
+// and body, joined by newlines: a request signed for one review, method or route verifies for
+// no other (docs/signature-plan.md).
+func MACv2(secret []byte, ts, method, path string, body []byte) []byte {
+	h := hmac.New(sha256.New, secret)
+	h.Write([]byte(knowledgeV2 + "\n" + ts + "\n" + method + "\n" + path + "\n"))
+	h.Write(body)
+	return h.Sum(nil)
+}
+
+// SignRequest returns the X-Muistamo-Signature value for a control-plane call to the knowledge
+// service: t=<unix seconds>,v1=<as Sign>,v2=<hex MACv2>. v1 is sent only for the overlap with
+// knowledge services that predate v2; a current one checks v2 and ignores v1.
+func SignRequest(secret []byte, method, path string, body []byte, t time.Time) string {
+	ts := strconv.FormatInt(t.Unix(), 10)
+	return "t=" + ts + ",v1=" + hex.EncodeToString(MAC(secret, ts, body)) + ",v2=" + hex.EncodeToString(MACv2(secret, ts, method, path, body))
+}

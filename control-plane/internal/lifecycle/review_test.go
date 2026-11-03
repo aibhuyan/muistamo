@@ -49,8 +49,9 @@ func (f *fakeKnowledge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			parts[k] = v
 		}
 	}
-	given, _ := hex.DecodeString(parts["v1"])
-	valid := hmac.Equal(given, signature.MAC([]byte(knowledgeSecret), parts["t"], body))
+	// As the knowledge service does by default: v2, bound to this method and path.
+	given, _ := hex.DecodeString(parts["v2"])
+	valid := hmac.Equal(given, signature.MACv2([]byte(knowledgeSecret), parts["t"], r.Method, r.URL.Path, body))
 	f.mu.Lock()
 	f.requests = append(f.requests, recorded{path: r.URL.Path, tenant: r.Header.Get("X-Muistamo-Tenant"), body: body, valid: valid})
 	status, review := f.status, f.review

@@ -53,9 +53,10 @@ func (f *fakeReviews) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			parts[k] = v
 		}
 	}
-	given, _ := hex.DecodeString(parts["v1"])
+	// As the knowledge service does by default: v2, bound to this method and path.
+	given, _ := hex.DecodeString(parts["v2"])
 	w.Header().Set("Content-Type", "application/json")
-	if !hmac.Equal(given, signature.MAC([]byte(reviewSecret), parts["t"], raw)) || r.Header.Get("X-Muistamo-Tenant") != testTenant.String() {
+	if !hmac.Equal(given, signature.MACv2([]byte(reviewSecret), parts["t"], r.Method, r.URL.Path, raw)) || r.Header.Get("X-Muistamo-Tenant") != testTenant.String() {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}

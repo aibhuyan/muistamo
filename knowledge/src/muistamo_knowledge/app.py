@@ -5,6 +5,7 @@ defined inside create_app at definition time.
 """
 
 import logging
+import os
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -314,11 +315,17 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
 
     # Service calls from the control plane. Signed with the tenant's service secret; never a
     # user identity. The signature is checked over the raw body before anything is parsed.
+    # The method and path are signed too (v2). Only during a rollout where the control plane
+    # predates v2 may an operator accept v1-only signatures (docs/signature-plan.md).
+    accept_v1 = os.environ.get("MUISTAMO_KNOWLEDGE_ACCEPT_V1_SIGNATURES") == "true"
+
     async def signed(request: Request) -> tuple[uuid.UUID, bytes]:
         body = await request.body()
         tenant = auth.service_tenant(request.headers)
         secret = await run_in_threadpool(leavers().service_secret, tenant)
-        auth.verify_service(request.headers, body, secret)
+        auth.verify_service(
+            request.headers, body, secret, request.method, request.url.path, accept_v1=accept_v1
+        )
         return tenant, body
 
     # Service calls: a refusal never echoes the request's values (entra: identities), since the
