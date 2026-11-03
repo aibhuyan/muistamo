@@ -74,6 +74,18 @@ func EntraJoiner(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (names 
 	if err := workflow.ExecuteActivity(ctx, a.EntraMatchTemplates, ref).Get(ctx, &templates); err != nil {
 		return nil, err
 	}
+	// A rejoining person's earlier live reviews are fenced at this generation before the link
+	// below can replace the Entra user they were opened under (docs/live-review-plan.md). The old
+	// leaver run also stops at the rehire signal, so a fence that cannot be sent is evidenced and
+	// the joiner continues: the person's agents do not wait on the knowledge service.
+	if workflow.GetVersion(ctx, "entra-review-fence", workflow.DefaultVersion, 1) == 1 {
+		if err := workflow.ExecuteActivity(ctx, a.EntraFenceReview, ref).Get(ctx, nil); err != nil {
+			workflow.GetLogger(ctx).Warn("earlier personal-layer reviews not fenced; the old leaver run's rehire signal still stops them", "error", err)
+			if err := workflow.ExecuteActivity(ctx, a.EntraRecordFenceFailure, ref).Get(ctx, nil); err != nil {
+				return nil, fmt.Errorf("record the unsent review fence: %w", err)
+			}
+		}
+	}
 	// Which Entra user the person is, for on-behalf-of retrieval. It holds up the joiner by at
 	// most a few minutes: an unlinked person gets their agents, and knowledge retrieval refuses
 	// for them. A lookup that cannot finish replaces any earlier link, so a rehire never keeps a
@@ -144,8 +156,19 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 			failures = append(failures, err)
 		}
 	}
-	if err := workflow.ExecuteActivity(ctx, a.EntraRecordReviewCoverage, ref).Get(ctx, nil); err != nil {
+	// The personal layer belongs to the person, not an instance: it is reviewed even with no
+	// instances, and even when an instance needs reconciliation. It is then never purged until
+	// that is done: the workflow ends below, frozen and visibly pending.
+	var review ReviewOpened
+	if workflow.GetVersion(ctx, "entra-live-review", workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+		if err := workflow.ExecuteActivity(ctx, a.EntraRecordReviewCoverage, ref).Get(ctx, nil); err != nil {
+			return result, err
+		}
+	} else if err := workflow.ExecuteActivity(ctx, a.EntraOpenReview, ref).Get(ctx, &review); err != nil {
 		return result, err
+	}
+	if review.Opened {
+		result.Review = review.ID
 	}
 	if err := workflow.ExecuteActivity(ctx, a.EntraSettleSetup, ref).Get(ctx, nil); err != nil {
 		return result, err
@@ -154,7 +177,7 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 	if len(failures) > 0 {
 		return result, fmt.Errorf("live leaver requires reconciliation: %w", errors.Join(failures...))
 	}
-	if len(result.Instances) == 0 {
+	if len(result.Instances) == 0 && !review.Opened {
 		return result, nil
 	}
 	timerCtx, cancel := workflow.WithCancel(ctx)
@@ -172,6 +195,7 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 		})
 		selector.Select(ctx)
 		if signal != nil {
+			// The rehire's joiner fences the review in the knowledge service; nothing to cancel here.
 			if err := workflow.ExecuteActivity(ctx, a.EntraConfirmRehire, ref, *signal).Get(ctx, nil); err == nil {
 				result.Rehired = true
 				return result, nil
@@ -184,6 +208,24 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 	for _, name := range result.Instances {
 		if err := workflow.ExecuteActivity(ctx, a.EntraRetire, ref, name).Get(ctx, nil); err != nil {
 			failures = append(failures, err)
+		}
+	}
+	// Purge an undecided layer; a kept one comes back with a later deadline to wait for. A rehire
+	// after the grace period fences the review, and the next expiry then purges nothing.
+	for review.Opened {
+		var state ReviewState
+		if err := workflow.ExecuteActivity(ctx, a.EntraExpireReview, ref, review.ID).Get(ctx, &state); err != nil {
+			return result, errors.Join(append(failures, err)...)
+		}
+		if state.Closed {
+			break
+		}
+		wait := state.Deadline.Sub(workflow.Now(ctx))
+		if wait < liveReviewWait {
+			wait = liveReviewWait
+		}
+		if err := workflow.Sleep(ctx, wait); err != nil {
+			return result, errors.Join(append(failures, err)...)
 		}
 	}
 	return result, errors.Join(failures...)

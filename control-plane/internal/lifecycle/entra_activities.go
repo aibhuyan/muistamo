@@ -30,6 +30,8 @@ type EntraActivities struct {
 	Identity IdentityAdapter
 	Revoker  Revoker
 	Users    UserDirectory
+	// Knowledge is the knowledge service's leaver-review API; nil records reviews as not opened.
+	Knowledge LeaverReviews
 }
 
 func liveActor(ref muistamov1.EntraLifecycleRef) registry.Actor {

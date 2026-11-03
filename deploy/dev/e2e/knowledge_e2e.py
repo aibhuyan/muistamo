@@ -4,7 +4,9 @@ HUMAN REVIEW REQUIRED (AGENTS.md): like the control plane's e2e build tag, this 
 shipped or used by `serve`. It replaces the HTTPS openers of the Entra key fetch and the
 SharePoint connector with one that connects to a loopback fake of Microsoft's services
 (MUISTAMO_E2E_MICROSOFT_ADDR), still verifying the real hostnames against the fake's throwaway CA
-(MUISTAMO_E2E_MICROSOFT_CA) only, then runs `python -m muistamo_knowledge serve`.
+(MUISTAMO_E2E_MICROSOFT_CA) only. It also shortens the leaver-review period to
+MUISTAMO_E2E_REVIEW_SECONDS, so the run can watch a deadline pass. Then it runs
+`python -m muistamo_knowledge serve`.
 """
 
 from __future__ import annotations
@@ -15,9 +17,10 @@ import socket
 import ssl
 import sys
 import urllib.request
+from datetime import timedelta
 
 from muistamo_knowledge import __main__ as knowledge
-from muistamo_knowledge import entra, sharepoint
+from muistamo_knowledge import entra, leavers, sharepoint
 
 HOST, _, PORT = os.environ["MUISTAMO_E2E_MICROSOFT_ADDR"].rpartition(":")
 CONTEXT = ssl.create_default_context(cafile=os.environ["MUISTAMO_E2E_MICROSOFT_CA"])
@@ -43,8 +46,10 @@ def _opener(no_redirects: type) -> urllib.request.OpenerDirector:
 
 entra._opener = _opener(entra._NoRedirects)
 sharepoint._opener = _opener(sharepoint._NoRedirects)
+leavers.REVIEW_PERIOD = timedelta(seconds=int(os.environ["MUISTAMO_E2E_REVIEW_SECONDS"]))
 print(
-    f"E2E LAUNCHER: Microsoft services are a loopback fake at {HOST}:{PORT}; never deploy this",
+    f"E2E LAUNCHER: Microsoft services are a loopback fake at {HOST}:{PORT}, and leaver reviews"
+    f" last {leavers.REVIEW_PERIOD}; never deploy this",
     file=sys.stderr,
 )
 sys.argv = ["muistamo_knowledge", "serve"]
