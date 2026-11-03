@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"go.temporal.io/sdk/testsuite"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
@@ -49,8 +50,9 @@ func (f *fakeKnowledge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			parts[k] = v
 		}
 	}
-	given, _ := hex.DecodeString(parts["v1"])
-	valid := hmac.Equal(given, signature.MAC([]byte(knowledgeSecret), parts["t"], body))
+	// As the knowledge service does by default: v2, bound to this method and path.
+	given, _ := hex.DecodeString(parts["v2"])
+	valid := hmac.Equal(given, signature.MACv2([]byte(knowledgeSecret), parts["t"], r.Method, r.URL.Path, body))
 	f.mu.Lock()
 	f.requests = append(f.requests, recorded{path: r.URL.Path, tenant: r.Header.Get("X-Muistamo-Tenant"), body: body, valid: valid})
 	status, review := f.status, f.review
@@ -211,5 +213,22 @@ func TestExpireReportsKeptDeadlineOrRecordsTheOutcome(t *testing.T) {
 	}
 	if !strings.HasSuffix(fake.requests[0].path, "/wf-test:run/expire") {
 		t.Errorf("path = %s", fake.requests[0].path)
+	}
+}
+
+// The v2 fields are newline-joined: a review id with a control character is never signed or
+// sent (the knowledge service refuses one too).
+func TestAPathWithAControlCharacterIsNeverSent(t *testing.T) {
+	fake := &fakeKnowledge{status: 200, review: openReview("open")}
+	server := httptest.NewServer(fake)
+	defer server.Close()
+	client := lifecycle.NewKnowledgeClient(server.URL)
+	for _, id := range []string{"a\nb", "a\rb", "a\x00b"} {
+		if _, err := client.Expire(context.Background(), uuid.New(), []byte(knowledgeSecret), id); err == nil {
+			t.Errorf("expiry of %q was sent", id)
+		}
+	}
+	if len(fake.requests) != 0 {
+		t.Fatalf("requests = %d, want none", len(fake.requests))
 	}
 }

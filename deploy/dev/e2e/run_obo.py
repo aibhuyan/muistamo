@@ -790,7 +790,7 @@ def signed(kn: str, tenant: str, secret: str, path: str, body: dict | None):
         raw,
         {
             "X-Muistamo-Tenant": tenant,
-            "X-Muistamo-Signature": auth.sign(secret.encode(), raw),
+            "X-Muistamo-Signature": auth.sign(secret.encode(), raw, method="POST", path=path),
             "Content-Type": "application/json",
         },
     )

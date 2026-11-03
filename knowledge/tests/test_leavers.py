@@ -55,7 +55,7 @@ class Service:
         raw = json.dumps(body).encode() if body is not None else b""
         h = {
             "X-Muistamo-Tenant": str(self.tenant),
-            "X-Muistamo-Signature": auth.sign(self.secret, raw, at),
+            "X-Muistamo-Signature": auth.sign(self.secret, raw, at, method="POST", path=path),
             "Content-Type": "application/json",
         }
         h.update(headers or {})
@@ -292,7 +292,7 @@ def test_service_calls_need_a_valid_signature(world, svc) -> None:
             ),
             headers={
                 "X-Muistamo-Tenant": str(world.tenant),
-                "X-Muistamo-Signature": auth.sign(SECRET, raw),
+                "X-Muistamo-Signature": auth.sign(SECRET, raw, method="POST", path=path),
                 "Content-Type": "application/json",
             },
         ),
@@ -310,7 +310,9 @@ def test_service_calls_need_a_valid_signature(world, svc) -> None:
             "/v1/knowledge/leaver-reviews",
             headers={
                 "X-Muistamo-Tenant": str(world.tenant),
-                "X-Muistamo-Signature": auth.sign(SECRET, b""),
+                "X-Muistamo-Signature": auth.sign(
+                    SECRET, b"", method="GET", path="/v1/knowledge/leaver-reviews"
+                ),
             },
         ).status_code
         == 401

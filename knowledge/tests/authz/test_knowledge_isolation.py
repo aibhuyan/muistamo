@@ -401,7 +401,7 @@ def test_leaver_reviews_and_service_secrets_are_tenant_scoped(world) -> None:
             content=b"",
             headers={
                 "X-Muistamo-Tenant": str(world.other_tenant),
-                "X-Muistamo-Signature": auth.sign(secret2, b""),
+                "X-Muistamo-Signature": auth.sign(secret2, b"", method="POST", path=path),
             },
         )
         assert res.status_code == 404, (path, res.status_code)

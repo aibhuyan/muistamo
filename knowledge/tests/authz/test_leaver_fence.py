@@ -42,7 +42,7 @@ class Live:
             content=raw,
             headers={
                 "X-Muistamo-Tenant": str(self.world.tenant),
-                "X-Muistamo-Signature": auth.sign(SECRET, raw),
+                "X-Muistamo-Signature": auth.sign(SECRET, raw, method="POST", path=path),
                 "Content-Type": "application/json",
             },
         )
