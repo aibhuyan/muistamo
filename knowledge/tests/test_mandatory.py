@@ -40,7 +40,9 @@ def merge(world, pack_name: str, key: str, body: str) -> None:
         f"/v1/knowledge/proposals/{p['id']}/decision", json={"decision": "approve", "reason": "ok"}
     )
     assert d.status_code == 200, d.text
-    assert a.delete(f"/v1/knowledge/personal/entries/{captured['id']}").status_code == 204
+    # Merging retired the author's personal copy, so the pack's entry is what they read.
+    mine = a.get("/v1/knowledge/personal/entries").json()["items"]
+    assert captured["id"] not in [e["id"] for e in mine], mine
 
 
 @pytest.fixture

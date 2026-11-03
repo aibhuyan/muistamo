@@ -256,3 +256,145 @@ def test_contract_violations_and_unknown_callers(world) -> None:
     anonymous = world.client(A)
     anonymous.headers.pop("X-Muistamo-Actor")
     assert anonymous.get("/v1/knowledge/personal/entries").status_code == 401
+
+
+def test_a_merged_correction_retires_its_authors_personal_copy(world) -> None:
+    """Once merged, the author's personal copy would shadow later changes to the pack entry for
+    them alone (the most specific layer wins), so the entry it was made from is retired
+    (maintainer decision, 2026-11-03). A newer personal note on the same key, an unrelated
+    entry, and the copy behind a rejected proposal all stay."""
+    a, b = world.client(A), world.client(B)
+    a.put("/v1/knowledge/packs/equity-research-basics", json=PACK)
+    proposed = capture(a, "fiscal-year", "Our fiscal year ends on 30 June.")
+    proposal = propose(a, [proposed])
+    newer = capture(a, "fiscal-year", "For me: also remind me in May.")
+    unrelated = capture(a, "my-shortcuts", "Ctrl+K opens the command bar.")
+    rejected = propose(a, [capture(a, "report-deadline", "Reports are due on Fridays.")])
+
+    approved = b.post(
+        f"/v1/knowledge/proposals/{proposal['id']}/decision",
+        json={"decision": "approve", "reason": "correct"},
+    )
+    assert approved.status_code == 200 and approved.json()["mergedVersion"] == "0.1.0"
+    b.post(
+        f"/v1/knowledge/proposals/{rejected['id']}/decision",
+        json={"decision": "reject", "reason": "not for the team"},
+    )
+    mine = {e["id"] for e in a.get("/v1/knowledge/personal/entries").json()["items"]}
+    assert proposed not in mine and {newer, unrelated} <= mine and len(mine) == 3, mine
+    # The merged entry and its lineage are untouched.
+    v1 = b.get("/v1/knowledge/packs/equity-research-basics/versions/0.1.0").json()
+    assert [e["entry"]["body"] for e in v1["entries"]] == ["Our fiscal year ends on 30 June."]
+    events = world.knowledge.events(world.actor(A), 0, 1000)
+    approval = [e for e in events if e.action == "knowledge.proposal.approved"]
+    assert approval[-1].after["retiredPersonalEntries"] == [proposed], approval[-1].after
+    evidence.verify(events, {world.key.key_id: world.key.public})
+
+    # With no newer note of their own, the author now reads the pack's version.
+    a.delete(f"/v1/knowledge/personal/entries/{newer}")
+    resolved = {
+        i["entry"]["key"]: i
+        for i in a.get("/v1/knowledge/resolve", params={"packs": "equity-research-basics"}).json()[
+            "items"
+        ]
+    }
+    assert resolved["fiscal-year"]["layer"] == "role", resolved["fiscal-year"]
+
+
+def test_a_frozen_layer_keeps_its_copy_when_a_correction_merges(world) -> None:
+    """A leaver's layer under review never changes underneath its decider: the copy stays and
+    the review decides it."""
+    from muistamo_knowledge.leavers import set_service_secret
+
+    a, b = world.client(A), world.client(B)
+    a.put("/v1/knowledge/packs/equity-research-basics", json=PACK)
+    proposed = capture(a, "fiscal-year")
+    proposal = propose(a, [proposed])
+    set_service_secret(
+        world.db.owner_url, world.tenant, b"mks_test-only-not-a-secret-0123456789abcdef"
+    )
+    with psycopg.connect(world.db.owner_url) as conn, conn.transaction():
+        conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(world.tenant),))
+        conn.execute(
+            "INSERT INTO knowledge.leaver_reviews (tenant_id, id, person, decider_kind, status,"
+            " deadline, entry_count) VALUES (%s, 'leave:run', %s, 'privacy-officers', 'open',"
+            " now() + interval '30 days', 1)",
+            (world.tenant, "dev:" + A),
+        )
+    approved = b.post(
+        f"/v1/knowledge/proposals/{proposal['id']}/decision",
+        json={"decision": "approve", "reason": "correct"},
+    )
+    assert approved.status_code == 200 and approved.json()["mergedVersion"] == "0.1.0"
+    assert [e["id"] for e in a.get("/v1/knowledge/personal/entries").json()["items"]] == [proposed]
+
+
+def _hold_layer_lock(world, person: str):
+    """Another transaction holding the person's personal-layer lock."""
+    conn = psycopg.connect(world.db.app_url)
+    conn.execute("SELECT set_config('muistamo.tenant_id', %s, false)", (str(world.tenant),))
+    conn.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended('muistamo/knowledge/personal-layer'"
+        " || chr(10) || current_setting('muistamo.tenant_id') || chr(10) || %s, 0))",
+        (person,),
+    )
+    return conn
+
+
+def _waits_for(conn, call, while_waiting=None) -> object:
+    import threading
+
+    out: list = []
+    worker = threading.Thread(target=lambda: out.append(call()))
+    worker.start()
+    worker.join(timeout=1.5)
+    assert worker.is_alive(), "the call did not wait for the personal-layer lock"
+    if while_waiting is not None:
+        while_waiting()
+    conn.rollback()
+    conn.close()
+    worker.join(timeout=30)
+    assert out, "the call did not finish once the lock was released"
+    return out[0]
+
+
+def test_a_merge_and_a_leaver_review_take_the_authors_layer_lock(world) -> None:
+    """A merge's retirement and a leaver review's freeze cannot interleave: the review would
+    count and show an entry the merge deletes underneath its decider."""
+    from muistamo_knowledge import auth
+    from muistamo_knowledge.leavers import Leavers
+
+    a, b = world.client(A), world.client(B)
+    a.put("/v1/knowledge/packs/equity-research-basics", json=PACK)
+    proposal = propose(a, [capture(a, "fiscal-year")])
+    held = _hold_layer_lock(world, "dev:" + A)
+
+    def pack_still_free() -> None:
+        # While the approval waits for the layer, it holds no lock on the pack row: the order a
+        # proposal takes them in (layer, then pack), so the two never deadlock.
+        with psycopg.connect(world.db.app_url) as probe, probe.transaction():
+            probe.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(world.tenant),))
+            probe.execute(
+                "SELECT 1 FROM knowledge.packs WHERE name = 'equity-research-basics'"
+                " FOR UPDATE NOWAIT"
+            )
+
+    approved = _waits_for(
+        held,
+        lambda: b.post(
+            f"/v1/knowledge/proposals/{proposal['id']}/decision",
+            json={"decision": "approve", "reason": "ok"},
+        ),
+        while_waiting=pack_still_free,
+    )
+    assert approved.status_code == 200, approved.text
+
+    capture(a, "private-note")
+    held = _hold_layer_lock(world, "dev:" + A)
+    opened = _waits_for(
+        held,
+        lambda: Leavers(world.knowledge, auth.dev_identity).open(
+            world.tenant, {"id": "leave:a", "person": {"email": A}, "deciders": []}
+        ),
+    )
+    assert opened[0]["entryCount"] == 1

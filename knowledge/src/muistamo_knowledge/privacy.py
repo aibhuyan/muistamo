@@ -162,6 +162,8 @@ class Privacy:
                 return row[1], False
 
             pseudonym = f"erased:{request_id}"
+            if redact:
+                redact = self._revision_family(cur, redact)
             try:
                 cur.execute(
                     "SELECT knowledge.erase_subject(%s, %s, %s)", (values, pseudonym, redact)
@@ -210,6 +212,27 @@ class Privacy:
                 after=proof,
             )
         return proof, True
+
+    @staticmethod
+    def _revision_family(cur: Cursor, named: list[UUID]) -> list[UUID]:
+        """The named entries, their ancestors, and every entry derived from one of those or from
+        the original they came from, which may itself be gone: a merge retires the author's
+        personal source, so the proposal copies made from it are linked only by it. Redaction
+        then follows each of these down its own lineage (erase_subject), reaching every revision
+        of the text, as naming the source did before."""
+        cur.execute(
+            "WITH RECURSIVE up AS ("
+            " SELECT id, derived_from FROM knowledge.entries WHERE id = ANY(%s::uuid[])"
+            " UNION"
+            " SELECT e.id, e.derived_from FROM knowledge.entries e JOIN up ON e.id = up.derived_from"
+            ") SELECT id FROM up"
+            " UNION SELECT e.id FROM knowledge.entries e"
+            " WHERE e.derived_from IN (SELECT derived_from FROM up WHERE derived_from IS NOT NULL)",
+            (named,),
+        )
+        family = {r[0] for r in cur.fetchall()}
+        # Unknown named ids stay in the list, so erase_subject still refuses them.
+        return list(dict.fromkeys([*named, *sorted(family - set(named), key=str)]))
 
     def get_erasure(self, actor: Actor, request_id: UUID) -> dict[str, Any]:
         with self.k.db.in_tenant(actor.tenant) as cur:

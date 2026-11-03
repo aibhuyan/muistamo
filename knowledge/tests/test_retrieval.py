@@ -97,8 +97,9 @@ def test_retrieve_cites_entries_and_documents(world) -> None:
         (i["citation"]["type"], i["citation"].get("layer"), i["citation"].get("externalId"))
         for i in body["items"]
     )
-    # A's personal entry wins over the merged pack entry with the same key, as in resolve.
-    assert citations == [("document", None, "d1"), ("entry", "personal", None)]
+    # Merging retired A's personal copy, so A reads the pack's entry (precedence itself is in
+    # test_personal_layer_wins_and_is_immediately_visible).
+    assert citations == [("document", None, "d1"), ("entry", "role", None)]
     assert all(i["snippet"] for i in body["items"])
     assert len(instance.calls) == 1, "one authorisation call per source per query"
 

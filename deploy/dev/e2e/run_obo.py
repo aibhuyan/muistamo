@@ -67,8 +67,9 @@ PERSON, OTHER, REVIEWER, MANAGER = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uui
 # Test builds only: the leaver grace period (control plane, -tags e2e) and the review period
 # (knowledge_e2e.py). The grace period outlasts steps 5 and 6, and the review its deadline.
 GRACE_SECONDS, REVIEW_SECONDS = 60, 5
-# The leaver's personal layer: this note, and their own copy of the correction (step 3).
-NOTES = ["e2e-note", "quarterly-close"]
+# The leaver's personal layer: this note only (their copy of the step 3 correction was retired
+# when it merged).
+NOTES = ["e2e-note"]
 NOTE = {"key": "e2e-note", "type": "fact", "title": "A note", "body": "Close the books in April."}
 TEMPLATE = {
     "apiVersion": "muistamo.dev/v1",
@@ -505,10 +506,10 @@ def main() -> None:
             "pack": "finance",
             "version": body["mergedVersion"],
         }, found
-        # The author still sees their own personal copy: the most specific layer wins.
+        # The author's personal copy is retired on merge, so they read the pack's version too.
         found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", token, ["finance"])
         mine = [r for r in found["results"] if r["title"] == "Quarterly close"]
-        assert [r["citation"]["layer"] for r in mine] == ["personal"], found
+        assert [r["citation"].get("version") for r in mine] == [body["mergedVersion"]], found
 
         step("4. Revoked at SharePoint: hidden at the next call")
         ms.libraries["Documents"][0]["readers"] = []
