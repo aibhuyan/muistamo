@@ -154,6 +154,12 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 			log.Warn("SIMULATED: legacy workflow identities remain simulated and are labeled in evidence")
 			simulated := &lifecycle.Simulated{}
 			service := registry.New(db, key)
+			var knowledge *lifecycle.KnowledgeClient
+			if url := os.Getenv("MUISTAMO_KNOWLEDGE_URL"); url != "" {
+				knowledge = lifecycle.NewKnowledgeClient(url)
+			} else {
+				log.Warn("MUISTAMO_KNOWLEDGE_URL is not set: leavers' personal layers will not be reviewed, and evidence will say so")
+			}
 			if len(configs) > 0 {
 				identity, err := validateEntraWorkerBindings(ctx, service, configs)
 				if err != nil {
@@ -163,13 +169,12 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 				live.RegisterWorkflow(lifecycle.EntraHRDispatch)
 				live.RegisterWorkflow(lifecycle.EntraJoiner)
 				live.RegisterWorkflow(lifecycle.EntraLeaver)
-				live.RegisterActivity(entraWorkerActivities(service, identity))
+				live.RegisterActivity(entraWorkerActivities(service, identity, knowledge))
 				if err := live.Start(); err != nil {
 					return fmt.Errorf("start Entra lifecycle worker: %w", err)
 				}
 				defer live.Stop()
 				log.Info("Entra lifecycle worker running", "task_queue", lifecycle.EntraTaskQueue, "binding_count", len(configs))
-				log.Warn("live knowledge reviews are not integrated; leaver evidence records review-not-opened")
 			} else {
 				log.Warn("no Entra binding configured: live lifecycle queue is not served; live HR handoffs remain pending")
 			}
@@ -178,10 +183,8 @@ func workerCmd(log *slog.Logger) *cobra.Command {
 			w.RegisterWorkflow(lifecycle.Leaver)
 			w.RegisterWorkflow(lifecycle.HRDispatch)
 			acts := workerActivities(service, simulated)
-			if url := os.Getenv("MUISTAMO_KNOWLEDGE_URL"); url != "" {
-				acts.Knowledge = lifecycle.NewKnowledgeClient(url)
-			} else {
-				log.Warn("MUISTAMO_KNOWLEDGE_URL is not set: leavers' personal layers will not be reviewed, and evidence will say so")
+			if knowledge != nil {
+				acts.Knowledge = knowledge
 			}
 			w.RegisterActivity(acts)
 			log.Info("lifecycle worker running", "task_queue", lifecycle.TaskQueue, "evidence_key", key.KeyID())
@@ -200,8 +203,11 @@ func workerActivities(service *registry.Service, sim *lifecycle.Simulated) *life
 	return &lifecycle.Activities{Registry: service, Provisioner: sim, Revoker: lifecycle.KeyRevoker{Registry: service}}
 }
 
-func entraWorkerActivities(service *registry.Service, identity lifecycle.IdentityAdapter) *lifecycle.EntraActivities {
+func entraWorkerActivities(service *registry.Service, identity lifecycle.IdentityAdapter, knowledge *lifecycle.KnowledgeClient) *lifecycle.EntraActivities {
 	acts := &lifecycle.EntraActivities{Registry: service, Identity: identity, Revoker: lifecycle.KeyRevoker{Registry: service}}
+	if knowledge != nil {
+		acts.Knowledge = knowledge
+	}
 	if users, ok := identity.(lifecycle.UserDirectory); ok {
 		acts.Users = users
 	}

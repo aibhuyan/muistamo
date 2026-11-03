@@ -101,7 +101,7 @@ func TestGatewayRenderRefusesACredentialValue(t *testing.T) {
 func TestWorkerRevokesRealKeys(t *testing.T) {
 	svc := registry.New(nil, evidence.LocalKey{})
 	legacy := workerActivities(svc, &lifecycle.Simulated{})
-	live := entraWorkerActivities(svc, nil)
+	live := entraWorkerActivities(svc, nil, nil)
 	for name, r := range map[string]lifecycle.Revoker{"legacy": legacy.Revoker, "entra": live.Revoker} {
 		if k, ok := r.(lifecycle.KeyRevoker); !ok || k.Registry != svc {
 			t.Errorf("%s worker revoker = %T, want the registry's KeyRevoker", name, r)
@@ -117,8 +117,21 @@ func TestWorkerLinksEntraUsers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if live := entraWorkerActivities(svc, adapter); live.Users != adapter {
+	if live := entraWorkerActivities(svc, adapter, nil); live.Users != adapter {
 		t.Fatalf("live worker user directory = %v, want the Entra adapter", live.Users)
+	}
+}
+
+// The live worker opens leavers' reviews with the knowledge client; without one the field stays
+// a nil interface, so the activities record the review as not opened rather than crash.
+func TestWorkerOpensLiveReviewsOnlyWithAKnowledgeService(t *testing.T) {
+	svc := registry.New(nil, evidence.LocalKey{})
+	client := lifecycle.NewKnowledgeClient("http://127.0.0.1:1")
+	if live := entraWorkerActivities(svc, nil, client); live.Knowledge != client {
+		t.Fatalf("live worker knowledge = %v, want the client", live.Knowledge)
+	}
+	if live := entraWorkerActivities(svc, nil, nil); live.Knowledge != nil {
+		t.Fatalf("live worker knowledge = %#v, want none", live.Knowledge)
 	}
 }
 

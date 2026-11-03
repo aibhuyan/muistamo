@@ -74,6 +74,18 @@ func EntraJoiner(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (names 
 	if err := workflow.ExecuteActivity(ctx, a.EntraMatchTemplates, ref).Get(ctx, &templates); err != nil {
 		return nil, err
 	}
+	// A rejoining person's earlier live reviews are fenced at this generation before the link
+	// below can replace the Entra user they were opened under (docs/live-review-plan.md). The old
+	// leaver run also stops at the rehire signal, so a fence that cannot be sent is evidenced and
+	// the joiner continues: the person's agents do not wait on the knowledge service.
+	if workflow.GetVersion(ctx, "entra-review-fence", workflow.DefaultVersion, 1) == 1 {
+		if err := workflow.ExecuteActivity(ctx, a.EntraFenceReview, ref).Get(ctx, nil); err != nil {
+			workflow.GetLogger(ctx).Warn("earlier personal-layer reviews not fenced; the old leaver run's rehire signal still stops them", "error", err)
+			if err := workflow.ExecuteActivity(ctx, a.EntraRecordFenceFailure, ref).Get(ctx, nil); err != nil {
+				return nil, fmt.Errorf("record the unsent review fence: %w", err)
+			}
+		}
+	}
 	// Which Entra user the person is, for on-behalf-of retrieval. It holds up the joiner by at
 	// most a few minutes: an unlinked person gets their agents, and knowledge retrieval refuses
 	// for them. A lookup that cannot finish replaces any earlier link, so a rehire never keeps a
@@ -144,8 +156,19 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 			failures = append(failures, err)
 		}
 	}
-	if err := workflow.ExecuteActivity(ctx, a.EntraRecordReviewCoverage, ref).Get(ctx, nil); err != nil {
+	// The personal layer belongs to the person, not an instance: it is reviewed even with no
+	// instances, and even when an instance needs reconciliation. It is then never purged until
+	// that is done: the workflow ends below, frozen and visibly pending.
+	var review ReviewOpened
+	if workflow.GetVersion(ctx, "entra-live-review", workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+		if err := workflow.ExecuteActivity(ctx, a.EntraRecordReviewCoverage, ref).Get(ctx, nil); err != nil {
+			return result, err
+		}
+	} else if err := workflow.ExecuteActivity(ctx, a.EntraOpenReview, ref).Get(ctx, &review); err != nil {
 		return result, err
+	}
+	if review.Opened {
+		result.Review = review.ID
 	}
 	if err := workflow.ExecuteActivity(ctx, a.EntraSettleSetup, ref).Get(ctx, nil); err != nil {
 		return result, err
@@ -154,7 +177,7 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 	if len(failures) > 0 {
 		return result, fmt.Errorf("live leaver requires reconciliation: %w", errors.Join(failures...))
 	}
-	if len(result.Instances) == 0 {
+	if len(result.Instances) == 0 && !review.Opened {
 		return result, nil
 	}
 	timerCtx, cancel := workflow.WithCancel(ctx)
@@ -172,9 +195,9 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 		})
 		selector.Select(ctx)
 		if signal != nil {
-			if err := workflow.ExecuteActivity(ctx, a.EntraConfirmRehire, ref, *signal).Get(ctx, nil); err == nil {
+			if confirmed, err := entraRehire(ctx, ref, *signal); confirmed {
 				result.Rehired = true
-				return result, nil
+				return result, err
 			}
 		}
 		if elapsed {
@@ -186,5 +209,62 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 			failures = append(failures, err)
 		}
 	}
+	// Purge an undecided layer; a kept one comes back with a later deadline to wait for. A rehire
+	// while waiting ends the wait here too; and each expiry first checks, in the control plane, that
+	// the person has no later HR event, so a rehire whose signal and fence both failed still
+	// purges nothing.
+	for review.Opened {
+		var state ReviewState
+		if err := workflow.ExecuteActivity(ctx, a.EntraExpireReview, ref, review.ID).Get(ctx, &state); err != nil {
+			return result, errors.Join(append(failures, err)...)
+		}
+		if state.Closed {
+			break
+		}
+		wait := state.Deadline.Sub(workflow.Now(ctx))
+		if wait < liveReviewWait {
+			wait = liveReviewWait
+		}
+		waitCtx, stop := workflow.WithCancel(ctx)
+		deadline := workflow.NewTimer(waitCtx, wait)
+		var signal *muistamov1.EntraLifecycleRef
+		selector := workflow.NewSelector(ctx)
+		selector.AddFuture(deadline, func(workflow.Future) {})
+		selector.AddReceive(rehired, func(c workflow.ReceiveChannel, _ bool) {
+			var value muistamov1.EntraLifecycleRef
+			c.Receive(ctx, &value)
+			signal = &value
+		})
+		selector.Select(ctx)
+		stop()
+		if signal != nil {
+			// The instances are already retired; the rehire's joiner makes new ones.
+			if confirmed, err := entraRehire(ctx, ref, *signal); confirmed {
+				result.Rehired = true
+				return result, errors.Join(append(failures, err)...)
+			}
+		}
+	}
 	return result, errors.Join(failures...)
+}
+
+// entraRehire confirms a rehire signal for the leaver at ref. Once confirmed, the old run fences
+// the person's reviews too, independently of the rehire's own joiner, so one failed fence does
+// not leave the layer frozen and readable by the decider. A fence that cannot be sent is
+// evidenced; the error is only that evidence failing.
+func entraRehire(ctx workflow.Context, ref, rehire muistamov1.EntraLifecycleRef) (bool, error) {
+	var a *EntraActivities
+	if err := workflow.ExecuteActivity(ctx, a.EntraConfirmRehire, ref, rehire).Get(ctx, nil); err != nil {
+		return false, nil
+	}
+	if workflow.GetVersion(ctx, "entra-rehire-fence", workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+		return true, nil
+	}
+	if err := workflow.ExecuteActivity(ctx, a.EntraFenceReview, rehire).Get(ctx, nil); err != nil {
+		workflow.GetLogger(ctx).Warn("the rehired person's earlier reviews were not fenced by the old leaver run", "error", err)
+		if err := workflow.ExecuteActivity(ctx, a.EntraRecordFenceFailure, rehire).Get(ctx, nil); err != nil {
+			return true, fmt.Errorf("record the unsent review fence: %w", err)
+		}
+	}
+	return true, nil
 }

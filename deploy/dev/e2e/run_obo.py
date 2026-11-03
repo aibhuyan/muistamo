@@ -9,8 +9,14 @@ PostgreSQL, and a loopback fake of Entra, Graph and SharePoint over verified TLS
    and not one they cannot.
 3. Revoking the person's access at SharePoint hides the document at the next call.
 4. A pack outside the agent's template returns nothing.
-5. An HR leaver suspends the agent, so the next search gets no delegation.
-6. Evidence verifies in both services.
+5. An HR leaver suspends the agent, so the next search gets no delegation, and opens the review
+   of the person's personal layer: frozen, and shown to their manager (by the manager's own
+   Entra token) and no one else (docs/live-review-plan.md).
+6. A rehire fences the review: the layer is unfrozen, and a replayed open or expiry from the old
+   leaving changes nothing.
+7. A second leaving runs its grace period to the end: the agent is retired and the undecided
+   layer purged at the review deadline (both shortened in these test builds only).
+8. Evidence verifies in both services.
 
 Needs MUISTAMO_TEST_DATABASE_URL (a superuser) and Temporal on 127.0.0.1:7233 (make dev).
 Run: uv run --no-sync python deploy/dev/e2e/run_obo.py
@@ -50,7 +56,11 @@ ADMIN = os.environ.get(
     "MUISTAMO_TEST_DATABASE_URL",
     "postgres://muistamo:dev-only-not-a-secret@127.0.0.1:5432/muistamo",
 )
-PERSON, OTHER, REVIEWER = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+PERSON, OTHER, REVIEWER, MANAGER = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+# Test builds only: the leaver grace period (control plane, -tags e2e) and the review period
+# (knowledge_e2e.py). The grace period outlasts steps 5 and 6, and the review its deadline.
+GRACE_SECONDS, REVIEW_SECONDS = 60, 5
+NOTE = {"key": "e2e-note", "type": "fact", "title": "A note", "body": "Close the books in April."}
 TEMPLATE = {
     "apiVersion": "muistamo.dev/v1",
     "kind": "AgentTemplate",
@@ -206,10 +216,12 @@ def main() -> None:
         e2e = {
             "MUISTAMO_E2E_MICROSOFT_ADDR": f"127.0.0.1:{server.server_address[1]}",
             "MUISTAMO_E2E_MICROSOFT_CA": ca,
+            "MUISTAMO_E2E_GRACE_SECONDS": str(GRACE_SECONDS),
         }
         ms.users = [
             {"id": str(PERSON), "employeeId": "E-1001"},
             {"id": str(OTHER), "employeeId": "E-2002"},
+            {"id": str(MANAGER), "employeeId": "E-3003"},
         ]
         ms.libraries["Documents"] = [
             {
@@ -299,12 +311,14 @@ def main() -> None:
             )
 
         step("control plane: worker and API")
-        cp_port = free_port()
+        cp_port, k_port = free_port(), free_port()
         live = {
             **base,
             "TEMPORAL_ADDRESS": "127.0.0.1:7233",
             "CONTROL_PLANE_ADDR": f"127.0.0.1:{cp_port}",
             "MUISTAMO_INSECURE_DEV_TENANT_HEADER": "true",
+            # The worker opens leavers' reviews in the knowledge service started below.
+            "MUISTAMO_KNOWLEDGE_URL": f"http://127.0.0.1:{k_port}",
         }
         for command in ("worker", "serve"):
             start(
@@ -352,8 +366,8 @@ def main() -> None:
                 }
             )
         )
-        k_port = free_port()
         kenv |= {
+            "MUISTAMO_E2E_REVIEW_SECONDS": str(REVIEW_SECONDS),
             "MUISTAMO_KNOWLEDGE_EVIDENCE_KEY_FILE": k_key,
             "KNOWLEDGE_ADDR": f"127.0.0.1:{k_port}",
             "MUISTAMO_KNOWLEDGE_ENTRA": "true",
@@ -401,6 +415,11 @@ def main() -> None:
         hr_event(cp, tenant, hr_secret, "join-1", "joiner", 0)
         instance = wait_for("an active agent", lambda: _active(cp, operator), timeout=90)
         print(f"    agent {instance} active; agent identities at the fake: {len(ms.identities)}")
+        # The manager joins too (no template matches their job), so their own link stands.
+        hr_event(cp, tenant, hr_secret, "mgr-join", "joiner", 10, MANAGER_HR)
+        wait_for(
+            "the manager linked", lambda: _link(cpdb, tenant, "E-3003") == "matched", timeout=90
+        )
 
         step("2. MCP search as the person: their document, cited, and not another's")
         token = ms.user_token(PERSON)
@@ -430,8 +449,12 @@ def main() -> None:
             "legal"
         ], found
 
-        step("5. HR leaver: the agent is suspended, and the next search gets no delegation")
+        step(
+            "5. HR leaver: the agent is suspended, the next search gets no delegation, the layer is reviewed"
+        )
         ms.libraries["Documents"][0]["readers"] = [str(PERSON)]
+        status, body = http("POST", f"{kn}/v1/knowledge/personal/entries", NOTE, bearer(token))
+        assert status == 201, (status, body)
         hr_event(cp, tenant, hr_secret, "leave-1", "leaver", 60)
         wait_for(
             "the agent suspended", lambda: _state(cp, operator, instance) == "suspended", timeout=90
@@ -448,8 +471,66 @@ def main() -> None:
         # in an attempt the fake would have rejected for the disabled identity.
         assert ms.exchange_attempts == attempts, "a leaver's token reached the exchange"
         assert not any(i["accountEnabled"] for i in ms.identities.values()), ms.identities
+        manager = bearer(ms.user_token(MANAGER))
+        review = wait_for("the review opened", lambda: _review(kn, manager), timeout=60)
+        assert review["status"] == "open" and review["person"] == f"entra:{PERSON}", review
+        assert review["decider"] == f"entra:{MANAGER}" and review["generation"] == 2, review
+        status, body = http(
+            "GET", f"{kn}/v1/knowledge/leaver-reviews/{review['id']}", None, manager
+        )
+        assert status == 200 and [e["key"] for e in body["entries"]] == ["e2e-note"], (status, body)
+        other = bearer(ms.user_token(OTHER))
+        status, _ = http("GET", f"{kn}/v1/knowledge/leaver-reviews/{review['id']}", None, other)
+        assert status == 404, status
+        assert _frozen(kn, bearer(token)), "the leaver's layer is not frozen"
 
-        step("6. Evidence verifies in both services")
+        step("6. Rehire: the review is fenced; replayed calls from the old leaving change nothing")
+        hr_event(cp, tenant, hr_secret, "join-2", "joiner", 90)
+        wait_for(
+            "the agent active again", lambda: _state(cp, operator, instance) == "active", timeout=90
+        )
+        fenced = wait_for(
+            "the review cancelled", lambda: _review(kn, manager, status="closed"), timeout=60
+        )
+        assert fenced["id"] == review["id"] and fenced["outcome"] == "cancelled", fenced
+        assert not _frozen(kn, bearer(token)), "the rehired person's layer is still frozen"
+        old = {
+            "id": review["id"],
+            "generation": 2,
+            "person": {"user": f"entra:{PERSON}"},
+            "deciders": [{"user": f"entra:{MANAGER}", "kind": "manager"}],
+        }
+        status, body = signed(
+            kn, tenant, knowledge_secret, "/v1/knowledge/internal/leaver-reviews", old
+        )
+        assert status == 409 and body.get("type") == SUPERSEDED, (status, body)
+        expire = f"/v1/knowledge/internal/leaver-reviews/{review['id']}/expire"
+        status, body = signed(kn, tenant, knowledge_secret, expire, None)
+        assert status == 200 and body["outcome"] == "cancelled", (status, body)
+        assert _notes(kn, bearer(token)) == ["e2e-note"], "a replayed call touched the layer"
+        assert not _frozen(kn, bearer(token))
+
+        step("7. A second leaving ends its grace period: agent retired, undecided layer purged")
+        left = time.monotonic()
+        hr_event(cp, tenant, hr_secret, "leave-2", "leaver", 110)
+        second = wait_for(
+            "the second review opened",
+            lambda: (r := _review(kn, manager)) and r["id"] != review["id"] and r,
+            timeout=90,
+        )
+        assert second["generation"] == 4 and second["status"] == "open", second
+        wait_for(
+            "the layer purged", lambda: _notes(kn, bearer(token)) == [], timeout=GRACE_SECONDS + 90
+        )
+        # By the workflow's expiry after the grace period, not earlier.
+        assert time.monotonic() - left >= GRACE_SECONDS, time.monotonic() - left
+        closed = _review(kn, manager, status="closed", review_id=second["id"])
+        assert closed and closed["outcome"] == "expired", closed
+        wait_for(
+            "the agent retired", lambda: _state(cp, operator, instance) == "retired", timeout=60
+        )
+
+        step("8. Evidence verifies in both services")
         export = work / "cp-evidence.jsonl"
         mst = {
             **os.environ,
@@ -477,8 +558,12 @@ def main() -> None:
             "identity.user.linked",
             "knowledge.delegation.issued",
             "knowledge.delegation.refused",
+            "personal-layer.review-opened",
+            "personal-layer.review-fenced",
+            "personal-layer.review-closed",
         ):
             assert action in actions, (action, sorted(set(actions)))
+        assert "personal-layer.review-not-opened" not in actions, "a live review was not opened"
         verify_knowledge(kdb, tenant, k_key + ".pub")
         print(f"OK: {len(actions)} control-plane events and the knowledge chain verified")
         passed = True
@@ -511,15 +596,22 @@ def _up(url: str) -> bool:
         return False
 
 
-def hr_event(cp: str, tenant: str, secret: str, event_id: str, kind: str, offset: int) -> None:
+PERSON_HR = {
+    "id": "E-1001",
+    "email": "person@example.invalid",
+    "jobCode": "ANALYST",
+    "managerEmail": "Manager@example.invalid",
+}
+MANAGER_HR = {"id": "E-3003", "email": "manager@example.invalid", "jobCode": "MANAGER"}
+SUPERSEDED = "https://muistamo.dev/problems/superseded"
+
+
+def hr_event(
+    cp: str, tenant: str, secret: str, event_id: str, kind: str, offset: int, person=PERSON_HR
+) -> None:
     occurred = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 120 + offset))
     body = json.dumps(
-        {
-            "id": event_id,
-            "type": kind,
-            "occurredAt": occurred,
-            "person": {"id": "E-1001", "email": "person@example.invalid", "jobCode": "ANALYST"},
-        }
+        {"id": event_id, "type": kind, "occurredAt": occurred, "person": person}
     ).encode()
     ts = str(int(time.time()))
     mac = hmac.new(secret.encode(), ts.encode() + b"." + body, hashlib.sha256).hexdigest()
@@ -543,6 +635,63 @@ def _active(cp: str, operator: dict) -> str | None:
 def _state(cp: str, operator: dict, name: str) -> str | None:
     status, body = http("GET", f"{cp}/v1/instances/{name}", None, operator)
     return body["document"]["spec"]["state"] if status == 200 else None
+
+
+def bearer(token: str) -> dict:
+    return {"Authorization": "Bearer " + token}
+
+
+def _link(url: str, tenant: str, person: str) -> str | None:
+    with psycopg.connect(url) as conn, conn.transaction():
+        conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (tenant,))
+        row = conn.execute(
+            "SELECT status FROM person_entra_links WHERE person_id = %s", (person,)
+        ).fetchone()
+    return row[0] if row else None
+
+
+def _review(kn: str, decider: dict, status: str = "open", review_id: str | None = None):
+    """The decider's newest review with this status (and id), if any."""
+    code, body = http("GET", f"{kn}/v1/knowledge/leaver-reviews", None, decider)
+    assert code == 200, (code, body)
+    for item in body["items"]:
+        if item["status"] == status and review_id in (None, item["id"]):
+            return item
+    return None
+
+
+def _notes(kn: str, person: dict) -> list[str]:
+    code, body = http("GET", f"{kn}/v1/knowledge/personal/entries", None, person)
+    assert code == 200, (code, body)
+    return [e["key"] for e in body["items"]]
+
+
+def _frozen(kn: str, person: dict) -> bool:
+    """Whether the person's layer refuses a new entry (it is under review)."""
+    probe = {"key": f"probe-{secrets.token_hex(4)}", "type": "fact", "title": "p", "body": "b"}
+    code, body = http("POST", f"{kn}/v1/knowledge/personal/entries", probe, person)
+    assert code in (201, 409), (code, body)
+    if code == 201:
+        gone, _ = http("DELETE", f"{kn}/v1/knowledge/personal/entries/{body['id']}", None, person)
+        assert gone == 204, gone
+    return code == 409
+
+
+def signed(kn: str, tenant: str, secret: str, path: str, body: dict | None):
+    """A service call signed as the control plane signs it, to replay one by hand."""
+    from muistamo_knowledge import auth
+
+    raw = json.dumps(body).encode() if body is not None else b""
+    return http(
+        "POST",
+        kn + path,
+        raw,
+        {
+            "X-Muistamo-Tenant": tenant,
+            "X-Muistamo-Signature": auth.sign(secret.encode(), raw),
+            "Content-Type": "application/json",
+        },
+    )
 
 
 def verify_knowledge(url: str, tenant: str, public_key: str) -> None:

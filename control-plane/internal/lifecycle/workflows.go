@@ -25,8 +25,6 @@ import (
 const (
 	// TaskQueue is where lifecycle workflows and activities run.
 	TaskQueue = "muistamo-lifecycle"
-	// GracePeriod is how long a leaver's instances stay suspended before retirement.
-	GracePeriod = 30 * 24 * time.Hour
 	// RehiredSignal reactivates a leaver's instances during the grace period.
 	RehiredSignal = "rehired"
 	// reviewChange versions the leaver workflow: histories recorded before personal-layer

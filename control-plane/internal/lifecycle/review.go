@@ -35,10 +35,53 @@ type LeaverReviews interface {
 	Open(ctx context.Context, tenant uuid.UUID, secret []byte, req muistamov1.LeaverReviewOpen) (muistamov1.LeaverReview, error)
 	Expire(ctx context.Context, tenant uuid.UUID, secret []byte, id string) (muistamov1.LeaverReview, error)
 	Cancel(ctx context.Context, tenant uuid.UUID, secret []byte, id string) (muistamov1.LeaverReview, error)
+	Fence(ctx context.Context, tenant uuid.UUID, secret []byte, req muistamov1.LeaverReviewFence) (muistamov1.LeaverReviewFenced, error)
 }
 
 // ErrRefused means the knowledge service answered with a client error: retrying cannot help.
 var ErrRefused = errors.New("refused by the knowledge service")
+
+// ErrSuperseded is the refusal of a live review call from an HR generation older than the
+// person's fence: a later HR event (a rehire) has overtaken it, so it is final, not a fault.
+var ErrSuperseded = fmt.Errorf("superseded by a later HR event: %w", ErrRefused)
+
+// supersededProblem is the knowledge service's problem type for ErrSuperseded.
+const supersededProblem = "https://muistamo.dev/problems/superseded"
+
+// Refusal is a client error answer from the knowledge service. Its detail can echo the request
+// (for a live review, entra: identities), so only Public may go into evidence or workflow history.
+type Refusal struct {
+	Status     int
+	Title      string
+	detail     string
+	superseded bool
+}
+
+func (r *Refusal) Error() string {
+	if r.detail == "" {
+		return r.Public()
+	}
+	return r.Public() + ": " + r.detail
+}
+
+// Public is the status and title only: never the detail.
+func (r *Refusal) Public() string { return fmt.Sprintf("knowledge service refused: %d %s", r.Status, r.Title) }
+
+func (r *Refusal) Unwrap() error {
+	if r.superseded {
+		return ErrSuperseded
+	}
+	return ErrRefused
+}
+
+// publicReason is what evidence and workflow history may say about err.
+func publicReason(err error) string {
+	var refusal *Refusal
+	if errors.As(err, &refusal) {
+		return refusal.Public()
+	}
+	return "knowledge service call failed"
+}
 
 // KnowledgeClient calls the knowledge service, signing each request with the tenant's secret.
 type KnowledgeClient struct {
@@ -70,39 +113,54 @@ func (c *KnowledgeClient) Cancel(ctx context.Context, tenant uuid.UUID, secret [
 	return c.call(ctx, tenant, secret, "/v1/knowledge/internal/leaver-reviews/"+url.PathEscape(id)+"/cancel", nil)
 }
 
+// Fence orders a live person's earlier reviews before their rehire's generation.
+func (c *KnowledgeClient) Fence(ctx context.Context, tenant uuid.UUID, secret []byte, req muistamov1.LeaverReviewFence) (muistamov1.LeaverReviewFenced, error) {
+	var fenced muistamov1.LeaverReviewFenced
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fenced, err
+	}
+	return fenced, c.post(ctx, tenant, secret, "/v1/knowledge/internal/leaver-reviews/fence", body, &fenced)
+}
+
 func (c *KnowledgeClient) call(ctx context.Context, tenant uuid.UUID, secret []byte, path string, body []byte) (muistamov1.LeaverReview, error) {
 	var review muistamov1.LeaverReview
+	return review, c.post(ctx, tenant, secret, path, body, &review)
+}
+
+func (c *KnowledgeClient) post(ctx context.Context, tenant uuid.UUID, secret []byte, path string, body []byte, answer any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(body))
 	if err != nil {
-		return review, err
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Muistamo-Tenant", tenant.String())
 	req.Header.Set("X-Muistamo-Signature", signature.Sign(secret, body, time.Now()))
 	res, err := c.http.Do(req)
 	if err != nil {
-		return review, fmt.Errorf("knowledge service %s: %w", path, err)
+		return fmt.Errorf("knowledge service %s: %w", path, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	out, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
-		return review, err
+		return err
 	}
 	switch {
 	case res.StatusCode == http.StatusOK || res.StatusCode == http.StatusCreated:
-		return review, json.Unmarshal(out, &review)
+		return json.Unmarshal(out, answer)
 	case res.StatusCode >= 400 && res.StatusCode < 500:
 		var p muistamov1.Problem
-		detail := res.Status
+		refusal := &Refusal{Status: res.StatusCode, Title: http.StatusText(res.StatusCode)}
 		if json.Unmarshal(out, &p) == nil && p.Title != "" {
-			detail = fmt.Sprintf("%d %s", p.Status, p.Title)
+			refusal.Title = p.Title
 			if p.Detail != nil {
-				detail += ": " + *p.Detail
+				refusal.detail = *p.Detail
 			}
 		}
-		return review, fmt.Errorf("%s: %w", detail, ErrRefused)
+		refusal.superseded = res.StatusCode == http.StatusConflict && p.Type != nil && *p.Type == supersededProblem
+		return refusal
 	default:
-		return review, fmt.Errorf("knowledge service %s returned %d", path, res.StatusCode)
+		return fmt.Errorf("knowledge service %s returned %d", path, res.StatusCode)
 	}
 }
 

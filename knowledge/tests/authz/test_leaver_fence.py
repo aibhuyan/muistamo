@@ -387,6 +387,8 @@ def test_erasure_removes_the_fence_with_the_person(live) -> None:
 def test_mixed_or_incomplete_review_requests_are_refused(live, body) -> None:
     res = live.post("/v1/knowledge/internal/leaver-reviews", body)
     assert res.status_code == 422, (body, res.text)
+    # The control plane may record the answer: it never echoes the identities sent.
+    assert P not in res.text and M not in res.text and "not-an-object-id" not in res.text, res.text
     assert not live.frozen()
 
 
