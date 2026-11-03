@@ -138,7 +138,7 @@ func (a *Activities) OpenPersonalLayerReview(ctx context.Context, scope Scope, p
 	}
 
 	req := muistamov1.LeaverReviewOpen{Id: scope.WorkflowID + ":" + activity.GetInfo(ctx).WorkflowExecution.RunID}
-	req.Person.Email = person.Email
+	req.Person.Email = &person.Email
 	if person.ID != "" {
 		req.Person.HrPersonId = &person.ID
 	}
@@ -221,10 +221,11 @@ func (a *Activities) closeReview(ctx context.Context, scope Scope, id string,
 
 // deciderEntry is one item of LeaverReviewOpen.Deciders, which the generator leaves anonymous.
 type deciderEntry = struct {
-	Email string                                  `json:"email"`
+	Email *string                                 `json:"email,omitempty"`
 	Kind  muistamov1.LeaverReviewOpenDecidersKind `json:"kind"`
+	User  *string                                 `json:"user,omitempty"`
 }
 
 func decider(email string, kind muistamov1.LeaverReviewOpenDecidersKind) deciderEntry {
-	return deciderEntry{Email: email, Kind: kind}
+	return deciderEntry{Email: &email, Kind: kind}
 }

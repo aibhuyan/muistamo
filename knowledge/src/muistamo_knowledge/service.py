@@ -45,6 +45,12 @@ class Conflict(Exception):
     pass
 
 
+class Superseded(Conflict):
+    """A live leaver-review call from an HR generation older than the person's fence."""
+
+    type = "https://muistamo.dev/problems/superseded"
+
+
 class Invalid(Exception):
     pass
 

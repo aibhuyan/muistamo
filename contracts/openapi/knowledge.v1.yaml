@@ -637,6 +637,33 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/knowledge/internal/leaver-reviews/fence:
+    post:
+      operationId: fenceLeaverReviews
+      summary: A live person was rehired; order every earlier review call before this generation (service call)
+      description: >-
+        Service call from the control plane only: authenticated by X-Muistamo-Tenant and
+        X-Muistamo-Signature (t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body"> under the
+        tenant's service secret), never by a user identity. Raises the person's fence, never
+        lowering it, and cancels their open reviews from earlier generations. From then on an
+        open, expire or decision for an earlier generation is refused with 409 and problem type
+        https://muistamo.dev/problems/superseded, and changes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/leaverreviewfence.json"
+      responses:
+        "200":
+          description: The person's fence now, and what this call cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/leaverreviewfenced.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/knowledge/events:
     get:
       operationId: listEvents

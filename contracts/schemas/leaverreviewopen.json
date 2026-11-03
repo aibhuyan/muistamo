@@ -2,35 +2,46 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://muistamo.dev/schemas/v1/leaverreviewopen.json",
   "title": "LeaverReviewOpen",
-  "description": "Sent by the control plane's leaver workflow, signed with the tenant's service secret: open the review of a leaver's personal knowledge layer and freeze it. Repeating an id is safe.",
+  "description": "Sent by the control plane's leaver workflow, signed with the tenant's service secret: open the review of a leaver's personal knowledge layer and freeze it. Repeating an id is safe. A live (Entra) leaver names the person and deciders by user and carries the leaving's HR generation; once the person is fenced at a later generation, it is refused as superseded.",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "person", "deciders"],
   "properties": {
     "id": { "description": "The leaver workflow's id and run id: unique per leaving, stable across retries.", "type": "string", "minLength": 1, "maxLength": 255 },
+    "generation": { "description": "Live (Entra) mode: the leaver's HR generation, which orders this call against a rehire's fence. Required with person.user; absent for a legacy leaver.", "type": "integer", "minimum": 1, "maximum": 9223372036854775807 },
     "person": {
       "title": "LeaverReviewPerson",
       "type": "object",
       "additionalProperties": false,
-      "required": ["email"],
       "properties": {
         "email": { "type": "string", "minLength": 3 },
+        "user": { "description": "Live (Entra) mode: the identity the knowledge service knows the person by.", "type": "string", "pattern": "^entra:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
         "hrPersonId": { "type": "string", "minLength": 1, "maxLength": 200 }
-      }
+      },
+      "if": { "required": ["user"] },
+      "then": { "not": { "required": ["email"] } },
+      "else": { "required": ["email"] }
     },
     "deciders": {
-      "description": "Candidate deciders in order of preference: the manager, then instance sponsors. The first who is not the leaver decides; with none, the tenant's privacy officers do.",
+      "description": "Candidate deciders in order of preference: the manager, then instance sponsors. The first who is not the leaver decides; with none, the tenant's privacy officers do. A live leaver names deciders by user.",
       "type": "array",
       "items": {
         "title": "LeaverReviewDecider",
         "type": "object",
         "additionalProperties": false,
-        "required": ["email", "kind"],
+        "required": ["kind"],
         "properties": {
           "email": { "type": "string", "minLength": 3 },
+          "user": { "description": "Live (Entra) mode: the decider's identity.", "type": "string", "pattern": "^entra:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
           "kind": { "type": "string", "enum": ["manager", "sponsor"] }
-        }
+        },
+        "if": { "required": ["user"] },
+        "then": { "not": { "required": ["email"] } },
+        "else": { "required": ["email"] }
       }
     }
-  }
+  },
+  "if": { "properties": { "person": { "required": ["user"] } } },
+  "then": { "required": ["generation"] },
+  "else": { "not": { "required": ["generation"] } }
 }

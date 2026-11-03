@@ -2904,7 +2904,10 @@ type LeaverReview struct {
 	// Entries Only on GET of one review, to its decider: the leaver's personal entries.
 	Entries    *[]KnowledgeEntry `json:"entries,omitempty"`
 	EntryCount int               `json:"entryCount"`
-	Id         string            `json:"id"`
+
+	// Generation Live (Entra) mode: the leaver's HR generation the review was opened at.
+	Generation *int   `json:"generation,omitempty"`
+	Id         string `json:"id"`
 
 	// Kept The decider already extended the deadline once.
 	Kept     bool      `json:"kept"`
@@ -2948,19 +2951,47 @@ type LeaverReviewDecision struct {
 // LeaverReviewDecisionDecision defines model for LeaverReviewDecision.Decision.
 type LeaverReviewDecisionDecision string
 
-// LeaverReviewOpen Sent by the control plane's leaver workflow, signed with the tenant's service secret: open the review of a leaver's personal knowledge layer and freeze it. Repeating an id is safe.
+// LeaverReviewFence Sent by the control plane when a live (Entra) person is rehired, signed with the tenant's service secret. Raises the person's fence to this HR generation, never lowering it, and cancels any open review from an earlier generation, unfreezing the layer. From then on a review call from an earlier generation is refused as superseded. Repeating it is safe.
+type LeaverReviewFence struct {
+	// Generation The rehire's HR generation.
+	Generation int `json:"generation"`
+
+	// User The rehired person's identity.
+	User string `json:"user"`
+}
+
+// LeaverReviewFenced The person's fence after a fence call, and the reviews it cancelled.
+type LeaverReviewFenced struct {
+	// Cancelled Ids of the reviews this call cancelled.
+	Cancelled []string `json:"cancelled"`
+
+	// Generation The person's fence now: the highest generation ever sent for them, which may be later than the one in this call.
+	Generation int    `json:"generation"`
+	User       string `json:"user"`
+}
+
+// LeaverReviewOpen Sent by the control plane's leaver workflow, signed with the tenant's service secret: open the review of a leaver's personal knowledge layer and freeze it. Repeating an id is safe. A live (Entra) leaver names the person and deciders by user and carries the leaving's HR generation; once the person is fenced at a later generation, it is refused as superseded.
 type LeaverReviewOpen struct {
-	// Deciders Candidate deciders in order of preference: the manager, then instance sponsors. The first who is not the leaver decides; with none, the tenant's privacy officers do.
+	// Deciders Candidate deciders in order of preference: the manager, then instance sponsors. The first who is not the leaver decides; with none, the tenant's privacy officers do. A live leaver names deciders by user.
 	Deciders []struct {
-		Email string                       `json:"email"`
+		Email *string                      `json:"email,omitempty"`
 		Kind  LeaverReviewOpenDecidersKind `json:"kind"`
+
+		// User Live (Entra) mode: the decider's identity.
+		User *string `json:"user,omitempty"`
 	} `json:"deciders"`
+
+	// Generation Live (Entra) mode: the leaver's HR generation, which orders this call against a rehire's fence. Required with person.user; absent for a legacy leaver.
+	Generation *int `json:"generation,omitempty"`
 
 	// Id The leaver workflow's id and run id: unique per leaving, stable across retries.
 	Id     string `json:"id"`
 	Person struct {
-		Email      string  `json:"email"`
+		Email      *string `json:"email,omitempty"`
 		HrPersonId *string `json:"hrPersonId,omitempty"`
+
+		// User Live (Entra) mode: the identity the knowledge service knows the person by.
+		User *string `json:"user,omitempty"`
 	} `json:"person"`
 }
 

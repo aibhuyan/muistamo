@@ -20,6 +20,7 @@ from muistamo_contracts.v1.knowledgeentryinput import KnowledgeEntryInput
 from muistamo_contracts.v1.knowledgepack import KnowledgePack
 from muistamo_contracts.v1.knowledgesource import KnowledgeSource
 from muistamo_contracts.v1.leaverreviewdecision import LeaverReviewDecision
+from muistamo_contracts.v1.leaverreviewfence import LeaverReviewFence
 from muistamo_contracts.v1.leaverreviewopen import LeaverReviewOpen
 from muistamo_contracts.v1.proposaldecision import ProposalDecision
 from muistamo_contracts.v1.proposalinput import ProposalInput
@@ -44,6 +45,7 @@ from muistamo_knowledge.service import (
     Invalid,
     Knowledge,
     NotFound,
+    Superseded,
     to_jsonable,
 )
 
@@ -55,6 +57,7 @@ _STATUS: list[tuple[type[Exception], int, str]] = [
     (UnknownTenant, 401, "Unauthorized"),
     (Forbidden, 403, "Forbidden"),
     (NotFound, 404, "Not found"),
+    (Superseded, 409, "Superseded by a later HR event"),
     (Conflict, 409, "Conflict"),
     (Invalid, 422, "Invalid request"),
     (evidence.EvidenceNotRecorded, 503, "Evidence could not be recorded; nothing was changed"),
@@ -63,9 +66,15 @@ _STATUS: list[tuple[type[Exception], int, str]] = [
 
 
 def problem(
-    status: int, title: str, detail: str | None = None, headers: dict[str, str] | None = None
+    status: int,
+    title: str,
+    detail: str | None = None,
+    headers: dict[str, str] | None = None,
+    type: str | None = None,  # noqa: A002 - the RFC 9457 member
 ) -> JSONResponse:
     body: dict[str, Any] = {"title": title, "status": status}
+    if type:
+        body["type"] = type
     if detail:
         body["detail"] = detail
     return JSONResponse(
@@ -111,6 +120,7 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
                     title,
                     None if status in (401, 503) else str(exc),
                     unauthorized_headers if status == 401 else None,
+                    getattr(exc, "type", None),
                 )
         log.exception("unhandled error", extra={"path": request.url.path})
         return problem(500, "Internal error")
@@ -332,6 +342,15 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     async def cancel_leaver_review(review_id: str, request: Request) -> JSONResponse:
         tenant, _ = await signed(request)
         return ok(await run_in_threadpool(leavers().cancel, tenant, review_id))
+
+    @app.post("/v1/knowledge/internal/leaver-reviews/fence")
+    async def fence_leaver_reviews(request: Request) -> JSONResponse:
+        tenant, body = await signed(request)
+        try:
+            doc = LeaverReviewFence.model_validate_json(body)
+        except ValidationError as exc:
+            return problem(422, "Document does not match its contract", str(exc.errors()))
+        return ok(await run_in_threadpool(leavers().fence, tenant, doc.user, doc.generation))
 
     if mcp_app is not None:
         app.mount("/mcp/knowledge", require_identity(mcp_app, resolver, knowledge))
