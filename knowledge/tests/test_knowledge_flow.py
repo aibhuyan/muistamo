@@ -341,7 +341,7 @@ def _hold_layer_lock(world, person: str):
     return conn
 
 
-def _waits_for(conn, call) -> object:
+def _waits_for(conn, call, while_waiting=None) -> object:
     import threading
 
     out: list = []
@@ -349,6 +349,8 @@ def _waits_for(conn, call) -> object:
     worker.start()
     worker.join(timeout=1.5)
     assert worker.is_alive(), "the call did not wait for the personal-layer lock"
+    if while_waiting is not None:
+        while_waiting()
     conn.rollback()
     conn.close()
     worker.join(timeout=30)
@@ -366,12 +368,24 @@ def test_a_merge_and_a_leaver_review_take_the_authors_layer_lock(world) -> None:
     a.put("/v1/knowledge/packs/equity-research-basics", json=PACK)
     proposal = propose(a, [capture(a, "fiscal-year")])
     held = _hold_layer_lock(world, "dev:" + A)
+
+    def pack_still_free() -> None:
+        # While the approval waits for the layer, it holds no lock on the pack row: the order a
+        # proposal takes them in (layer, then pack), so the two never deadlock.
+        with psycopg.connect(world.db.app_url) as probe, probe.transaction():
+            probe.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(world.tenant),))
+            probe.execute(
+                "SELECT 1 FROM knowledge.packs WHERE name = 'equity-research-basics'"
+                " FOR UPDATE NOWAIT"
+            )
+
     approved = _waits_for(
         held,
         lambda: b.post(
             f"/v1/knowledge/proposals/{proposal['id']}/decision",
             json={"decision": "approve", "reason": "ok"},
         ),
+        while_waiting=pack_still_free,
     )
     assert approved.status_code == 200, approved.text
 

@@ -523,6 +523,10 @@ class Knowledge:
             if row is None:
                 raise NotFound(f"proposal {proposal_id}")
             pack, contributor, status, proposed_by = row
+            # The author's layer before the pack, as a proposal takes them (the layer, then the
+            # pack row by its foreign key): an approval racing the author's next proposal on the
+            # same pack would otherwise deadlock.
+            self._lock_layer(cur, contributor)
             info = self._pack(cur, pack, lock=True)
             if actor.name not in info["reviewers"]:
                 if actor.name == contributor:
