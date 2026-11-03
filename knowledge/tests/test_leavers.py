@@ -356,3 +356,33 @@ def test_timestamps_are_rfc3339_on_the_wire(world, svc) -> None:
         assert re.match(RFC3339, review[field]), (field, review[field])
     entry = personal(world, A)[0]
     assert re.match(RFC3339, entry["createdAt"]), entry["createdAt"]
+
+
+@pytest.mark.parametrize("source", ["argument", "terminal", "pipe"])
+def test_the_service_secret_command_keeps_the_secret_off_argv_and_the_screen(
+    source, monkeypatch
+) -> None:
+    import argparse
+    import io
+
+    from muistamo_knowledge import __main__ as cli
+
+    fake = "f" * 40  # an obviously fake secret
+    stored: list[bytes] = []
+    monkeypatch.setenv("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL", "postgresql://unused")
+    monkeypatch.setattr(
+        "muistamo_knowledge.leavers.set_service_secret",
+        lambda _url, _tenant, secret: stored.append(secret),
+    )
+    stdin = io.StringIO(fake + "\n")
+    stdin.isatty = lambda: source == "terminal"  # type: ignore[method-assign]
+    monkeypatch.setattr("sys.stdin", stdin)
+    # On a terminal the secret is read without echo, never from a plain readline.
+    monkeypatch.setattr("getpass.getpass", lambda _prompt="": fake)
+    if source == "terminal":
+        stdin.readline = lambda: pytest.fail("read with echo on a terminal")  # type: ignore[method-assign]
+    args = argparse.Namespace(
+        tenant=str(uuid.uuid4()), secret=fake if source == "argument" else None
+    )
+    cli.set_service_secret(args)
+    assert stored == [fake.encode()]

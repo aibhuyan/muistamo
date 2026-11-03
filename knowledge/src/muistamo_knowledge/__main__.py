@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import logging
 import os
@@ -150,7 +151,14 @@ def set_service_secret(args: argparse.Namespace) -> None:
     from muistamo_knowledge.leavers import set_service_secret as store
 
     tenant = uuid.UUID(args.tenant)
-    store(require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant, args.secret.encode())
+    # From stdin unless given, so it need not appear in the process list; not echoed on a terminal.
+    if args.secret is not None:
+        secret = args.secret
+    elif sys.stdin.isatty():
+        secret = getpass.getpass("service secret: ").strip()
+    else:
+        secret = sys.stdin.readline().strip()
+    store(require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant, secret.encode())
     print(f"tenant {tenant} service secret stored")
 
 
@@ -208,7 +216,11 @@ def main() -> None:
         "service-secret", help="store the secret the control plane signs calls with (owner URL)"
     )
     ss.add_argument("tenant")
-    ss.add_argument("secret", help="as printed by control-plane tenant knowledge-secret")
+    ss.add_argument(
+        "secret",
+        nargs="?",
+        help="as printed by control-plane tenant knowledge-secret; stdin if omitted",
+    )
     ss.set_defaults(fn=set_service_secret)
     en = tenant.add_parser(
         "entra", help="accept Entra access tokens of a directory for a tenant (owner URL)"

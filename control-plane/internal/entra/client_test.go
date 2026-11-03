@@ -580,3 +580,18 @@ func TestProviderCacheIsBoundToImmutableConfiguration(t *testing.T) {
 		t.Fatalf("expired token reused: %v", f.calls)
 	}
 }
+
+// Only a binary built with the e2e tag (e2e_transport.go) can send these requests anywhere but
+// Microsoft's own hosts.
+func TestShippedBuildsCannotRedirectMicrosoftHosts(t *testing.T) {
+	if e2eTransport != nil {
+		t.Fatal("a build without the e2e tag has a transport override")
+	}
+	c, err := New(binding(), func(context.Context, string, string) (string, error) { return fakeSecret, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.http.Transport != nil {
+		t.Fatal("the default client has a custom transport")
+	}
+}
