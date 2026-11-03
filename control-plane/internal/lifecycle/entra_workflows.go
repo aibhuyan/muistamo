@@ -195,10 +195,9 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 		})
 		selector.Select(ctx)
 		if signal != nil {
-			// The rehire's joiner fences the review in the knowledge service; nothing to cancel here.
-			if err := workflow.ExecuteActivity(ctx, a.EntraConfirmRehire, ref, *signal).Get(ctx, nil); err == nil {
+			if confirmed, err := entraRehire(ctx, ref, *signal); confirmed {
 				result.Rehired = true
-				return result, nil
+				return result, err
 			}
 		}
 		if elapsed {
@@ -211,7 +210,9 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 		}
 	}
 	// Purge an undecided layer; a kept one comes back with a later deadline to wait for. A rehire
-	// after the grace period fences the review, and the next expiry then purges nothing.
+	// while waiting ends the wait here too; and each expiry first checks, in the control plane, that
+	// the person has no later HR event, so a rehire whose signal and fence both failed still
+	// purges nothing.
 	for review.Opened {
 		var state ReviewState
 		if err := workflow.ExecuteActivity(ctx, a.EntraExpireReview, ref, review.ID).Get(ctx, &state); err != nil {
@@ -224,9 +225,46 @@ func EntraLeaver(ctx workflow.Context, ref muistamov1.EntraLifecycleRef) (result
 		if wait < liveReviewWait {
 			wait = liveReviewWait
 		}
-		if err := workflow.Sleep(ctx, wait); err != nil {
-			return result, errors.Join(append(failures, err)...)
+		waitCtx, stop := workflow.WithCancel(ctx)
+		deadline := workflow.NewTimer(waitCtx, wait)
+		var signal *muistamov1.EntraLifecycleRef
+		selector := workflow.NewSelector(ctx)
+		selector.AddFuture(deadline, func(workflow.Future) {})
+		selector.AddReceive(rehired, func(c workflow.ReceiveChannel, _ bool) {
+			var value muistamov1.EntraLifecycleRef
+			c.Receive(ctx, &value)
+			signal = &value
+		})
+		selector.Select(ctx)
+		stop()
+		if signal != nil {
+			// The instances are already retired; the rehire's joiner makes new ones.
+			if confirmed, err := entraRehire(ctx, ref, *signal); confirmed {
+				result.Rehired = true
+				return result, errors.Join(append(failures, err)...)
+			}
 		}
 	}
 	return result, errors.Join(failures...)
+}
+
+// entraRehire confirms a rehire signal for the leaver at ref. Once confirmed, the old run fences
+// the person's reviews too, independently of the rehire's own joiner, so one failed fence does
+// not leave the layer frozen and readable by the decider. A fence that cannot be sent is
+// evidenced; the error is only that evidence failing.
+func entraRehire(ctx workflow.Context, ref, rehire muistamov1.EntraLifecycleRef) (bool, error) {
+	var a *EntraActivities
+	if err := workflow.ExecuteActivity(ctx, a.EntraConfirmRehire, ref, rehire).Get(ctx, nil); err != nil {
+		return false, nil
+	}
+	if workflow.GetVersion(ctx, "entra-rehire-fence", workflow.DefaultVersion, 1) == workflow.DefaultVersion {
+		return true, nil
+	}
+	if err := workflow.ExecuteActivity(ctx, a.EntraFenceReview, rehire).Get(ctx, nil); err != nil {
+		workflow.GetLogger(ctx).Warn("the rehired person's earlier reviews were not fenced by the old leaver run", "error", err)
+		if err := workflow.ExecuteActivity(ctx, a.EntraRecordFenceFailure, rehire).Get(ctx, nil); err != nil {
+			return true, fmt.Errorf("record the unsent review fence: %w", err)
+		}
+	}
+	return true, nil
 }

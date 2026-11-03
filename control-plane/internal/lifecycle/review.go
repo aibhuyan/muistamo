@@ -48,6 +48,41 @@ var ErrSuperseded = fmt.Errorf("superseded by a later HR event: %w", ErrRefused)
 // supersededProblem is the knowledge service's problem type for ErrSuperseded.
 const supersededProblem = "https://muistamo.dev/problems/superseded"
 
+// Refusal is a client error answer from the knowledge service. Its detail can echo the request
+// (for a live review, entra: identities), so only Public may go into evidence or workflow history.
+type Refusal struct {
+	Status     int
+	Title      string
+	detail     string
+	superseded bool
+}
+
+func (r *Refusal) Error() string {
+	if r.detail == "" {
+		return r.Public()
+	}
+	return r.Public() + ": " + r.detail
+}
+
+// Public is the status and title only: never the detail.
+func (r *Refusal) Public() string { return fmt.Sprintf("knowledge service refused: %d %s", r.Status, r.Title) }
+
+func (r *Refusal) Unwrap() error {
+	if r.superseded {
+		return ErrSuperseded
+	}
+	return ErrRefused
+}
+
+// publicReason is what evidence and workflow history may say about err.
+func publicReason(err error) string {
+	var refusal *Refusal
+	if errors.As(err, &refusal) {
+		return refusal.Public()
+	}
+	return "knowledge service call failed"
+}
+
 // KnowledgeClient calls the knowledge service, signing each request with the tenant's secret.
 type KnowledgeClient struct {
 	base string
@@ -115,17 +150,15 @@ func (c *KnowledgeClient) post(ctx context.Context, tenant uuid.UUID, secret []b
 		return json.Unmarshal(out, answer)
 	case res.StatusCode >= 400 && res.StatusCode < 500:
 		var p muistamov1.Problem
-		detail := res.Status
+		refusal := &Refusal{Status: res.StatusCode, Title: http.StatusText(res.StatusCode)}
 		if json.Unmarshal(out, &p) == nil && p.Title != "" {
-			detail = fmt.Sprintf("%d %s", p.Status, p.Title)
+			refusal.Title = p.Title
 			if p.Detail != nil {
-				detail += ": " + *p.Detail
+				refusal.detail = *p.Detail
 			}
 		}
-		if res.StatusCode == http.StatusConflict && p.Type != nil && *p.Type == supersededProblem {
-			return fmt.Errorf("%s: %w", detail, ErrSuperseded)
-		}
-		return fmt.Errorf("%s: %w", detail, ErrRefused)
+		refusal.superseded = res.StatusCode == http.StatusConflict && p.Type != nil && *p.Type == supersededProblem
+		return refusal
 	default:
 		return fmt.Errorf("knowledge service %s returned %d", path, res.StatusCode)
 	}

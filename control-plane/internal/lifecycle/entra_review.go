@@ -84,7 +84,7 @@ func (a *EntraActivities) EntraOpenReview(ctx context.Context, ref muistamov1.En
 			map[string]any{"review": req.Id, "generation": generation})
 	}
 	if errors.Is(err, ErrRefused) {
-		return notOpened(err.Error())
+		return notOpened(publicReason(err))
 	}
 	if err != nil {
 		return ReviewOpened{}, err
@@ -105,24 +105,34 @@ func (a *EntraActivities) EntraOpenReview(ctx context.Context, ref muistamov1.En
 // rehired) purges nothing and closes the workflow's wait.
 func (a *EntraActivities) EntraExpireReview(ctx context.Context, ref muistamov1.EntraLifecycleRef, id string) (ReviewState, error) {
 	actor := liveActor(ref)
-	event, _, _, err := a.Registry.ResolveEntraReceipt(ctx, actor, ref.ReceiptId, false)
+	// The control plane's own check, independent of the fence and of the rehire signal: once the
+	// person has a later HR event, the old leaving never asks for a purge.
+	person, current, err := a.Registry.LeaverIsCurrent(ctx, actor, ref.ReceiptId)
 	if err != nil {
 		return ReviewState{}, liveError(err)
+	}
+	if !current {
+		return ReviewState{Closed: true}, a.Registry.RecordPersonEvent(ctx, actor, "personal-layer.review-closed", person,
+			map[string]any{"review": id, "outcome": "superseded", "reason": "a later HR event for the person; no expiry sent"})
 	}
 	secret, missing, err := a.knowledgeSecret(ctx, ref)
 	if err != nil {
 		return ReviewState{}, err
 	}
 	if missing != "" {
+		if err := a.Registry.RecordPersonEvent(ctx, actor, "personal-layer.review-expiry-not-sent", person,
+			map[string]any{"review": id, "reason": missing}); err != nil {
+			return ReviewState{}, err
+		}
 		return ReviewState{}, temporal.NewNonRetryableApplicationError(missing, "unconfigured", nil)
 	}
 	review, err := a.Knowledge.Expire(ctx, ref.TenantId, secret, id)
 	if errors.Is(err, ErrSuperseded) {
-		return ReviewState{Closed: true}, a.Registry.RecordPersonEvent(ctx, actor, "personal-layer.review-closed", event.Person.Id,
+		return ReviewState{Closed: true}, a.Registry.RecordPersonEvent(ctx, actor, "personal-layer.review-closed", person,
 			map[string]any{"review": id, "outcome": "superseded"})
 	}
 	if errors.Is(err, ErrRefused) {
-		return ReviewState{}, temporal.NewNonRetryableApplicationError(err.Error(), "refused", err)
+		return ReviewState{}, temporal.NewNonRetryableApplicationError(publicReason(err), "refused", nil)
 	}
 	if err != nil {
 		return ReviewState{}, err
@@ -130,7 +140,7 @@ func (a *EntraActivities) EntraExpireReview(ctx context.Context, ref muistamov1.
 	if review.Status == muistamov1.LeaverReviewStatusOpen {
 		return ReviewState{Deadline: review.Deadline}, nil
 	}
-	return ReviewState{Closed: true}, a.Registry.RecordPersonEvent(ctx, actor, "personal-layer.review-closed", event.Person.Id,
+	return ReviewState{Closed: true}, a.Registry.RecordPersonEvent(ctx, actor, "personal-layer.review-closed", person,
 		map[string]any{"review": id, "outcome": review.Outcome})
 }
 
@@ -157,7 +167,7 @@ func (a *EntraActivities) EntraFenceReview(ctx context.Context, ref muistamov1.E
 	}
 	fenced, err := a.Knowledge.Fence(ctx, ref.TenantId, secret, muistamov1.LeaverReviewFence{User: entraIdentity(user.String()), Generation: int(generation)})
 	if errors.Is(err, ErrRefused) {
-		return temporal.NewNonRetryableApplicationError(err.Error(), "refused", err)
+		return temporal.NewNonRetryableApplicationError(publicReason(err), "refused", nil)
 	}
 	if err != nil {
 		return err

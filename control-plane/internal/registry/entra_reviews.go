@@ -74,7 +74,7 @@ func (s *Service) LiveReviewParties(ctx context.Context, actor Actor, receipt uu
 				ORDER BY generation DESC, occurred_at DESC, (type='leaver') DESC, event_id DESC LIMIT 1) latest ON true
 			WHERE l.status = 'matched' AND l.entra_tenant_id = $1 AND l.person_id <> $2
 			  AND latest.type = 'joiner' AND latest.receipt_id = l.receipt_id
-			  AND lower(latest.payload -> 'person' ->> 'email') = lower($3)
+			  AND lower(btrim(latest.payload -> 'person' ->> 'email')) = lower($3)
 			LIMIT 2`, binding.EntraTenantId, event.Person.Id, strings.TrimSpace(*event.Person.ManagerEmail))
 		if err != nil {
 			return fmt.Errorf("find the leaver's manager: %w", err)
@@ -97,11 +97,15 @@ func (s *Service) LiveReviewParties(ctx context.Context, actor Actor, receipt uu
 func (s *Service) FenceUser(ctx context.Context, actor Actor, receipt uuid.UUID) (string, *uuid.UUID, int64, error) {
 	var person string
 	var user *uuid.UUID
-	_, _, generation, err := s.withEntraReceipt(ctx, actor, receipt, false, func(ctx context.Context, tx pgx.Tx, event muistamov1.HREvent, _ muistamov1.HRIdentityRoute, _ int64) error {
+	_, _, generation, err := s.withEntraReceipt(ctx, actor, receipt, false, func(ctx context.Context, tx pgx.Tx, event muistamov1.HREvent, route muistamov1.HRIdentityRoute, _ int64) error {
 		if event.Type != "joiner" {
 			return fmt.Errorf("only a joiner fences earlier reviews: %w", ErrConflict)
 		}
 		person = event.Person.Id
+		binding, err := identityBindingRow(ctx, tx, *route.BindingVersion)
+		if err != nil {
+			return err
+		}
 		link, err := entraUserLinkRow(ctx, tx, person, false)
 		if errors.Is(err, ErrNotFound) {
 			return nil
@@ -109,10 +113,33 @@ func (s *Service) FenceUser(ctx context.Context, actor Actor, receipt uuid.UUID)
 		if err != nil {
 			return err
 		}
-		if link.Status == "matched" && link.EntraUserObjectId != nil {
+		// A conflict link has lost its user (another person's joiner found it): there is no user
+		// to fence, and its earlier review stays frozen, never purged, until a later leaving.
+		if link.Status == "matched" && link.EntraUserObjectId != nil && link.EntraTenantId == binding.EntraTenantId {
 			user = link.EntraUserObjectId
 		}
 		return nil
 	})
 	return person, user, generation, err
+}
+
+// LeaverIsCurrent reports, under the person's lock, whether the live leaver receipt is still the
+// person's latest HR event. Once it is not (they were rehired), its review is never expired:
+// the control plane decides that itself, whatever the knowledge service's fence says.
+func (s *Service) LeaverIsCurrent(ctx context.Context, actor Actor, receipt uuid.UUID) (string, bool, error) {
+	var person string
+	current := false
+	_, _, _, err := s.withEntraReceipt(ctx, actor, receipt, false, func(ctx context.Context, tx pgx.Tx, event muistamov1.HREvent, _ muistamov1.HRIdentityRoute, generation int64) error {
+		if event.Type != "leaver" {
+			return fmt.Errorf("only a leaver's review is expired: %w", ErrConflict)
+		}
+		person = event.Person.Id
+		latest, latestGeneration, _, err := latestIdentityHR(ctx, tx, person)
+		if err != nil {
+			return err
+		}
+		current = latest == event.Id && latestGeneration == generation
+		return nil
+	})
+	return person, current, err
 }

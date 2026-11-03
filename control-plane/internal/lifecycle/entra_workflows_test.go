@@ -139,6 +139,7 @@ func TestEntraLeaverRehireOnlyCancelsGrace(t *testing.T) {
 	env.OnActivity(liveActs.EntraOpenReview, mock.Anything, liveRef).Return(ReviewOpened{}, nil)
 	env.OnActivity(liveActs.EntraSettleSetup, mock.Anything, liveRef).Return(nil)
 	env.OnActivity(liveActs.EntraConfirmRehire, mock.Anything, liveRef, newRef).Return(nil)
+	env.OnActivity(liveActs.EntraFenceReview, mock.Anything, newRef).Return(nil).Once()
 	env.RegisterDelayedCallback(func() { env.SignalWorkflow(EntraRehiredSignal, newRef) }, time.Hour)
 	env.ExecuteWorkflow(EntraLeaver, liveRef)
 	var result LeaverResult
@@ -254,6 +255,7 @@ func TestEntraLeaverRehiredDuringGraceNeverExpiresTheReview(t *testing.T) {
 	env.OnActivity(liveActs.EntraOpenReview, mock.Anything, liveRef).Return(ReviewOpened{ID: "entra-leaver:r", Opened: true}, nil)
 	env.OnActivity(liveActs.EntraSettleSetup, mock.Anything, liveRef).Return(nil)
 	env.OnActivity(liveActs.EntraConfirmRehire, mock.Anything, liveRef, newRef).Return(nil)
+	env.OnActivity(liveActs.EntraFenceReview, mock.Anything, newRef).Return(nil).Once()
 	env.RegisterDelayedCallback(func() { env.SignalWorkflow(EntraRehiredSignal, newRef) }, time.Hour)
 	env.ExecuteWorkflow(EntraLeaver, liveRef)
 	var result LeaverResult
@@ -296,4 +298,47 @@ func TestShippedBuildsKeepTheThirtyDayGracePeriod(t *testing.T) {
 	if GracePeriod != 30*24*time.Hour {
 		t.Fatalf("grace period = %v", GracePeriod)
 	}
+}
+
+// A rehire while the run waits for a kept review's deadline ends the wait without an expiry, and
+// the old run fences the review itself, whatever the rehire's own joiner managed.
+func TestEntraLeaverRehiredWhileWaitingForAKeptReviewNeverExpiresIt(t *testing.T) {
+	env := liveEnv()
+	newRef := liveRef
+	newRef.ReceiptId = uuid.New()
+	env.OnActivity(liveActs.EntraPrepareLeaver, mock.Anything, liveRef).Return([]string{}, nil)
+	env.OnActivity(liveActs.EntraOpenReview, mock.Anything, liveRef).Return(ReviewOpened{ID: "entra-leaver:r", Opened: true}, nil)
+	env.OnActivity(liveActs.EntraSettleSetup, mock.Anything, liveRef).Return(nil)
+	kept := env.Now().Add(GracePeriod + 30*24*time.Hour)
+	env.OnActivity(liveActs.EntraExpireReview, mock.Anything, liveRef, "entra-leaver:r").Return(ReviewState{Deadline: kept}, nil).Once()
+	env.OnActivity(liveActs.EntraConfirmRehire, mock.Anything, liveRef, newRef).Return(nil)
+	env.OnActivity(liveActs.EntraFenceReview, mock.Anything, newRef).Return(errors.New("knowledge service unavailable"))
+	env.OnActivity(liveActs.EntraRecordFenceFailure, mock.Anything, newRef).Return(nil).Once()
+	env.RegisterDelayedCallback(func() { env.SignalWorkflow(EntraRehiredSignal, newRef) }, GracePeriod+24*time.Hour)
+	env.ExecuteWorkflow(EntraLeaver, liveRef)
+	var result LeaverResult
+	if err := env.GetWorkflowResult(&result); err != nil || !result.Rehired {
+		t.Fatalf("rehire while waiting: %+v %v", result, err)
+	}
+	env.AssertExpectations(t) // one expiry only, and the fence failure recorded
+}
+
+// A rehire recorded before the old run fenced (no version marker) replays without a fence.
+func TestEntraRehireBeforeTheLeaverFenceReplaysWithoutIt(t *testing.T) {
+	env := liveEnv()
+	newRef := liveRef
+	newRef.ReceiptId = uuid.New()
+	env.OnGetVersion("entra-rehire-fence", workflow.DefaultVersion, workflow.Version(1)).Return(workflow.DefaultVersion)
+	env.OnActivity(liveActs.EntraPrepareLeaver, mock.Anything, liveRef).Return([]string{"one"}, nil)
+	env.OnActivity(liveActs.EntraDisable, mock.Anything, liveRef, "one").Return(nil)
+	env.OnActivity(liveActs.EntraRevoke, mock.Anything, liveRef, "one").Return(nil)
+	env.OnActivity(liveActs.EntraOpenReview, mock.Anything, liveRef).Return(ReviewOpened{}, nil)
+	env.OnActivity(liveActs.EntraSettleSetup, mock.Anything, liveRef).Return(nil)
+	env.OnActivity(liveActs.EntraConfirmRehire, mock.Anything, liveRef, newRef).Return(nil)
+	env.RegisterDelayedCallback(func() { env.SignalWorkflow(EntraRehiredSignal, newRef) }, time.Hour)
+	env.ExecuteWorkflow(EntraLeaver, liveRef)
+	if env.GetWorkflowError() != nil {
+		t.Fatal(env.GetWorkflowError())
+	}
+	env.AssertNotCalled(t, "EntraFenceReview", mock.Anything, mock.Anything)
 }

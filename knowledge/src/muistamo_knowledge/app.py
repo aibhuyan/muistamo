@@ -321,13 +321,17 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
         auth.verify_service(request.headers, body, secret)
         return tenant, body
 
+    # Service calls: a refusal never echoes the request's values (entra: identities), since the
+    # control plane may record the answer.
     @app.post("/v1/knowledge/internal/leaver-reviews")
     async def open_leaver_review(request: Request) -> JSONResponse:
         tenant, body = await signed(request)
         try:
             doc = LeaverReviewOpen.model_validate_json(body)
         except ValidationError as exc:
-            return problem(422, "Document does not match its contract", str(exc.errors()))
+            return problem(
+                422, "Document does not match its contract", str(exc.errors(include_input=False))
+            )
         review, created = await run_in_threadpool(
             leavers().open, tenant, doc.model_dump(mode="json", exclude_none=True)
         )
@@ -349,7 +353,9 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
         try:
             doc = LeaverReviewFence.model_validate_json(body)
         except ValidationError as exc:
-            return problem(422, "Document does not match its contract", str(exc.errors()))
+            return problem(
+                422, "Document does not match its contract", str(exc.errors(include_input=False))
+            )
         return ok(await run_in_threadpool(leavers().fence, tenant, doc.user, doc.generation))
 
     if mcp_app is not None:

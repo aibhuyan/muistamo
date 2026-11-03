@@ -511,6 +511,7 @@ def main() -> None:
         assert not _frozen(kn, bearer(token))
 
         step("7. A second leaving ends its grace period: agent retired, undecided layer purged")
+        left = time.monotonic()
         hr_event(cp, tenant, hr_secret, "leave-2", "leaver", 110)
         second = wait_for(
             "the second review opened",
@@ -521,6 +522,8 @@ def main() -> None:
         wait_for(
             "the layer purged", lambda: _notes(kn, bearer(token)) == [], timeout=GRACE_SECONDS + 90
         )
+        # By the workflow's expiry after the grace period, not earlier.
+        assert time.monotonic() - left >= GRACE_SECONDS, time.monotonic() - left
         closed = _review(kn, manager, status="closed", review_id=second["id"])
         assert closed and closed["outcome"] == "expired", closed
         wait_for(

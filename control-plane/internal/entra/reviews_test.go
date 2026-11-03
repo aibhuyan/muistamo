@@ -284,3 +284,47 @@ func TestAPersonNeverLinkedNeedsNoFence(t *testing.T) {
 		t.Fatalf("fence for an unlinked person: %v, calls %d", err, len(fake.calls))
 	}
 }
+
+// The control plane never asks for a purge once the person has a later HR event: a rehire whose
+// signal and fence both failed still purges nothing.
+func TestNoExpiryIsSentAfterARehire(t *testing.T) {
+	fake := &fakeReviews{status: 200, answer: openAnswer("entra-leaver:x")}
+	f, acts := reviewsFixture(t, fake)
+	linkJoiner(t, f, "HR-PERSON", adapterLifecycleRef(t, f, "join"), userA)
+	leave := seedPersonHR(t, f, "leave", "leaver", "HR-PERSON", "person@example.invalid", "", 2)
+	seedPersonHR(t, f, "rehire", "joiner", "HR-PERSON", "person@example.invalid", "", 3)
+	state, err := acts.EntraExpireReview(context.Background(), leave, "entra-leaver:"+leave.ReceiptId.String())
+	if err != nil || !state.Closed || len(fake.calls) != 0 {
+		t.Fatalf("expiry after a rehire = %+v, %v, calls %d", state, err, len(fake.calls))
+	}
+	after := testdb.Scalar(t, f.db.OwnerURL, `SELECT after::text FROM evidence_events WHERE action='personal-layer.review-closed'`)
+	if !strings.Contains(after, `"superseded"`) {
+		t.Fatalf("closed evidence = %s", after)
+	}
+}
+
+// A refusal's detail can echo the request's entra: identities: only its status and title are
+// recorded, in evidence and in the workflow's error.
+func TestARefusalsDetailNeverReachesEvidenceOrHistory(t *testing.T) {
+	echo := map[string]any{"title": "Document does not match its contract", "status": 422,
+		"detail": "[{'input': 'entra:" + userA.String() + "'}]"}
+	fake := &fakeReviews{status: 422, answer: echo}
+	f, acts := reviewsFixture(t, fake)
+	ctx := context.Background()
+	linkJoiner(t, f, "HR-PERSON", adapterLifecycleRef(t, f, "join"), userA)
+	leave := seedPersonHR(t, f, "leave", "leaver", "HR-PERSON", "person@example.invalid", "", 2)
+	if _, err := acts.EntraOpenReview(ctx, leave); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := acts.EntraExpireReview(ctx, leave, "entra-leaver:x"); err == nil || strings.Contains(err.Error(), userA.String()) {
+		t.Fatalf("expiry error = %v", err)
+	}
+	rehire := seedPersonHR(t, f, "rehire", "joiner", "HR-PERSON", "person@example.invalid", "", 3)
+	if err := acts.EntraFenceReview(ctx, rehire); err == nil || strings.Contains(err.Error(), userA.String()) {
+		t.Fatalf("fence error = %v", err)
+	}
+	all := testdb.Scalar(t, f.db.OwnerURL, `SELECT string_agg(after::text, ' ') FROM evidence_events WHERE action LIKE 'personal-layer.%'`)
+	if strings.Contains(all, userA.String()) || !strings.Contains(all, "422 Document does not match its contract") {
+		t.Fatalf("personal-layer evidence = %s", all)
+	}
+}
