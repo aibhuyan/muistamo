@@ -168,9 +168,7 @@ def test_the_fence_cancels_the_earlier_review_and_late_calls_cannot_purge_the_la
         "/v1/knowledge/leaver-reviews/leave-2:run/decision",
         json={"decision": "purge", "reason": "late"},
     )
-    assert decision.status_code in (404, 409) and [e["key"] for e in live.entries()] == [
-        "fiscal-year"
-    ]
+    assert decision.status_code == 409 and [e["key"] for e in live.entries()] == ["fiscal-year"]
     assert (
         "knowledge.leaver-review.fenced",
         {"user": P, "generation": 3, "previous": 2, "cancelled": ["leave-2:run"]},
@@ -186,6 +184,10 @@ def test_an_expiry_purges_only_while_no_later_generation_is_known(live) -> None:
     )
     assert superseded(live.expire("leave-2:run"))
     assert [e["key"] for e in live.entries()] == ["fiscal-year"] and live.frozen()
+    assert live.actions()[-1] == (
+        "knowledge.leaver-review.refused",
+        {"reason": "superseded", "generation": 2, "fence": 3},
+    )
 
 
 def test_an_expiry_at_the_current_generation_purges_the_undecided_layer(live) -> None:
@@ -207,6 +209,57 @@ def test_a_decision_is_refused_once_a_later_generation_is_known(live) -> None:
     )
     assert superseded(decision), decision.text
     assert [e["key"] for e in live.entries()] == ["fiscal-year"]
+    assert live.actions()[-1] == (
+        "knowledge.leaver-review.refused",
+        {"reason": "superseded", "generation": 2, "fence": 3},
+    )
+
+
+def test_another_run_of_the_same_leaving_takes_over_its_open_review(live) -> None:
+    # A reset leaver workflow opens again at the same generation under a new run id.
+    first = live.open("leave-2:run-1", 2).json()
+    again = live.open("leave-2:run-2", 2)
+    assert again.status_code == 200 and again.json() == first
+    live.past_deadline("leave-2:run-1")
+    assert live.expire(first["id"]).json()["outcome"] == "expired" and live.entries() == []
+
+
+@pytest.mark.parametrize("call", ["expire", "decide"])
+def test_expiry_and_decisions_take_the_fence_lock_before_the_review_lock(live, call) -> None:
+    """Every path locks the fence row first, so a fence (which then locks the review) and a
+    decision or expiry cannot deadlock. Here the fence row is held: the call must wait on it
+    without having locked the review."""
+    import threading
+
+    assert live.open("leave-2:run", 2).status_code == 201
+    live.past_deadline("leave-2:run")
+    with psycopg.connect(live.world.db.app_url) as holder:
+        holder.execute(
+            "SELECT set_config('muistamo.tenant_id', %s, false)", (str(live.world.tenant),)
+        )
+        holder.execute("SELECT 1 FROM knowledge.leaver_review_fences FOR UPDATE")
+        results: list = []
+
+        def run() -> None:
+            if call == "expire":
+                results.append(live.expire("leave-2:run"))
+            else:
+                results.append(
+                    live.person(MANAGER).post(
+                        "/v1/knowledge/leaver-reviews/leave-2:run/decision",
+                        json={"decision": "keep", "reason": "still needed"},
+                    )
+                )
+
+        worker = threading.Thread(target=run)
+        worker.start()
+        worker.join(timeout=2)
+        assert worker.is_alive(), "the call did not wait for the fence row"
+        # The review row is free: the waiting call has not locked it.
+        holder.execute("SELECT 1 FROM knowledge.leaver_reviews FOR UPDATE NOWAIT")
+        holder.rollback()
+        worker.join(timeout=30)
+    assert results and results[0].status_code == 200, results
 
 
 def test_a_fence_never_moves_back_and_a_late_fence_leaves_a_newer_review_open(live) -> None:
@@ -265,13 +318,32 @@ def test_the_server_role_can_neither_lower_nor_delete_a_fence(live) -> None:
     assert live.owner_sql("SELECT generation FROM knowledge.leaver_review_fences")[0][0] == 5
 
 
+def test_only_a_live_person_has_a_review_generation(live) -> None:
+    with pytest.raises(psycopg.errors.CheckViolation):
+        live.owner_sql(
+            "INSERT INTO knowledge.leaver_reviews (tenant_id, id, person, decider_kind, status,"
+            " deadline, entry_count, generation)"
+            " VALUES (%s, 'legacy:run', 'dev:a@example.invalid', 'privacy-officers', 'open',"
+            " now(), 1, 2)",
+            (live.world.tenant,),
+        )
+
+
 def test_erasure_removes_the_fence_with_the_person(live) -> None:
+    from muistamo_knowledge.privacy import rows_mentioning
+
     assert live.fence(3).status_code == 200
     with psycopg.connect(live.world.db.app_url) as conn, conn.transaction():
         conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(live.world.tenant),))
+        # An access request exports the fence as the person's data.
+        with conn.cursor() as cur:
+            exported = rows_mentioning(cur, "leaver_review_fences", [P])
+        assert [(r["person"], r["generation"]) for r in exported] == [(P, 3)]
         counts = conn.execute(
             "SELECT knowledge.erase_subject(%s, %s, %s)", ([P], f"erased:{uuid.uuid4()}", [])
         ).fetchone()[0]
+        with conn.cursor() as cur:
+            assert rows_mentioning(cur, "leaver_review_fences", [P]) == []
     assert counts["leaver_review_fences"] == 1
     assert live.owner_sql("SELECT count(*) FROM knowledge.leaver_review_fences")[0][0] == 0
 

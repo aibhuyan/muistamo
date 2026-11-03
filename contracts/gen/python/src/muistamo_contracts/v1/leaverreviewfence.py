@@ -17,4 +17,6 @@ class LeaverReviewFence(BaseModel):
             pattern="^entra:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
         ),
     ]
-    generation: Annotated[int, Field(description="The rehire's HR generation.", ge=1)]
+    generation: Annotated[
+        int, Field(description="The rehire's HR generation.", ge=1, le=9223372036854775807)
+    ]

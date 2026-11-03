@@ -144,6 +144,7 @@ class Leavers:
         actor = Actor(tenant=tenant, name=SERVICE_ACTOR, request_id=f"leaver-review:{review_id}")
         refused: Superseded | None = None
         with self.k.db.in_tenant(tenant) as cur:
+            self._lock_fence_of_review(cur, review_id)
             review = self._require(cur, review_id)
             if review["status"] == "closed":
                 return review
@@ -216,6 +217,7 @@ class Leavers:
     def decide(self, actor: Actor, review_id: str, body: dict[str, Any]) -> dict[str, Any]:
         refused: Superseded | None = None
         with self.k.db.in_tenant(actor.tenant) as cur:
+            self._lock_fence_of_review(cur, review_id)
             review = self._for_decider(cur, actor, review_id, lock=True)
             if review["status"] != "open":
                 raise Conflict(f"review is closed ({review.get('outcome')})")
@@ -267,6 +269,12 @@ class Leavers:
             (person,),
         )
         other = cur.fetchone()
+        if other is not None and generation is not None:
+            # The same leaving, opened by another run (a reset workflow): one review per
+            # generation, so the new run takes over the open one rather than leaving it stuck.
+            same = self._require(cur, other[0])
+            if same.get("generation") == generation:
+                return same, False
         if other is not None:
             raise Conflict(f"review {other[0]} is already open for this person")
         count = len(self.k._personal_of(cur, person))
@@ -351,6 +359,13 @@ class Leavers:
             after=after,
         )
         return self._require(cur, review_id)
+
+    def _lock_fence_of_review(self, cur: Cursor, review_id: str) -> None:
+        """Lock a live review's fence row before the review row. Every path takes the fence
+        first (open and fence do too), so the two locks cannot deadlock."""
+        review = self._get(cur, review_id)
+        if review is not None and review.get("generation") is not None:
+            self._fence_of(cur, review["person"])
 
     def _fence_of(self, cur: Cursor, person: str, lock: bool = False) -> int | None:
         cur.execute(

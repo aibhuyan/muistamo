@@ -16,6 +16,7 @@ class LeaverReviewFenced(BaseModel):
         Field(
             description="The person's fence now: the highest generation ever sent for them, which may be later than the one in this call.",
             ge=1,
+            le=9223372036854775807,
         ),
     ]
     cancelled: Annotated[list[str], Field(description="Ids of the reviews this call cancelled.")]

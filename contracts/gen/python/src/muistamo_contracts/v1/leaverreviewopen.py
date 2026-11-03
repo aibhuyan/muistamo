@@ -59,6 +59,7 @@ class LeaverReviewOpen(BaseModel):
         Field(
             description="Live (Entra) mode: the leaver's HR generation, which orders this call against a rehire's fence. Required with person.user; absent for a legacy leaver.",
             ge=1,
+            le=9223372036854775807,
         ),
     ] = None
     person: Annotated[LeaverReviewPerson, Field(title="LeaverReviewPerson")]

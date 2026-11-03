@@ -3384,6 +3384,7 @@ components:
             was opened at.'
           type: integer
           minimum: 1
+          maximum: 9223372036854775807
         status:
           type: string
           enum:
@@ -3510,6 +3511,7 @@ components:
           description: The rehire's HR generation.
           type: integer
           minimum: 1
+          maximum: 9223372036854775807
     LeaverReviewFenced:
       title: LeaverReviewFenced
       description: The person's fence after a fence call, and the reviews it cancelled.
@@ -3527,6 +3529,7 @@ components:
             for them, which may be later than the one in this call.'
           type: integer
           minimum: 1
+          maximum: 9223372036854775807
         cancelled:
           description: Ids of the reviews this call cancelled.
           type: array
@@ -3558,6 +3561,7 @@ components:
             for a legacy leaver.'
           type: integer
           minimum: 1
+          maximum: 9223372036854775807
         person:
           title: LeaverReviewPerson
           type: object

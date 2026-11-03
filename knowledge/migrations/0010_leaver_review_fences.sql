@@ -42,7 +42,9 @@ GRANT SELECT, INSERT, UPDATE ON knowledge.leaver_review_fences TO muistamo_knowl
 
 -- The generation a live review was opened at; NULL for a legacy (simulated-mode) review.
 ALTER TABLE knowledge.leaver_reviews
-  ADD COLUMN generation bigint CHECK (generation IS NULL OR generation > 0);
+  ADD COLUMN generation bigint CHECK (generation IS NULL OR generation > 0),
+  -- Only a live person (or one since erased) has a generation.
+  ADD CONSTRAINT leaver_reviews_generation_live CHECK (generation IS NULL OR person ~ '^(entra|erased):');
 
 -- Erasure (0004, 0005, 0007) must reach the fence too: redefine erase_subject with it.
 CREATE OR REPLACE FUNCTION knowledge.erase_subject(subject_values text[], pseudonym text, redact uuid[])
@@ -129,6 +131,10 @@ BEGIN
   DELETE FROM privacy_officers WHERE tenant_id = t AND officer = ANY (subject_values);
   GET DIAGNOSTICS n = ROW_COUNT; counts := counts || jsonb_build_object('privacy_officers', n);
   -- The person's leaver-review fence (0010): an ordering record, kept until the person is erased.
+  -- Deleted, not pseudonymised, so the identifier is gone: a later call for the same user starts
+  -- a new fence. Erasure needs the person's instances retired, so no leaving of theirs is live.
+  -- A live review still open is pseudonymised above and, with no fence left, is refused if it
+  -- is ever expired. That is harmless: the erasure has already removed the layer it froze.
   DELETE FROM leaver_review_fences WHERE tenant_id = t AND person = ANY (subject_values);
   GET DIAGNOSTICS n = ROW_COUNT; counts := counts || jsonb_build_object('leaver_review_fences', n);
 

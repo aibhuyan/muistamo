@@ -8,7 +8,7 @@
   "required": ["id", "person", "deciders"],
   "properties": {
     "id": { "description": "The leaver workflow's id and run id: unique per leaving, stable across retries.", "type": "string", "minLength": 1, "maxLength": 255 },
-    "generation": { "description": "Live (Entra) mode: the leaver's HR generation, which orders this call against a rehire's fence. Required with person.user; absent for a legacy leaver.", "type": "integer", "minimum": 1 },
+    "generation": { "description": "Live (Entra) mode: the leaver's HR generation, which orders this call against a rehire's fence. Required with person.user; absent for a legacy leaver.", "type": "integer", "minimum": 1, "maximum": 9223372036854775807 },
     "person": {
       "title": "LeaverReviewPerson",
       "type": "object",

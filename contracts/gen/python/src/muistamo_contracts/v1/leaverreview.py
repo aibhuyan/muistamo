@@ -39,6 +39,7 @@ class LeaverReview(BaseModel):
         Field(
             description="Live (Entra) mode: the leaver's HR generation the review was opened at.",
             ge=1,
+            le=9223372036854775807,
         ),
     ] = None
     status: Status
