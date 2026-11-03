@@ -34,6 +34,7 @@ from muistamo_knowledge import auth, evidence
 from muistamo_knowledge.auth import Resolver, Unauthenticated, deny_all
 from muistamo_knowledge.connectors import ConnectorUnavailable
 from muistamo_knowledge.db import UnknownTenant
+from muistamo_knowledge.entra import KNOWLEDGE_SCOPE
 from muistamo_knowledge.leavers import Leavers
 from muistamo_knowledge.mcp_server import build as build_mcp
 from muistamo_knowledge.mcp_server import require_identity
@@ -373,8 +374,57 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
             )
         return ok(await run_in_threadpool(leavers().fence, tenant, doc.user, doc.generation))
 
+    # Sign-in discovery for a tenant's MCP endpoint (RFC 9728; docs/assistants-plan.md). Served
+    # only when the service knows its public URL and the tenant has an Entra directory.
+    public = os.environ.get("MUISTAMO_KNOWLEDGE_PUBLIC_URL", "").rstrip("/")
+
+    def discovery(tenant: uuid.UUID) -> dict[str, Any] | None:
+        if not public or knowledge is None:
+            return None
+        registration = knowledge.db.entra_registration(tenant)
+        if registration is None:
+            return None
+        directory, audience = registration
+        return {
+            "resource": f"{public}/mcp/t/{tenant}/knowledge",
+            "authorization_servers": [f"https://login.microsoftonline.com/{directory}/v2.0"],
+            # Fully qualified: Entra does not take the resource parameter.
+            "scopes_supported": [f"api://{audience}/{KNOWLEDGE_SCOPE}"],
+            "bearer_methods_supported": ["header"],
+            "resource_name": "Muistamo knowledge",
+        }
+
+    def tenant_challenge(tenant: uuid.UUID) -> str | None:
+        found = discovery(tenant)
+        if found is None:
+            return None
+        return (
+            f'Bearer realm="muistamo-knowledge",'
+            f' resource_metadata="{public}/.well-known/oauth-protected-resource/mcp/t/{tenant}/knowledge",'
+            f' scope="{found["scopes_supported"][0]}"'
+        )
+
+    @app.get("/.well-known/oauth-protected-resource/mcp/t/{tenant}/knowledge")
+    async def protected_resource_metadata(tenant: str) -> JSONResponse:
+        try:
+            parsed = uuid.UUID(tenant)
+        except ValueError:
+            parsed = None
+        found = (
+            await run_in_threadpool(discovery, parsed)
+            if parsed is not None and str(parsed) == tenant
+            else None
+        )
+        if found is None:
+            return problem(404, "Not found")
+        return JSONResponse(found)
+
     if mcp_app is not None:
         app.mount("/mcp/knowledge", require_identity(mcp_app, resolver, knowledge))
+        app.mount(
+            "/mcp/t/{tenant}/knowledge",
+            require_identity(mcp_app, resolver, knowledge, tenant_challenge=tenant_challenge),
+        )
     else:
 
         @app.api_route("/mcp/knowledge/{rest:path}", methods=["GET", "POST", "DELETE"])

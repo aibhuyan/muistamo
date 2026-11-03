@@ -16,7 +16,9 @@ OAuth protected-resource metadata (RFC 9728) is not served: each tenant has its 
 audience, so one public document cannot describe them; clients are configured per tenant.
 """
 
+from collections.abc import Callable
 from typing import Any
+from uuid import UUID
 
 import anyio
 from mcp.server.mcpserver import Context, MCPServer
@@ -153,23 +155,43 @@ def _cite(citation: dict[str, Any]) -> dict[str, Any]:
     return {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in citation.items()}
 
 
-def require_identity(app: ASGIApp, resolver: Resolver, knowledge: Knowledge | None) -> ASGIApp:
-    """Refuse any MCP HTTP request whose caller cannot be resolved, before the SDK sees it."""
+def require_identity(
+    app: ASGIApp,
+    resolver: Resolver,
+    knowledge: Knowledge | None,
+    tenant_challenge: Callable[[UUID], str | None] | None = None,
+) -> ASGIApp:
+    """Refuse any MCP HTTP request whose caller cannot be resolved, before the SDK sees it.
+
+    With tenant_challenge, the mount is one tenant's endpoint (its path names the tenant): a
+    caller resolved to any other tenant is refused too, and a 401 carries that tenant's sign-in
+    discovery (RFC 9728) from tenant_challenge when it has one."""
+    scoped = tenant_challenge is not None
 
     async def guarded(scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
             headers = {
                 k.decode("latin-1"): v.decode("latin-1") for k, v in scope.get("headers", [])
             }
+            path_tenant = _path_tenant(scope) if scoped else None
             try:
                 if knowledge is None:
                     raise Unauthenticated("knowledge service not configured")
+                if scoped and path_tenant is None:
+                    raise Unauthenticated("the endpoint names no tenant")
                 # A token resolver may fetch the directory's keys: never on the event loop.
                 tenant, _ = await anyio.to_thread.run_sync(lambda: resolver(headers))
                 # The tenant must be registered, exactly as for REST.
                 await anyio.to_thread.run_sync(lambda: _check_tenant(knowledge, tenant))
+                if scoped and tenant != path_tenant:
+                    raise Unauthenticated("the token is for another tenant's endpoint")
             except (Unauthenticated, UnknownTenant):
                 challenge = getattr(resolver, "challenge", None)
+                if scoped and path_tenant is not None and tenant_challenge is not None:
+                    found = tenant_challenge
+                    challenge = (
+                        await anyio.to_thread.run_sync(lambda: found(path_tenant)) or challenge
+                    )
                 response = JSONResponse(
                     {"title": "Unauthorized", "status": 401},
                     status_code=401,
@@ -181,6 +203,16 @@ def require_identity(app: ASGIApp, resolver: Resolver, knowledge: Knowledge | No
         await app(scope, receive, send)
 
     return guarded
+
+
+def _path_tenant(scope: Scope) -> UUID | None:
+    """The tenant a scoped mount's path names, in canonical form only."""
+    value = scope.get("path_params", {}).get("tenant")
+    try:
+        parsed = UUID(str(value))
+    except ValueError:
+        return None
+    return parsed if str(parsed) == value else None
 
 
 def _check_tenant(knowledge: Knowledge, tenant) -> None:

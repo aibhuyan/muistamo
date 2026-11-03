@@ -706,8 +706,51 @@ paths:
         "401":
           $ref: "#/components/responses/Problem"
 
+  /mcp/t/{tenant}/knowledge:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    post:
+      operationId: mcpTenantKnowledge
+      summary: A tenant's MCP endpoint, the URL an assistant is configured with (docs/assistants-plan.md)
+      description: >-
+        As /mcp/knowledge, for one tenant: a caller whose token resolves to another tenant is
+        refused. A 401 carries WWW-Authenticate with resource_metadata (RFC 9728) and the scope
+        to request, so the assistant can send the person to sign in with their Entra directory.
+      responses:
+        "200":
+          description: An MCP JSON-RPC response.
+        "401":
+          $ref: "#/components/responses/Problem"
+
+  /.well-known/oauth-protected-resource/mcp/t/{tenant}/knowledge:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: getMcpProtectedResourceMetadata
+      summary: Protected resource metadata (RFC 9728) for a tenant's MCP endpoint
+      description: >-
+        Unauthenticated, as RFC 9728 requires. Served only when the knowledge service knows its
+        public URL (MUISTAMO_KNOWLEDGE_PUBLIC_URL) and the tenant has an Entra registration;
+        otherwise 404, the same for an unknown tenant.
+      responses:
+        "200":
+          description: The metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/protectedresourcemetadata.json"
+        "404":
+          $ref: "#/components/responses/Problem"
+
 components:
   parameters:
+    Tenant:
+      name: tenant
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     Name:
       name: name
       in: path
