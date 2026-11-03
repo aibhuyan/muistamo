@@ -39,15 +39,15 @@ def capture(client, key: str, body: str) -> str:
     return res.json()["id"]
 
 
-def merge(contributor, reviewer, ids: list[str]) -> dict:
+def merge(contributor, reviewer, ids: list[str], edits: list | None = None) -> dict:
     p = contributor.post(
         "/v1/knowledge/proposals", json={"pack": "basics", "entryIds": ids, "summary": "teach"}
     )
     assert p.status_code == 201, p.text
-    d = reviewer.post(
-        f"/v1/knowledge/proposals/{p.json()['id']}/decision",
-        json={"decision": "approve", "reason": "ok"},
-    )
+    decision = {"decision": "approve", "reason": "ok"}
+    if edits:
+        decision["edits"] = edits
+    d = reviewer.post(f"/v1/knowledge/proposals/{p.json()['id']}/decision", json=decision)
     assert d.status_code == 200, d.text
     return d.json()
 
@@ -70,12 +70,24 @@ def seed(world) -> dict:
     assert a.put("/v1/knowledge/packs/basics", json=PACK).status_code == 201
     fiscal = capture(a, "fiscal-year", "Our fiscal year ends on 30 June.")
     phone = capture(a, "desk-phone", "Call Person A on +358 40 000 0000 for approvals.")
-    merge(a, b, [fiscal, phone])
+    # A second proposal of the same entry, still in review: a sibling copy of the text.
+    sibling = a.post(
+        "/v1/knowledge/proposals", json={"pack": "basics", "entryIds": [phone], "summary": "again"}
+    )
+    assert sibling.status_code == 201, sibling.text
+    # The reviewer edits it on merge: a revision derived from the merged copy.
+    edit = {"key": "desk-phone", "body": "Call Person A on +358 40 000 0000, or their deputy."}
+    merge(a, b, [fiscal, phone], [edit])
     merge(c, a, [capture(c, "close", "Books close on day 5.")])
     capture(a, "private-note", "Remind me about the dentist.")
     r = a.get("/v1/knowledge/retrieve", params={"q": "fiscal", "packs": "basics"})
     assert r.status_code == 200, r.text
-    return {"phone": phone}
+    # Merging retired A's personal copies, so an officer names the merged entry, as the access
+    # export lists it; redaction reaches the copy it was edited from and the sibling copy too.
+    v1 = b.get("/v1/knowledge/packs/basics/versions/0.1.0").json()["entries"]
+    merged_phone = next(e["entry"]["id"] for e in v1 if e["entry"]["key"] == "desk-phone")
+    assert phone not in [e["id"] for e in a.get("/v1/knowledge/personal/entries").json()["items"]]
+    return {"phone": merged_phone}
 
 
 def erase(world, request_id: uuid.UUID, redact: list[str] | None = None, reason: str = "DSR-7"):
@@ -205,7 +217,8 @@ def test_only_officers_erase_and_never_themselves(world) -> None:
     assert erase(world, uuid.uuid4(), reason=f"asked by {A}").status_code == 422
     assert erase(world, uuid.uuid4(), redact=[str(uuid.uuid4())]).status_code == 422
     # None of the refusals erased anything.
-    assert remaining(world, ["dev:" + A, A]).get("personal_entries") == 3
+    # Only the private note is still personal: the two merged copies were retired on merge.
+    assert remaining(world, ["dev:" + A, A]).get("personal_entries") == 1
 
 
 def test_access_export(world) -> None:
@@ -213,7 +226,7 @@ def test_access_export(world) -> None:
     own = world.client(A).post("/v1/knowledge/privacy/access", json={"subject": subject()})
     assert own.status_code == 200, own.text
     sections = own.json()["sections"]
-    assert len(sections["personal_entries"]) == 3 and len(sections["reads"]) == 1
+    assert len(sections["personal_entries"]) == 1 and len(sections["reads"]) == 1
     assert sections["evidence_events"], "the person's evidence events belong in their export"
     # Anyone else's data needs an officer; an officer sees everything erasure would act on.
     other = world.client(B).post("/v1/knowledge/privacy/access", json={"subject": subject()})
