@@ -46,6 +46,8 @@ CACHE_ENTRIES = 1024  # bounded: random tenant ids from anyone must not grow it
 
 # A tenant's (directory, audience), or None (migration 0011's knowledge.entra_registration).
 RegistrationLookup = Callable[[UUID], "tuple[UUID, UUID] | None"]
+# The name of a client app the tenant allows as an assistant, or None (migration 0012).
+AssistantLookup = Callable[[UUID, UUID], "str | None"]
 # POST form to url → (status, body). Tests replace it; in production Entra, nothing else.
 Transport = Callable[[str, bytes], "tuple[int, bytes]"]
 
@@ -130,11 +132,13 @@ class SignIn:
         self,
         public: str,
         registration: RegistrationLookup,
+        assistants: AssistantLookup,
         transport: Transport | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.public = public
         self._registration = registration
+        self._assistants = assistants
         self._transport = transport
         self._clock = clock
         self._lock = threading.Lock()
@@ -224,7 +228,7 @@ class SignIn:
         directory, audience = self._require(tenant)
         if params.get("response_type") != "code":
             raise OAuthError(400, "unsupported_response_type", "only the code flow is offered")
-        client = _client_id(params.get("client_id"))
+        client = self._allowed_client(tenant, params.get("client_id"))
         redirect = params.get("redirect_uri", "")
         if not redirect:
             raise OAuthError(400, "invalid_request", "redirect_uri is required")
@@ -264,7 +268,7 @@ class SignIn:
             client_id, secret = _basic(authorization, client_id)
         forward = {
             "grant_type": grant,
-            "client_id": str(_client_id(client_id)),
+            "client_id": str(self._allowed_client(tenant, client_id)),
             "scope": self._entra_scope(audience, form.get("scope")),
         }
         if secret:
@@ -300,6 +304,14 @@ class SignIn:
         return status, body
 
     # Helpers ----------------------------------------------------------------------------------
+
+    def _allowed_client(self, tenant: UUID, value: str | None) -> UUID:
+        """The client, if it is an assistant the tenant allows (the same list the MCP endpoint
+        checks every token's azp against)."""
+        client = _client_id(value)
+        if self._assistants(tenant, client) is None:
+            raise OAuthError(400, "unauthorized_client", "this assistant is not allowed here")
+        return client
 
     def _require(self, tenant: UUID) -> tuple[UUID, UUID]:
         found = self.registered(tenant)

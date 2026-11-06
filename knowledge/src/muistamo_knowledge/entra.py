@@ -50,6 +50,8 @@ class Registration:
 
 # Finds the registration for a directory (None when the directory is not registered).
 Lookup = Callable[[uuid.UUID], Registration | None]
+# The name of a client app the tenant allows as an assistant (None when it is not allowed).
+Assistants = Callable[[uuid.UUID, uuid.UUID], str | None]
 # Fetches a directory's published key set as JSON.
 FetchKeys = Callable[[uuid.UUID], bytes]
 
@@ -131,16 +133,27 @@ class EntraBearer:
     def __init__(
         self,
         lookup: Lookup,
+        assistants: Assistants,
         fetch: FetchKeys = fetch_keys,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._lookup = lookup
+        self._assistants = assistants
         self._fetch = fetch
         self._clock = clock
         self._lock = threading.Lock()
         self._sets: dict[uuid.UUID, _KeySet] = {}
 
     def __call__(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str]:
+        tenant, user, _ = self._verify(headers)
+        return tenant, user
+
+    def assistant_of(self, headers: Mapping[str, str]) -> str:
+        """The allowed assistant the caller's token was obtained by. Verifies the token again, so
+        the name is never read from an unchecked one."""
+        return self._verify(headers)[2]
+
+    def _verify(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str, str]:
         scheme, _, token = _header(headers, "Authorization").partition(" ")
         if scheme.lower() != "bearer" or not token or " " in token or len(token) > MAX_TOKEN:
             raise Unauthenticated("missing or malformed bearer token")
@@ -183,7 +196,14 @@ class EntraBearer:
         user = _canonical_uuid(claims.get("oid"))
         if user is None:
             raise Unauthenticated("bearer token names no user")
-        return registration.tenant, f"entra:{user}"
+        # Only an assistant the tenant allows: the client app that obtained the token (azp).
+        client_app = _canonical_uuid(claims.get("azp"))
+        if client_app is None:
+            raise Unauthenticated("bearer token names no client app")
+        assistant = self._assistants(registration.tenant, client_app)
+        if assistant is None:
+            raise Unauthenticated("the token's client app is not an assistant the tenant allows")
+        return registration.tenant, f"entra:{user}", assistant
 
     def _key(self, directory: uuid.UUID, kid: str) -> RSAPublicKey:
         """The directory's signing key kid, fetching the keys when the cache is old or lacks it,
@@ -218,6 +238,51 @@ class EntraBearer:
         if kid not in fresh:
             raise Unauthenticated("unknown signing key")
         return fresh[kid]
+
+
+def assistants(db: Any) -> Assistants:
+    """Allowed-assistant lookup through the knowledge database (db.Database.entra_assistant)."""
+    return db.entra_assistant
+
+
+def allow_assistant(owner_url: str, tenant: uuid.UUID, client_app: uuid.UUID, name: str) -> None:
+    """Allow a client app (its Entra application id) as one of the tenant's assistants, under a
+    display name, as the schema owner (an operator command). Renaming is allowed."""
+    import psycopg
+
+    with psycopg.connect(owner_url) as conn, conn.transaction():
+        conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(tenant),))
+        conn.execute(
+            "INSERT INTO knowledge.assistants (tenant_id, client_app, name) VALUES (%s, %s, %s)"
+            " ON CONFLICT (tenant_id, client_app) DO UPDATE SET name = EXCLUDED.name",
+            (tenant, client_app, name),
+        )
+
+
+def remove_assistant(owner_url: str, tenant: uuid.UUID, client_app: uuid.UUID) -> bool:
+    """Stop accepting a client app for the tenant; its next call is refused. True if it was
+    allowed."""
+    import psycopg
+
+    with psycopg.connect(owner_url) as conn, conn.transaction():
+        conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(tenant),))
+        cur = conn.execute(
+            "DELETE FROM knowledge.assistants WHERE tenant_id = %s AND client_app = %s",
+            (tenant, client_app),
+        )
+        return cur.rowcount == 1
+
+
+def list_assistants(owner_url: str, tenant: uuid.UUID) -> list[tuple[uuid.UUID, str]]:
+    import psycopg
+
+    with psycopg.connect(owner_url) as conn, conn.transaction():
+        conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(tenant),))
+        rows = conn.execute(
+            "SELECT client_app, name FROM knowledge.assistants WHERE tenant_id = %s ORDER BY name",
+            (tenant,),
+        ).fetchall()
+        return [(r[0], r[1]) for r in rows]
 
 
 def registrations(db: Any) -> Lookup:

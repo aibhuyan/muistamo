@@ -365,6 +365,12 @@ def main() -> None:
         run(python + ["tenant", "register", tenant], kenv)
         run(python + ["tenant", "service-secret", tenant], kenv, stdin=knowledge_secret + "\n")
         run(python + ["tenant", "entra", tenant, str(directory), str(blueprint)], kenv)
+        # The assistant the tenant allows: tokens from any other client app are refused.
+        run(
+            python
+            + ["tenant", "assistant", "add", tenant, str(fake_microsoft.ASSISTANT), "Claude"],
+            kenv,
+        )
         k_key = str(work / "k-evidence.key")
         run(python + ["evidence", "keygen", "--out", k_key], kenv)
         (work / "indexer.secret").write_text(indexer_secret)
@@ -458,6 +464,10 @@ def main() -> None:
 
         step("2. MCP search as the person: their document, cited, and not another's")
         token = ms.user_token(PERSON)
+        # The same person through an assistant the tenant has not allowed: refused outright.
+        unlisted = ms.user_token(PERSON, azp=uuid.uuid4())
+        status, _ = http("GET", f"{kn}/v1/knowledge/personal/entries", None, bearer(unlisted))
+        assert status == 401, status
         found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", token, ["finance"])
         ids = {r["citation"]["externalId"] for r in found["results"]}
         assert ids == {"b!documents/plan-open"}, found
@@ -622,6 +632,12 @@ def main() -> None:
         found = anyio.run(mcp_search, f"{kn}/mcp/knowledge/", colleague, ["finance"])
         kept = [r for r in found["results"] if r["title"] == "Quarterly close"]
         assert [r["citation"].get("pack") for r in kept] == ["finance"], found
+
+        # Every read the person made was recorded with the assistant it came through.
+        with psycopg.connect(kdb) as conn, conn.transaction():
+            conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (tenant,))
+            via = {r[0] for r in conn.execute("SELECT assistant FROM knowledge.reads").fetchall()}
+        assert via == {"Claude"}, via
 
         step("9. Evidence verifies in both services")
         export = work / "cp-evidence.jsonl"

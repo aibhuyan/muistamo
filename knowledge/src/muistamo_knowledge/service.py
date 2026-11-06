@@ -63,6 +63,9 @@ class Actor:
     # An Entra caller's own access token, kept only to ask the control plane for a delegation
     # in the same request (PR D). Never logged, stored or compared.
     bearer: str | None = field(default=None, repr=False, compare=False)
+    # The allowed assistant an Entra caller's token was obtained by ("Claude", "Copilot"), as
+    # the tenant named it; None for development callers. Recorded with each read.
+    assistant: str | None = field(default=None, compare=False)
 
 
 def bump_minor(version: str) -> str:

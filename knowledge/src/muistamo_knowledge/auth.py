@@ -65,6 +65,15 @@ def entra_bearer(name: str, headers: Mapping[str, str]) -> str | None:
     return token if scheme.lower() == "bearer" and token else None
 
 
+def entra_assistant(resolver: object, name: str, headers: Mapping[str, str]) -> str | None:
+    """The allowed assistant an Entra caller came through, re-verified by the resolver; None for
+    any other caller."""
+    assistant_of = getattr(resolver, "assistant_of", None)
+    if not name.startswith("entra:") or assistant_of is None:
+        return None
+    return assistant_of(headers)
+
+
 def no_identity_map(_: str) -> str:
     raise UnmappedIdentity("no identity mapping is configured")
 

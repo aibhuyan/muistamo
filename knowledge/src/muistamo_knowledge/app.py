@@ -157,6 +157,7 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
             name=name,
             request_id=str(uuid.uuid4()),
             bearer=auth.entra_bearer(name, request.headers),
+            assistant=auth.entra_assistant(resolver, name, request.headers),
         )
 
     Who = Annotated[Actor, Depends(actor)]
@@ -402,6 +403,7 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     signin = oauth.SignIn(
         public,
         knowledge.db.entra_registration if knowledge is not None else (lambda _: None),
+        knowledge.db.entra_assistant if knowledge is not None else (lambda _t, _c: None),
     )
 
     def canonical_tenant(value: str) -> uuid.UUID | None:

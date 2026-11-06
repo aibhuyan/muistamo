@@ -24,7 +24,10 @@ AUDIENCE = uuid.UUID("44444444-4444-4444-8444-444444444444")
 
 def resolver(directory, clock=time.time) -> entra.EntraBearer:
     registered = {DIRECTORY: entra.Registration(TENANT, AUDIENCE)}
-    return entra.EntraBearer(registered.get, fetch=directory.fetch, clock=clock)
+    # Every assistant is allowed here; the allowlist has its own suite (test_assistants.py).
+    return entra.EntraBearer(
+        registered.get, lambda _t, _c: "Test assistant", fetch=directory.fetch, clock=clock
+    )
 
 
 def bearer(token: str) -> dict[str, str]:

@@ -56,6 +56,15 @@ class Database:
             row = cur.fetchone()
             return (row[0], row[1]) if row else None
 
+    def entra_assistant(self, tenant: UUID, client_app: UUID) -> str | None:
+        """The name of a client app the tenant allows as an assistant, or None.
+
+        Read while resolving a caller, through knowledge.entra_assistant() (migration 0012)."""
+        with self.pool.connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT knowledge.entra_assistant(%s, %s)", (tenant, client_app))
+            row = cur.fetchone()
+            return row[0] if row else None
+
     def key_registered(self, key_id: str) -> bool:
         with self.pool.connection() as conn, conn.cursor() as cur:
             cur.execute(

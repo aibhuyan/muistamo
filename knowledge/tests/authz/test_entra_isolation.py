@@ -21,7 +21,9 @@ def test_a_token_reaches_only_its_directorys_tenant(entra_world, new_directory) 
     entra.register(world.db.owner_url, world.other_tenant, second.directory, uuid.uuid4())
     keys = {entra_world.directory.directory: entra_world.directory, second.directory: second}
     resolver = entra.EntraBearer(
-        entra.registrations(world.knowledge.db), fetch=lambda d: keys[d].fetch(d)
+        entra.registrations(world.knowledge.db),
+        entra.assistants(world.knowledge.db),
+        fetch=lambda d: keys[d].fetch(d),
     )
     one = entra_world.client(entra_world.directory.token(PERSON))
     assert one.post("/v1/knowledge/personal/entries", json=NOTE).status_code == 201
@@ -53,10 +55,16 @@ def test_directories_sharing_entra_signing_keys_stay_apart(entra_world, new_dire
     one = entra_world.directory
     two_id, two_audience = uuid.uuid4(), uuid.uuid4()
     entra.register(world.db.owner_url, world.other_tenant, two_id, two_audience)
+    # Tenant two allows the same assistant, so only the directory keeps the tenants apart.
+    entra.allow_assistant(
+        world.db.owner_url, world.other_tenant, uuid.UUID(one.claims(uuid.uuid4())["azp"]), "Test"
+    )
     two = new_directory(directory=two_id, kid=one.kid)
     two.key = one.key
     resolver = entra.EntraBearer(
-        entra.registrations(world.knowledge.db), fetch=lambda d: one.fetch(one.directory)
+        entra.registrations(world.knowledge.db),
+        entra.assistants(world.knowledge.db),
+        fetch=lambda d: one.fetch(one.directory),
     )
     issuer_one = f"https://login.microsoftonline.com/{one.directory}/v2.0"
     for name, token in {
