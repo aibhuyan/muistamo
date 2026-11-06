@@ -65,13 +65,14 @@ def entra_bearer(name: str, headers: Mapping[str, str]) -> str | None:
     return token if scheme.lower() == "bearer" and token else None
 
 
-def entra_assistant(resolver: object, name: str, headers: Mapping[str, str]) -> str | None:
-    """The allowed assistant an Entra caller came through, re-verified by the resolver; None for
-    any other caller."""
-    assistant_of = getattr(resolver, "assistant_of", None)
-    if not name.startswith("entra:") or assistant_of is None:
-        return None
-    return assistant_of(headers)
+def resolve_caller(resolver: Resolver, headers: Mapping[str, str]) -> tuple[UUID, str, str | None]:
+    """The tenant, the caller and, for an Entra caller, the allowed assistant it came through,
+    from one verification. Other resolvers name no assistant."""
+    resolve = getattr(resolver, "resolve_caller", None)
+    if resolve is not None:
+        return resolve(headers)
+    tenant, name = resolver(headers)
+    return tenant, name, None
 
 
 def no_identity_map(_: str) -> str:

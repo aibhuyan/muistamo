@@ -24,10 +24,11 @@ CREATE POLICY tenant_isolation ON knowledge.assistants
   WITH CHECK (tenant_id = current_setting('muistamo.tenant_id', true)::uuid);
 
 -- The allowed assistant's name for a tenant's client app, or no row.
-CREATE FUNCTION knowledge.entra_assistant(tenant uuid, client_app uuid)
+-- Parameters are prefixed: in a SQL function a column name wins over a same-named parameter.
+CREATE FUNCTION knowledge.entra_assistant(p_tenant uuid, p_client_app uuid)
 RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = knowledge, pg_temp AS $$
-  SELECT name FROM knowledge.assistants a WHERE a.tenant_id = tenant AND a.client_app = $2
+  SELECT name FROM knowledge.assistants WHERE tenant_id = p_tenant AND client_app = p_client_app
 $$;
 REVOKE ALL ON FUNCTION knowledge.entra_assistant(uuid, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION knowledge.entra_assistant(uuid, uuid) TO muistamo_knowledge_app;

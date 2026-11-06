@@ -148,10 +148,9 @@ class EntraBearer:
         tenant, user, _ = self._verify(headers)
         return tenant, user
 
-    def assistant_of(self, headers: Mapping[str, str]) -> str:
-        """The allowed assistant the caller's token was obtained by. Verifies the token again, so
-        the name is never read from an unchecked one."""
-        return self._verify(headers)[2]
+    def resolve_caller(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str, str]:
+        """The tenant, the person and the allowed assistant, from one verification of the token."""
+        return self._verify(headers)
 
     def _verify(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str, str]:
         scheme, _, token = _header(headers, "Authorization").partition(" ")
@@ -202,6 +201,12 @@ class EntraBearer:
             raise Unauthenticated("bearer token names no client app")
         assistant = self._assistants(registration.tenant, client_app)
         if assistant is None:
+            # Logged so an operator can see why (for example a tenant with no assistants added
+            # yet); the client app id is public, the token is not logged.
+            log.warning(
+                "Entra caller refused: its assistant is not allowed for the tenant",
+                extra={"tenant": str(registration.tenant), "client_app": str(client_app)},
+            )
             raise Unauthenticated("the token's client app is not an assistant the tenant allows")
         return registration.tenant, f"entra:{user}", assistant
 

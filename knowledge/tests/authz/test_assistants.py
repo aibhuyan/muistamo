@@ -162,3 +162,19 @@ def test_the_operator_command_manages_the_allowlist(entra_world, monkeypatch) ->
     assert cli("remove", tenant, str(OTHER_APP)).returncode == 0
     assert cli("remove", tenant, str(OTHER_APP)).returncode != 0  # was not allowed any more
     assert f"{OTHER_APP}" not in cli("list", tenant).stdout
+
+
+def test_a_refused_assistant_is_logged_for_the_operator_without_the_token(
+    entra_world, caplog
+) -> None:
+    """After an upgrade, a tenant with no assistants added refuses every Entra caller: the log
+    says why (tenant and client app), and never carries the token."""
+    import logging
+
+    token = entra_world.directory.token(PERSON, azp=str(OTHER_APP))
+    with caplog.at_level(logging.WARNING, logger="muistamo_knowledge.entra"):
+        assert entra_world.client(token).get("/v1/knowledge/personal/entries").status_code == 401
+    refused = [r for r in caplog.records if "assistant is not allowed" in r.getMessage()]
+    assert refused and refused[0].client_app == str(OTHER_APP)
+    assert refused[0].tenant == str(entra_world.world.tenant)
+    assert all(token not in r.getMessage() and token not in str(r.__dict__) for r in caplog.records)

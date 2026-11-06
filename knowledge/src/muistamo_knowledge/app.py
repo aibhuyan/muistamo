@@ -151,13 +151,13 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     def actor(request: Request) -> Actor:
         if knowledge is None:
             raise Unauthenticated("knowledge service not configured")
-        tenant, name = resolver(request.headers)
+        tenant, name, assistant = auth.resolve_caller(resolver, request.headers)
         return Actor(
             tenant=tenant,
             name=name,
             request_id=str(uuid.uuid4()),
             bearer=auth.entra_bearer(name, request.headers),
-            assistant=auth.entra_assistant(resolver, name, request.headers),
+            assistant=assistant,
         )
 
     Who = Annotated[Actor, Depends(actor)]
