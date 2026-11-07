@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
-from . import resolvedentry
+from . import agentscope, resolvedentry
 
 
 class ResolvedEntryPage(BaseModel):
@@ -11,3 +11,4 @@ class ResolvedEntryPage(BaseModel):
         extra="forbid",
     )
     items: list[resolvedentry.ResolvedEntry]
+    agentScope: agentscope.AgentScope | None = None

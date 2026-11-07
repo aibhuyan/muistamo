@@ -174,12 +174,27 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     def healthz() -> HealthStatus:
         return HealthStatus(status=Status.ok, service=SERVICE)
 
+    # D60: an assistant acting for a person (an Entra caller) reads only its agent's scope, the
+    # template's packs and the mandatory packs, asked of the control plane at each read. Outside
+    # it a single pack is refused (403, whether or not it exists); lists and resolve leave it out
+    # and say so. Development callers are unchanged.
+    def require_in_scope(who: Actor, name: str) -> None:
+        scope = sources().agent_scope(who)
+        if scope is not None and name not in scope.allowed:
+            raise Forbidden(f"pack {name!r} is outside this assistant's agent scope")
+
     @app.get("/v1/knowledge/packs")
     def list_packs(who: Who) -> JSONResponse:
-        return ok({"items": svc().list_packs(who)})
+        scope = sources().agent_scope(who)
+        items = svc().list_packs(who)
+        if scope is None:
+            return ok({"items": items})
+        mine = [p for p in items if p["document"]["metadata"]["name"] in scope.allowed]
+        return ok({"items": mine, "agentScope": scope.report()})
 
     @app.get("/v1/knowledge/packs/{name}")
     def get_pack(name: str, who: Who) -> JSONResponse:
+        require_in_scope(who, name)
         return ok(svc().get_pack(who, name))
 
     @app.put("/v1/knowledge/packs/{name}")
@@ -191,14 +206,17 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
 
     @app.get("/v1/knowledge/packs/{name}/versions")
     def list_versions(name: str, who: Who) -> JSONResponse:
+        require_in_scope(who, name)
         return ok({"items": svc().list_versions(who, name)})
 
     @app.get("/v1/knowledge/packs/{name}/versions/{version}")
     def get_version(name: str, version: str, who: Who) -> JSONResponse:
+        require_in_scope(who, name)
         return ok(svc().get_version(who, name, version))
 
     @app.get("/v1/knowledge/packs/{name}/versions/{version}/skills.zip")
     def export_skills(name: str, version: str, who: Who) -> Response:
+        require_in_scope(who, name)
         resolved, data = svc().export_skills(who, name, version)
         return Response(
             data,
@@ -242,6 +260,10 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
 
     @app.post("/v1/knowledge/proposals")
     def propose(body: ProposalInput, who: Who) -> JSONResponse:
+        scope = sources().agent_scope(who)
+        if scope is not None and body.pack not in scope.template:
+            # Only the agent's template packs: mandatory packs are the privacy officers' own.
+            raise Forbidden(f"pack {body.pack!r} is outside this assistant's agent scope")
         ids = [uuid.UUID(str(i)) for i in body.entryIds]
         return ok(svc().propose(who, body.pack, ids, body.summary), 201)
 
@@ -257,7 +279,12 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     @app.get("/v1/knowledge/resolve")
     def resolve(who: Who, packs: str = "") -> JSONResponse:
         names = [p for p in (s.strip() for s in packs.split(",")) if p]
-        return ok({"items": svc().resolve(who, names)})
+        scope = sources().agent_scope(who)
+        if scope is None:
+            return ok({"items": svc().resolve(who, names)})
+        outside = [n for n in names if n not in scope.allowed]
+        within = [n for n in names if n in scope.allowed]
+        return ok({"items": svc().resolve(who, within), "agentScope": scope.report(outside)})
 
     def sources() -> Sources:
         return Sources(svc())

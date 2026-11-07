@@ -1094,6 +1094,26 @@ export interface components {
             document: components["schemas"]["AgentLink"];
         };
         /**
+         * AgentScope
+         * @description For an assistant acting for a person (an Entra caller): the agent whose scope applied to this read, and what was left out (D60). Only the template's packs and the mandatory packs are in scope; without a delegation, only the mandatory packs.
+         */
+        AgentScope: {
+            /** AgentScopeDelegation */
+            delegation: {
+                /**
+                 * AgentScopeDelegationStatus
+                 * @enum {string}
+                 */
+                status: "issued" | "refused" | "unavailable";
+                /** @description issued: the agent instance acting for the person. */
+                agent?: string;
+                /** @description refused or unavailable: why there is no delegation. */
+                reason?: string;
+            };
+            /** @description Requested packs the agent may not read; whether they exist is not said. */
+            packsOutsideAgentScope?: string[];
+        };
+        /**
          * AgentTemplate
          * @description A reusable agent definition owned by the company (PRD section 5).
          */
@@ -1802,6 +1822,7 @@ export interface components {
          */
         KnowledgePackPage: {
             items: components["schemas"]["KnowledgePackRecord"][];
+            agentScope?: components["schemas"]["AgentScope"];
         };
         /**
          * KnowledgePackRecord
@@ -2436,6 +2457,7 @@ export interface components {
          */
         ResolvedEntryPage: {
             items: components["schemas"]["ResolvedEntry"][];
+            agentScope?: components["schemas"]["AgentScope"];
         };
         /**
          * RetrievalResult

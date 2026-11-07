@@ -276,6 +276,27 @@ func (e AgentLinkSpecActFor) Valid() bool {
 	}
 }
 
+// Defines values for AgentScopeDelegationStatus.
+const (
+	AgentScopeDelegationStatusIssued      AgentScopeDelegationStatus = "issued"
+	AgentScopeDelegationStatusRefused     AgentScopeDelegationStatus = "refused"
+	AgentScopeDelegationStatusUnavailable AgentScopeDelegationStatus = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the AgentScopeDelegationStatus enum.
+func (e AgentScopeDelegationStatus) Valid() bool {
+	switch e {
+	case AgentScopeDelegationStatusIssued:
+		return true
+	case AgentScopeDelegationStatusRefused:
+		return true
+	case AgentScopeDelegationStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentTemplateApiVersion.
 const (
 	AgentTemplateApiVersionMuistamoDevv1 AgentTemplateApiVersion = "muistamo.dev/v1"
@@ -2145,6 +2166,24 @@ type AgentLinkRecord struct {
 	UpdatedBy string    `json:"updatedBy"`
 }
 
+// AgentScope For an assistant acting for a person (an Entra caller): the agent whose scope applied to this read, and what was left out (D60). Only the template's packs and the mandatory packs are in scope; without a delegation, only the mandatory packs.
+type AgentScope struct {
+	Delegation struct {
+		// Agent issued: the agent instance acting for the person.
+		Agent *string `json:"agent,omitempty"`
+
+		// Reason refused or unavailable: why there is no delegation.
+		Reason *string                    `json:"reason,omitempty"`
+		Status AgentScopeDelegationStatus `json:"status"`
+	} `json:"delegation"`
+
+	// PacksOutsideAgentScope Requested packs the agent may not read; whether they exist is not said.
+	PacksOutsideAgentScope *[]string `json:"packsOutsideAgentScope,omitempty"`
+}
+
+// AgentScopeDelegationStatus defines model for AgentScope.Delegation.Status.
+type AgentScopeDelegationStatus string
+
 // AgentTemplate A reusable agent definition owned by the company (PRD section 5).
 type AgentTemplate struct {
 	ApiVersion AgentTemplateApiVersion `json:"apiVersion"`
@@ -2796,7 +2835,9 @@ type KnowledgePackSpecMergePolicyRequires string
 
 // KnowledgePackPage The tenant's packs.
 type KnowledgePackPage struct {
-	Items []KnowledgePackRecord `json:"items"`
+	// AgentScope For an assistant acting for a person (an Entra caller): the agent whose scope applied to this read, and what was left out (D60). Only the template's packs and the mandatory packs are in scope; without a delegation, only the mandatory packs.
+	AgentScope *AgentScope           `json:"agentScope,omitempty"`
+	Items      []KnowledgePackRecord `json:"items"`
 }
 
 // KnowledgePackRecord A pack definition and its latest content version.
@@ -3463,7 +3504,9 @@ type ResolvedEntryOverridesLayer string
 
 // ResolvedEntryPage The caller's effective knowledge.
 type ResolvedEntryPage struct {
-	Items []ResolvedEntry `json:"items"`
+	// AgentScope For an assistant acting for a person (an Entra caller): the agent whose scope applied to this read, and what was left out (D60). Only the template's packs and the mandatory packs are in scope; without a delegation, only the mandatory packs.
+	AgentScope *AgentScope     `json:"agentScope,omitempty"`
+	Items      []ResolvedEntry `json:"items"`
 }
 
 // RetrievalResult Results the caller may see, each cited, and which sources were consulted.

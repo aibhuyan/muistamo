@@ -31,6 +31,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
+from dataclasses import dataclass
 from typing import Any
 
 from psycopg import Cursor
@@ -52,6 +53,27 @@ CANDIDATE_POOL = 200
 HEADLINE = "MaxWords=35, MinWords=12, StartSel=, StopSel=, HighlightAll=false"
 
 _pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="authorise")
+
+
+@dataclass(frozen=True)
+class AgentScope:
+    """What an assistant acting for a person may read (D60): its template's packs and the
+    mandatory packs. Without a delegation the template is empty: mandatory packs only."""
+
+    template: frozenset[str]
+    mandatory: frozenset[str]
+    delegation: dict[str, Any]
+
+    @property
+    def allowed(self) -> frozenset[str]:
+        return self.template | self.mandatory
+
+    def report(self, outside: list[str] | None = None) -> dict[str, Any]:
+        """The agentScope a response carries (contracts/schemas/agentscope.json)."""
+        out: dict[str, Any] = {"delegation": dict(self.delegation)}
+        if outside:
+            out["packsOutsideAgentScope"] = sorted(outside)
+        return out
 
 
 class Sources:
@@ -362,6 +384,29 @@ class Sources:
                 }
                 for r in cur.fetchall()
             ]
+
+    def agent_scope(self, actor: Actor) -> AgentScope | None:
+        """For an Entra caller, the scope of the agent acting for them on this read, asked of the
+        control plane now (use-time, invariant 1); None for any other caller. Every read but
+        retrieval applies it in the API and MCP layers; retrieval has its own (above)."""
+        if not actor.name.startswith("entra:"):
+            return None
+        outcome = (
+            self._delegate(actor) if actor.bearer is not None else Outcome(None, "unavailable")
+        )
+        with self.k.db.in_tenant(actor.tenant) as cur:
+            cur.execute("SELECT name FROM knowledge.packs WHERE mandatory")
+            mandatory = frozenset(r[0] for r in cur.fetchall())
+        if outcome.delegation is None:
+            reason = outcome.reason or "unavailable"
+            status = "unavailable" if reason in ("unavailable", "not-configured") else "refused"
+            return AgentScope(frozenset(), mandatory, {"status": status, "reason": reason})
+        delegation = outcome.delegation
+        return AgentScope(
+            frozenset(delegation.packs),
+            mandatory,
+            {"status": "issued", "agent": delegation.instance},
+        )
 
     def _delegate(self, actor: Actor) -> Outcome:
         """The control plane's delegation for this request, or why there is none, within a
