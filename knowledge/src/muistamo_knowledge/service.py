@@ -69,6 +69,10 @@ class Actor:
     # The allowed client's kind: 'assistant' or 'console' (migration 0013); None for development
     # callers.
     client_kind: str | None = field(default=None, compare=False)
+    # The allowed client's Entra application id; None for development and service callers.
+    # Recorded in evidence with its kind, so a decision made through any client can be told
+    # apart (docs/console-entra-signin-plan.md).
+    client_app: UUID | None = field(default=None, compare=False)
 
     @property
     def through_assistant(self) -> bool:
@@ -138,6 +142,10 @@ class Knowledge:
         after: Any,
         before: Any = None,
     ) -> None:
+        if actor.client_app is not None:
+            # The event body names the client app and its kind; the chain format is unchanged.
+            client = {"app": str(actor.client_app), "kind": actor.client_kind}
+            after = {**(after if isinstance(after, dict) else {}), "client": client}
         evidence.append(
             cur,
             self.signer,
@@ -1251,6 +1259,22 @@ class Knowledge:
         return removed
 
     # Evidence -------------------------------------------------------------------------------
+
+    def has_left(self, actor: Actor) -> bool:
+        """Whether the person has left, by knowledge's own records: their latest live leaver
+        review (opened by the control plane at the leaving's HR generation) is at their current
+        fence, which a rehire would have raised past it. Fails closed: an error is raised, never
+        read as 'still here'."""
+        with self.db.in_tenant(actor.tenant) as cur:
+            cur.execute(
+                "SELECT EXISTS (SELECT 1 FROM knowledge.leaver_review_fences f"
+                " JOIN knowledge.leaver_reviews r"
+                " ON r.tenant_id = f.tenant_id AND r.person = f.person AND r.generation = f.generation"
+                " WHERE f.person = %s)",
+                (actor.name,),
+            )
+            row = cur.fetchone()
+            return bool(row and row[0])
 
     def events(self, actor: Actor, after_seq: int, limit: int) -> list[evidence.Event]:
         """The evidence export, for privacy officers only: the chain names every pack, reviewer

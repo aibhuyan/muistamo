@@ -51,9 +51,8 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
         # A token resolver reads the database and may fetch keys: never on the event loop.
         headers = dict(ctx.headers or {})
         # One verification: the tenant, the person and the assistant together.
-        tenant, name, assistant, kind = await anyio.to_thread.run_sync(
-            lambda: resolve_caller(resolver, headers)
-        )
+        caller = await anyio.to_thread.run_sync(lambda: resolve_caller(resolver, headers))
+        tenant, name, assistant, kind = caller.tenant, caller.name, caller.assistant, caller.kind
         return Actor(
             tenant=tenant,
             name=name,
@@ -63,6 +62,7 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
             # The MCP endpoint is the assistant surface: whatever client obtained the token, a
             # caller here is an assistant, agent-scoped (D60), never the console (fail closed).
             client_kind="assistant" if kind is not None else None,
+            client_app=caller.client_app,
         )
 
     sources = Sources(knowledge)

@@ -640,6 +640,10 @@ def main() -> None:
         status, _ = http("GET", f"{kn}/v1/knowledge/leaver-reviews/{review['id']}", None, other)
         assert status == 404, status
         assert _frozen(kn, bearer(token)), "the leaver's layer is not frozen"
+        # In the console the leaver acts no more, though their Entra account still works.
+        leaver_console = bearer(ms.user_token(PERSON, azp=fake_microsoft.CONSOLE))
+        status, body = http("GET", f"{kn}/v1/knowledge/personal/entries", None, leaver_console)
+        assert status == 403 and "has left" in body.get("detail", ""), (status, body)
 
         step("7. Rehire: the review is fenced; replayed calls from the old leaving change nothing")
         hr_event(cp, tenant, hr_secret, "join-2", "joiner", 90)
@@ -649,6 +653,9 @@ def main() -> None:
         fenced = wait_for(
             "the review cancelled", lambda: _review(kn, manager, status="closed"), timeout=60
         )
+        rehired = bearer(ms.user_token(PERSON, azp=fake_microsoft.CONSOLE))
+        status, _ = http("GET", f"{kn}/v1/knowledge/personal/entries", None, rehired)
+        assert status == 200, status  # rehired: the console acts for them again
         assert fenced["id"] == review["id"] and fenced["outcome"] == "cancelled", fenced
         assert not _frozen(kn, bearer(token)), "the rehired person's layer is still frozen"
         old = {

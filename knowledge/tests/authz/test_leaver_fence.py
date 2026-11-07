@@ -15,6 +15,7 @@ import psycopg
 import pytest
 from muistamo_knowledge import auth, entra, evidence
 from muistamo_knowledge.leavers import set_service_secret
+from muistamo_knowledge.privacy import replace_officers
 
 pytestmark = pytest.mark.authz
 
@@ -22,6 +23,7 @@ SECRET = b"mks_test-only-not-a-secret-0123456789abcdef"
 SUPERSEDED = "https://muistamo.dev/problems/superseded"
 PERSON = uuid.UUID("7a000000-0000-4000-8000-00000000000a")
 CONSOLE = uuid.UUID("7a000000-0000-4000-8000-0000000c0501")
+ASSISTANT = uuid.UUID("55555555-5555-4555-8555-555555555555")  # conftest's allowed assistant
 MANAGER = uuid.UUID("7a000000-0000-4000-8000-00000000000b")
 OTHER = uuid.UUID("7a000000-0000-4000-8000-00000000000c")
 P, M = f"entra:{PERSON}", f"entra:{MANAGER}"
@@ -222,7 +224,12 @@ def test_a_decision_is_refused_once_a_later_generation_is_known(live) -> None:
     assert [e["key"] for e in live.entries()] == ["fiscal-year"]
     assert live.actions()[-1] == (
         "knowledge.leaver-review.refused",
-        {"reason": "superseded", "generation": 2, "fence": 3},
+        {
+            "reason": "superseded",
+            "generation": 2,
+            "fence": 3,
+            "client": {"app": str(CONSOLE), "kind": "console"},  # the manager, in the console
+        },
     )
 
 
@@ -472,3 +479,85 @@ def test_after_a_rehire_the_person_finds_only_their_shared_entries(private_live)
     assert live.fence(3).status_code == 200  # rehired: the review is cancelled
     assert not live.frozen()
     assert keys(live) == {"fiscal-year"}  # private notes went at leaving (D59)
+
+
+# A leaver's console (docs/console-entra-signin-plan.md, review blocker 1) ----------------------
+
+LEFT = "has left the organisation"
+
+
+def test_a_leaver_cannot_act_in_the_console(live) -> None:
+    """Knowledge knows from its own records that the person has left: their live review is at
+    their current fence. Every console call is refused at use time, whatever IT has done."""
+    replace_officers(live.world.db.owner_url, live.world.tenant, [P])  # the most powerful role
+    console = live.console(PERSON)
+    assert console.get("/v1/knowledge/personal/entries").status_code == 200
+    assert console.get("/v1/knowledge/leaver-reviews").status_code == 200
+    assert live.open("leave-2:run", 2).status_code == 201
+    for path in (
+        "/v1/knowledge/personal/entries",
+        "/v1/knowledge/leaver-reviews",
+        "/v1/knowledge/events",
+    ):
+        res = console.get(path)
+        assert res.status_code == 403 and LEFT in res.json()["detail"], (path, res.text)
+    # Not only reads: a decision is refused the same way.
+    res = console.post(
+        "/v1/knowledge/privacy/erasures",
+        json={
+            "id": str(uuid.uuid4()),
+            "reason": "x",
+            "subject": {"identities": ["dev:x@example.invalid"]},
+        },
+    )
+    assert res.status_code == 403 and LEFT in res.json()["detail"]
+    # Their assistant is unchanged: its reads are already limited by the refused delegation.
+    assert live.person(PERSON).get("/v1/knowledge/personal/entries").status_code == 200
+
+
+def test_a_rehired_person_acts_again_and_a_second_leaving_stops_them_again(live) -> None:
+    console = live.console(PERSON)
+    assert live.open("leave-2:run", 2).status_code == 201
+    assert console.get("/v1/knowledge/personal/entries").status_code == 403
+    assert live.fence(3).status_code == 200  # rehired
+    assert console.get("/v1/knowledge/personal/entries").status_code == 200
+    assert live.open("leave-4:run", 4).status_code == 201  # left again
+    assert console.get("/v1/knowledge/personal/entries").status_code == 403
+
+
+def test_an_empty_leaving_still_counts(entra_world) -> None:
+    """A leaver with nothing in their layer gets a review closed as empty: still a leaver."""
+    live = Live(entra_world)
+    opened = live.open("leave-2:run", 2)
+    assert opened.status_code == 201 and opened.json()["outcome"] == "empty"
+    assert live.console(PERSON).get("/v1/knowledge/personal/entries").status_code == 403
+
+
+def test_other_people_are_unaffected_by_someone_elses_leaving(live) -> None:
+    assert live.open("leave-2:run", 2).status_code == 201
+    assert live.console(MANAGER).get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 200
+
+
+# Evidence names the client app (docs/console-entra-signin-plan.md) ------------------------------
+
+
+def test_evidence_records_the_client_app_and_its_kind(live) -> None:
+    assert (
+        live.console(PERSON)
+        .post("/v1/knowledge/personal/entries", json=NOTE | {"key": "k1"})
+        .status_code
+        == 201
+    )
+    assert (
+        live.person(PERSON)
+        .post("/v1/knowledge/personal/entries", json=NOTE | {"key": "k2"})
+        .status_code
+        == 201
+    )
+    captured = [a for name, a in live.actions() if name == "knowledge.entry.captured"]
+    assert captured[-2]["client"] == {"app": str(CONSOLE), "kind": "console"}
+    assert captured[-1]["client"] == {"app": str(ASSISTANT), "kind": "assistant"}
+    # The control plane's own calls, and development callers, name no client.
+    assert live.open("leave-2:run", 2).status_code == 201
+    opened = [a for name, a in live.actions() if name == "knowledge.leaver-review.opened"]
+    assert "client" not in opened[-1]

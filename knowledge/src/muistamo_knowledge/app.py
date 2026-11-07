@@ -152,15 +152,25 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     def actor(request: Request) -> Actor:
         if knowledge is None:
             raise Unauthenticated("knowledge service not configured")
-        tenant, name, assistant, kind = auth.resolve_caller(resolver, request.headers)
-        return Actor(
-            tenant=tenant,
-            name=name,
+        caller = auth.resolve_caller(resolver, request.headers)
+        who = Actor(
+            tenant=caller.tenant,
+            name=caller.name,
             request_id=str(uuid.uuid4()),
-            bearer=auth.entra_bearer(name, request.headers),
-            assistant=assistant,
-            client_kind=kind,
+            bearer=auth.entra_bearer(caller.name, request.headers),
+            assistant=caller.assistant,
+            client_kind=caller.kind,
+            client_app=caller.client_app,
         )
+        if caller.kind == "console" and knowledge.has_left(who):
+            # Use-time HR status (invariant 1): in the console a person acts as themselves,
+            # reviewer, officer or administrator included, so a leaver acts no more, whatever
+            # IT has done to their account yet.
+            raise Forbidden(
+                "this person has left the organisation (an HR leaver); the console acts for them"
+                " no more"
+            )
+        return who
 
     Who = Annotated[Actor, Depends(actor)]
 

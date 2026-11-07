@@ -27,7 +27,7 @@ from typing import Any
 import jwt
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
-from muistamo_knowledge.auth import Unauthenticated, _header
+from muistamo_knowledge.auth import Caller, Unauthenticated, _header
 
 log = logging.getLogger(__name__)
 
@@ -146,15 +146,15 @@ class EntraBearer:
         self._sets: dict[uuid.UUID, _KeySet] = {}
 
     def __call__(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str]:
-        tenant, user, _, _ = self._verify(headers)
-        return tenant, user
+        caller = self._verify(headers)
+        return caller.tenant, caller.name
 
-    def resolve_caller(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str, str, str]:
-        """The tenant, the person, and the allowed client's name and kind, from one
+    def resolve_caller(self, headers: Mapping[str, str]) -> Caller:
+        """The tenant, the person, and the allowed client (name, kind, application id), from one
         verification of the token."""
         return self._verify(headers)
 
-    def _verify(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str, str, str]:
+    def _verify(self, headers: Mapping[str, str]) -> Caller:
         scheme, _, token = _header(headers, "Authorization").partition(" ")
         if scheme.lower() != "bearer" or not token or " " in token or len(token) > MAX_TOKEN:
             raise Unauthenticated("missing or malformed bearer token")
@@ -210,7 +210,7 @@ class EntraBearer:
                 extra={"tenant": str(registration.tenant), "client_app": str(client_app)},
             )
             raise Unauthenticated("the token's client app is not an assistant the tenant allows")
-        return registration.tenant, f"entra:{user}", client[0], client[1]
+        return Caller(registration.tenant, f"entra:{user}", client[0], client[1], client_app)
 
     def _key(self, directory: uuid.UUID, kid: str) -> RSAPublicKey:
         """The directory's signing key kid, fetching the keys when the cache is old or lacks it,
