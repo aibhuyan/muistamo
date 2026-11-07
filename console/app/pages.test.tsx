@@ -14,6 +14,7 @@ const { default: ProposalPage } = await import("./proposals/[id]/page");
 const { default: LeaverReviewsPage } = await import("./leaver-reviews/page");
 const { default: LeaverReviewPage } = await import("./leaver-reviews/[id]/page");
 const { default: CataloguePage } = await import("./catalogue/page");
+const { default: MyKnowledgePage } = await import("./my-knowledge/page");
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
@@ -24,6 +25,7 @@ const pages: [string, () => Promise<unknown>][] = [
   ["leaver reviews", () => LeaverReviewsPage()],
   ["a leaver review", () => LeaverReviewPage(params("r-1"))],
   ["catalogue", () => CataloguePage()],
+  ["my knowledge", () => MyKnowledgePage()],
 ];
 
 beforeEach(reset);
@@ -84,4 +86,37 @@ test("a page shows the service's refusal instead of the data", async () => {
   expect(html).toContain("403 Forbidden");
   expect(html).toContain("only its decider reads a review");
   expect(html).not.toContain("<form");
+});
+
+test("my knowledge shows each entry's visibility and the matching action", async () => {
+  signInAs("a@example.invalid");
+  const entry = (id: string, key: string, isPrivate: boolean) => ({
+    id,
+    key,
+    type: "fact",
+    title: key,
+    body: `${key} body`,
+    dataClass: "internal",
+    contributor: "dev:a@example.invalid",
+    createdAt: "2026-11-07T10:00:00Z",
+    private: isPrivate,
+  });
+  const fetch = vi.fn(async () =>
+    jsonResponse(200, { items: [entry("e-1", "shared-note", false), entry("e-2", "my-note", true)] }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const html = renderToStaticMarkup(await MyKnowledgePage());
+  expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe("http://knowledge.test/v1/knowledge/personal/entries");
+  expect(html).toContain("Make private");
+  expect(html).toContain("Share again");
+  expect(html).toContain(">Private<");
+  expect(html).toContain(">Shared<");
+  // Each entry carries its own action: the shared one is offered privacy, the private one sharing.
+  const [shared, isPrivate] = html.split("my-note body");
+  expect(shared).toContain('name="private" value="true"');
+  expect(shared).toContain("Make private");
+  expect(shared).not.toContain('name="private" value="false"');
+  expect(isPrivate).toContain('name="private" value="false"');
+  expect(isPrivate).toContain("Share again");
+  expect(html).toContain('<input type="checkbox" required="" name="confirm" value="yes"/>');
 });

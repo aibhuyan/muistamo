@@ -429,7 +429,8 @@ class Knowledge:
         if not private and actor.through_assistant:
             raise Forbidden(
                 "making a private entry shared again is not available through an assistant; it"
-                " needs the Muistamo console, whose personal-entries page is not built yet"
+                " needs the Muistamo console's My knowledge page (not yet available with Entra"
+                " sign-in)"
             )
         if private:
             self._require_private_entries()
@@ -504,7 +505,7 @@ class Knowledge:
         if self._frozen(cur, person):
             raise Conflict(
                 "this personal layer is frozen while its leaver review is open; nothing can be"
-                " added, proposed or deleted"
+                " added, proposed, changed or deleted"
             )
 
     def delete_personal(self, actor: Actor, entry_id: UUID) -> None:
@@ -523,8 +524,8 @@ class Knowledge:
                 # Deleting and re-capturing would make a private note shared: console only (D59).
                 # Raising rolls the delete back.
                 raise Forbidden(
-                    "a private entry is deleted through the Muistamo console, not an assistant;"
-                    " its personal-entries page is not built yet, and the entry is deleted"
+                    "a private entry is deleted through the Muistamo console's My knowledge page,"
+                    " not an assistant (not yet available with Entra sign-in); it is deleted"
                     " anyway when you leave"
                 )
             cur.execute("DELETE FROM knowledge.entries WHERE id = %s", (entry_id,))

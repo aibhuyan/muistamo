@@ -118,3 +118,8 @@ test("an unreachable service is reported, not hidden", async () => {
   const result = await api.pendingCatalogueRequests(session);
   expect(result).toEqual({ ok: false, problem: { title: "The control-plane service is unreachable", status: 503 } });
 });
+
+test("a 204 answer (a delete) is a success with no body", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+  expect(await api.deleteEntry(session, "e-1")).toEqual({ ok: true, data: undefined });
+});
