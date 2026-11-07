@@ -13,7 +13,7 @@ import uuid
 
 import psycopg
 import pytest
-from muistamo_knowledge import auth
+from muistamo_knowledge import auth, entra
 from muistamo_knowledge.leavers import set_service_secret
 
 pytestmark = pytest.mark.authz
@@ -21,6 +21,7 @@ pytestmark = pytest.mark.authz
 SECRET = b"mks_test-only-not-a-secret-0123456789abcdef"
 SUPERSEDED = "https://muistamo.dev/problems/superseded"
 PERSON = uuid.UUID("7a000000-0000-4000-8000-00000000000a")
+CONSOLE = uuid.UUID("7a000000-0000-4000-8000-0000000c0501")
 MANAGER = uuid.UUID("7a000000-0000-4000-8000-00000000000b")
 OTHER = uuid.UUID("7a000000-0000-4000-8000-00000000000c")
 P, M = f"entra:{PERSON}", f"entra:{MANAGER}"
@@ -34,6 +35,10 @@ class Live:
         self.ew, self.world = entra_world, entra_world.world
         set_service_secret(self.world.db.owner_url, self.world.tenant, SECRET)
         self.service = entra_world.client(None)
+        # Leaver reviews are decided in the console, never through an assistant (migration 0013).
+        entra.allow_assistant(
+            self.world.db.owner_url, self.world.tenant, CONSOLE, "Muistamo console", "console"
+        )
 
     def post(self, path: str, body: dict | None = None):
         raw = json.dumps(body).encode() if body is not None else b""
@@ -69,6 +74,10 @@ class Live:
 
     def person(self, who: uuid.UUID):
         return self.ew.client(self.ew.directory.token(who))
+
+    def console(self, who: uuid.UUID):
+        """The person acting as themselves, in Muistamo's console."""
+        return self.ew.client(self.ew.directory.token(who, azp=str(CONSOLE)))
 
     def entries(self) -> list:
         return self.person(PERSON).get("/v1/knowledge/personal/entries").json()["items"]
@@ -130,9 +139,9 @@ def test_a_live_review_is_opened_by_user_at_its_generation_and_decided_by_the_ma
     review = res.json()
     assert review["person"] == P and review["decider"] == M and review["generation"] == 2
     assert live.frozen()
-    got = live.person(MANAGER).get("/v1/knowledge/leaver-reviews/leave-2:run")
+    got = live.console(MANAGER).get("/v1/knowledge/leaver-reviews/leave-2:run")
     assert got.status_code == 200 and [e["key"] for e in got.json()["entries"]] == ["fiscal-year"]
-    assert live.person(OTHER).get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 404
+    assert live.console(OTHER).get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 404
     assert live.open("leave-2:run", 2).json() == review  # a retry is the same review
 
 
@@ -146,7 +155,7 @@ def test_a_late_open_after_the_rehire_fence_freezes_and_exposes_nothing(live) ->
     late = live.open("leave-2:run", 2)
     assert superseded(late), late.text
     assert not live.frozen()
-    assert live.person(MANAGER).get("/v1/knowledge/leaver-reviews").json()["items"] == []
+    assert live.console(MANAGER).get("/v1/knowledge/leaver-reviews").json()["items"] == []
     assert live.owner_sql("SELECT count(*) FROM knowledge.leaver_reviews")[0][0] == 0
     refused = [a for a in live.actions() if a[0] == "knowledge.leaver-review.refused"]
     assert refused and refused[-1][1]["reason"] == "superseded" and refused[-1][1]["fence"] == 3
@@ -164,7 +173,7 @@ def test_the_fence_cancels_the_earlier_review_and_late_calls_cannot_purge_the_la
     assert expired.status_code == 200 and expired.json()["outcome"] == "cancelled"
     assert [e["key"] for e in live.entries()] == ["fiscal-year"]
     # Nor can the manager decide it any more.
-    decision = live.person(MANAGER).post(
+    decision = live.console(MANAGER).post(
         "/v1/knowledge/leaver-reviews/leave-2:run/decision",
         json={"decision": "purge", "reason": "late"},
     )
@@ -203,7 +212,7 @@ def test_a_decision_is_refused_once_a_later_generation_is_known(live) -> None:
     live.owner_sql(
         "UPDATE knowledge.leaver_review_fences SET generation = 3 WHERE person = %s", (P,)
     )
-    decision = live.person(MANAGER).post(
+    decision = live.console(MANAGER).post(
         "/v1/knowledge/leaver-reviews/leave-2:run/decision",
         json={"decision": "purge", "reason": "the layer is not needed"},
     )
@@ -245,7 +254,7 @@ def test_expiry_and_decisions_take_the_fence_lock_before_the_review_lock(live, c
                 results.append(live.expire("leave-2:run"))
             else:
                 results.append(
-                    live.person(MANAGER).post(
+                    live.console(MANAGER).post(
                         "/v1/knowledge/leaver-reviews/leave-2:run/decision",
                         json={"decision": "keep", "reason": "still needed"},
                     )
@@ -268,7 +277,7 @@ def test_a_fence_never_moves_back_and_a_late_fence_leaves_a_newer_review_open(li
     late = live.fence(3)  # the first rehire's fence, retried late
     assert late.status_code == 200 and late.json() == {"user": P, "generation": 4, "cancelled": []}
     assert live.frozen()
-    review = live.person(MANAGER).get("/v1/knowledge/leaver-reviews/leave-4:run").json()
+    review = live.console(MANAGER).get("/v1/knowledge/leaver-reviews/leave-4:run").json()
     assert review["status"] == "open"
     # An equal generation does not cancel the review it opened.
     assert live.fence(4).json()["cancelled"] == [] and live.frozen()
@@ -282,7 +291,7 @@ def test_a_later_leaving_supersedes_an_earlier_review_even_when_the_rehire_fence
     later = live.open("leave-4:run", 4)
     assert later.status_code == 201 and later.json()["status"] == "open", later.text
     assert (
-        live.person(MANAGER).get("/v1/knowledge/leaver-reviews/leave-2:run").json()["outcome"]
+        live.console(MANAGER).get("/v1/knowledge/leaver-reviews/leave-2:run").json()["outcome"]
         == "cancelled"
     )
     live.past_deadline("leave-2:run")
