@@ -51,6 +51,13 @@ TABLES = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(A, R)
+    world.admins(A, R, tenant=world.other_tenant)
+
+
 def entry(key: str, body: str) -> dict:
     return {"key": key, "type": "fact", "title": key, "body": body}
 
@@ -456,6 +463,7 @@ def test_mandatory_packs_are_tenant_scoped(world) -> None:
     assert world.client(A, world.other_tenant).get("/v1/knowledge/resolve").json()["items"] == []
     # Tenant 2's officer, applying the same name, gets tenant 2's own pack and cannot touch tenant 1's flag.
     cleared = dict(rules, spec={**rules["spec"], "mandatory": False})
+    world.admins(A, R, DPO, tenant=world.other_tenant)  # an ordinary pack: an administrator's
     other = world.client(DPO, world.other_tenant).put(
         "/v1/knowledge/packs/company-rules", json=cleared
     )

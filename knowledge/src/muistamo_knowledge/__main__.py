@@ -1,4 +1,5 @@
-"""Knowledge service commands: serve, migrate, tenant register, privacy officers, evidence keygen."""
+"""Knowledge service commands: serve, migrate, tenant register and knowledge admins, privacy
+officers, evidence keygen."""
 
 from __future__ import annotations
 
@@ -223,6 +224,16 @@ def list_assistants(args: argparse.Namespace) -> None:
         print(f"{client}\t{name}\t{kind}")
 
 
+def set_knowledge_admins(args: argparse.Namespace) -> None:
+    from muistamo_knowledge.service import replace_knowledge_admins
+
+    tenant = _uuid_arg(args.tenant, "tenant")
+    replace_knowledge_admins(
+        require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant, args.admins
+    )
+    print(f"tenant {tenant} now has {len(args.admins)} knowledge administrators")
+
+
 def set_privacy_officers(args: argparse.Namespace) -> None:
     from muistamo_knowledge.privacy import replace_officers
 
@@ -300,6 +311,13 @@ def main() -> None:
     ls = asst.add_parser("list", help="the tenant's allowed assistants")
     ls.add_argument("tenant")
     ls.set_defaults(fn=list_assistants)
+    ka = tenant.add_parser(
+        "knowledge-admins",
+        help="replace who may create packs: the AI platform team and the IaC identity (owner URL)",
+    )
+    ka.add_argument("tenant")
+    ka.add_argument("admins", nargs="+", help="identities, e.g. entra:<object id> or dev:<email>")
+    ka.set_defaults(fn=set_knowledge_admins)
     priv = sub.add_parser("privacy", help="privacy officers").add_subparsers(required=True)
     po = priv.add_parser("officers", help="replace the tenant's privacy officers (owner URL)")
     po.add_argument("tenant")

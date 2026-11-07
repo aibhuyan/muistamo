@@ -19,6 +19,12 @@ A, R, B, DPO = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(A, R)
+
+
 class Clock:
     def __init__(self) -> None:
         self.now = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)

@@ -1,6 +1,7 @@
 """Sources, sync and retrieval behaviour (the adversarial cases live in tests/authz)."""
 
 import psycopg
+import pytest
 from muistamo_knowledge import evidence
 from muistamo_knowledge.connectors import InMemoryConnector, default_factories
 
@@ -11,6 +12,12 @@ PACK = {
     "metadata": {"name": "finance"},
     "spec": {"layer": "role", "reviewers": ["dev:" + R], "mergePolicy": {"requires": ["review"]}},
 }
+
+
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(A, R)
 
 
 def source(connector: str = "test", documents: list | None = None) -> dict:

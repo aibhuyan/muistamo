@@ -1,6 +1,7 @@
 """The knowledge core end to end over HTTP: capture, propose, review, merge, roll back, resolve."""
 
 import psycopg
+import pytest
 from muistamo_knowledge import evidence
 
 PACK = {
@@ -14,6 +15,12 @@ PACK = {
     },
 }
 A, B = "person-a@example.invalid", "reviewer-b@example.invalid"
+
+
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(A, B)
 
 
 def entry(key: str, body: str = "Our fiscal year ends on 30 June.", **extra) -> dict:

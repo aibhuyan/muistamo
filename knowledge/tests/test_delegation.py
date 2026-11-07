@@ -26,6 +26,12 @@ OTHER = uuid.UUID("6f1c2a3b-0000-4000-8000-00000000000b")
 REVIEWER = "reviewer-r@example.invalid"
 
 
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(REVIEWER)
+
+
 def test_the_signing_key_matches_the_control_planes() -> None:
     # The same vector is asserted in control-plane/internal/signature/signature_test.go.
     key = direction_key(SECRET, TENANT)

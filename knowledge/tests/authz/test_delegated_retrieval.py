@@ -17,6 +17,12 @@ B = uuid.UUID("6f1c2a3b-0000-4000-8000-00000000000b")
 REVIEWER = "reviewer-r@example.invalid"
 
 
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(REVIEWER)
+
+
 class ControlPlane:
     """Decides by the token's user, as the real one does; outcomes can change between calls."""
 

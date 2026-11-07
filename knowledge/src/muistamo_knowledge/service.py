@@ -78,6 +78,29 @@ class Actor:
         return self.name.startswith("entra:") and self.client_kind != "console"
 
 
+def is_knowledge_admin(cur: Cursor, name: str) -> bool:
+    """Whether name is one of the tenant's knowledge administrators (migration 0015)."""
+    cur.execute(
+        "SELECT EXISTS (SELECT 1 FROM knowledge.knowledge_admins WHERE admin = %s)", (name,)
+    )
+    row = cur.fetchone()
+    return bool(row and row[0])
+
+
+def replace_knowledge_admins(owner_url: str, tenant: UUID, admins: list[str]) -> None:
+    """Replace the tenant's knowledge administrators, as the schema owner (an operator command)."""
+    import psycopg
+
+    with psycopg.connect(owner_url) as conn, conn.transaction():
+        conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(tenant),))
+        conn.execute("DELETE FROM knowledge.knowledge_admins WHERE tenant_id = %s", (tenant,))
+        for admin in admins:
+            conn.execute(
+                "INSERT INTO knowledge.knowledge_admins (tenant_id, admin) VALUES (%s, %s)",
+                (tenant, admin),
+            )
+
+
 def bump_minor(version: str) -> str:
     major, minor, _ = (int(p) for p in version.split("."))
     return f"{major}.{minor + 1}.0"
@@ -163,7 +186,13 @@ class Knowledge:
 
                 if not is_officer(cur, actor.name):
                     raise Forbidden("only privacy officers can create or change a mandatory pack")
-            elif row is not None and actor.name not in row[2]:
+            elif row is None:
+                # Creating a pack names its reviewers, who then decide what it says; a template
+                # may already name it, so its agents would be told whatever they merge. The AI
+                # platform team's call (docs/knowledge-admins-plan.md).
+                if not is_knowledge_admin(cur, actor.name):
+                    raise Forbidden("only knowledge administrators can create a pack")
+            elif actor.name not in row[2]:
                 # Changing a pack is the reviewers' call: its reviewers decide what it says and its
                 # decay policy decides how long that stays served (FR-307). Anyone could otherwise
                 # make themselves its reviewer, or stretch the policy to revive expired entries.

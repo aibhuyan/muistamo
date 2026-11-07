@@ -9,6 +9,12 @@ from muistamo_knowledge.privacy import replace_officers
 A, R, DPO = "person-a@example.invalid", "reviewer-r@example.invalid", "dpo@example.invalid"
 
 
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(A, DPO)
+
+
 def pack(name: str, layer: str, mandatory: bool | None = None) -> dict:
     spec: dict = {
         "layer": layer,

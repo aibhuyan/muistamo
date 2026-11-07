@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 import psycopg
+import pytest
 from muistamo_knowledge import evidence
 from muistamo_knowledge.privacy import PERSONAL_DATA_TABLES, replace_officers, rows_mentioning
 
@@ -24,6 +25,12 @@ PACK = {
         "mergePolicy": {"requires": ["review"]},
     },
 }
+
+
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(A, B, C)
 
 
 def subject(**extra) -> dict:

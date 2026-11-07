@@ -95,6 +95,14 @@ class World:
             conn.execute("INSERT INTO knowledge.tenants (id) VALUES (%s)", (tenant,))
         return tenant
 
+    def admins(self, *people: str, tenant: uuid.UUID | None = None) -> None:
+        """Make these development callers the tenant's knowledge administrators, who alone
+        create packs (migration 0015). Names without a scheme are dev: identities."""
+        from muistamo_knowledge.service import replace_knowledge_admins
+
+        names = [p if ":" in p else "dev:" + p for p in people]
+        replace_knowledge_admins(self.db.owner_url, tenant or self.tenant, names)
+
     def all_events(self, tenant: uuid.UUID | None = None) -> list:
         """The tenant's evidence chain, read directly (the API export is for privacy officers)."""
         with self.knowledge.db.in_tenant(tenant or self.tenant) as cur:

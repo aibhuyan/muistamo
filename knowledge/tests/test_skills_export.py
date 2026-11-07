@@ -5,6 +5,7 @@ import io
 import zipfile
 
 import psycopg
+import pytest
 from muistamo_knowledge import evidence
 
 A, R = "person-a@example.invalid", "reviewer-r@example.invalid"
@@ -14,6 +15,12 @@ PACK = {
     "metadata": {"name": "equity-research"},
     "spec": {"layer": "role", "reviewers": ["dev:" + R], "mergePolicy": {"requires": ["review"]}},
 }
+
+
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(A)
 
 
 def merge(world, *entries) -> str:
