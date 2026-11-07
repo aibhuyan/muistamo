@@ -95,6 +95,11 @@ class World:
             conn.execute("INSERT INTO knowledge.tenants (id) VALUES (%s)", (tenant,))
         return tenant
 
+    def all_events(self, tenant: uuid.UUID | None = None) -> list:
+        """The tenant's evidence chain, read directly (the API export is for privacy officers)."""
+        with self.knowledge.db.in_tenant(tenant or self.tenant) as cur:
+            return evidence.list_events(cur, 0, 100000)
+
     def actor(self, person: str, tenant: uuid.UUID | None = None) -> Actor:
         return Actor(tenant=tenant or self.tenant, name="dev:" + person, request_id="req-" + person)
 

@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
-from . import knowledgeentry
+from . import personalentry
 
 
 class KnowledgeEntryPage(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    items: list[knowledgeentry.KnowledgeEntry]
+    items: list[personalentry.PersonalEntry]

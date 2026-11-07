@@ -1769,13 +1769,18 @@ export interface components {
              * @enum {string}
              */
             dataClass: "public" | "internal" | "confidential";
+            /**
+             * @description Private entries are never proposed, never shown in a leaver review, and are purged when the person leaves (D59). Refused unless the operator has enabled private entries (MUISTAMO_KNOWLEDGE_PRIVATE_ENTRIES).
+             * @default false
+             */
+            private: boolean;
         };
         /**
          * KnowledgeEntryPage
          * @description The caller's personal entries.
          */
         KnowledgeEntryPage: {
-            items: components["schemas"]["KnowledgeEntry"][];
+            items: components["schemas"]["PersonalEntry"][];
         };
         /**
          * KnowledgePack
@@ -2208,6 +2213,35 @@ export interface components {
          */
         PackVersionPage: {
             items: components["schemas"]["PackVersion"][];
+        };
+        /**
+         * PersonalEntry
+         * @description An entry in the caller's own personal layer, with whether it is private (D59). Only the owner ever sees this view.
+         */
+        PersonalEntry: {
+            /** Format: uuid */
+            id: string;
+            /** @description Stable key; the most specific layer wins for the same key. */
+            key: string;
+            /** @enum {string} */
+            type: "skill" | "fact" | "example";
+            title: string;
+            body: string;
+            source?: string;
+            /** @enum {string} */
+            dataClass: "public" | "internal" | "confidential";
+            contributor: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Private entries are never proposed, never shown in a leaver review, and are purged when the person leaves (D59). */
+            private: boolean;
+        };
+        /**
+         * PersonalEntryVisibility
+         * @description Change whether one of the caller's personal entries is private (D59). Through an assistant an entry can only be made private; making it shared again needs the console. Copies already proposed are not recalled.
+         */
+        PersonalEntryVisibility: {
+            private: boolean;
         };
         /**
          * PolicyDecision

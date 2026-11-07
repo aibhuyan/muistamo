@@ -324,7 +324,16 @@ class Sources:
         """Record what the person was shown, and through which agent: citations only, never the
         query (invariant 5)."""
         keep = ("type", "entryKey", "layer", "pack", "version", "source", "externalId")
-        citations = [{k: v for k, v in i["citation"].items() if k in keep} for i in items]
+        # A personal entry's key can say what it is about and any entry may be private (D59):
+        # the read log records that the personal layer answered, never which entry.
+        citations = [
+            {
+                k: v
+                for k, v in i["citation"].items()
+                if k in keep and not (k == "entryKey" and i["citation"].get("layer") == "personal")
+            }
+            for i in items
+        ]
         with self.k.db.in_tenant(actor.tenant) as cur:
             cur.execute(
                 "INSERT INTO knowledge.reads (tenant_id, id, person, tool, result_count, citations,"

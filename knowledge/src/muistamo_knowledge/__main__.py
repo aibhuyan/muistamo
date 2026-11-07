@@ -84,6 +84,9 @@ def serve(_: argparse.Namespace) -> None:
             "MUISTAMO_SHAREPOINT_INDEXERS is not set: SharePoint sources cannot be indexed"
         )
     knowledge = Knowledge(db, key, default_factories(enable_test, sharepoint))
+    # D59: writes of private entries stay refused until every server runs code that honours the
+    # flag (docs/d59-private-entries-plan.md); reads and the purge at leaving are always on.
+    knowledge.private_entries = os.environ.get("MUISTAMO_KNOWLEDGE_PRIVATE_ENTRIES") == "true"
     if entra_callers:
         from muistamo_knowledge.delegation import DelegationClient
         from muistamo_knowledge.leavers import Leavers

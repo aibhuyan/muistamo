@@ -13,7 +13,7 @@ import uuid
 
 import psycopg
 import pytest
-from muistamo_knowledge import auth, entra
+from muistamo_knowledge import auth, entra, evidence
 from muistamo_knowledge.leavers import set_service_secret
 
 pytestmark = pytest.mark.authz
@@ -118,7 +118,9 @@ class Live:
         )
 
     def actions(self) -> list[tuple[str, dict]]:
-        events = self.world.knowledge.events(self.world.actor("auditor@example.invalid"), 0, 1000)
+        # Read directly: the export itself is for privacy officers (D59).
+        with self.world.knowledge.db.in_tenant(self.world.tenant) as cur:
+            events = evidence.list_events(cur, 0, 1000)
         return [(e.action, e.after or {}) for e in events]
 
 

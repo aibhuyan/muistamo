@@ -25,6 +25,7 @@ from muistamo_contracts.v1.knowledgesource import KnowledgeSource
 from muistamo_contracts.v1.leaverreviewdecision import LeaverReviewDecision
 from muistamo_contracts.v1.leaverreviewfence import LeaverReviewFence
 from muistamo_contracts.v1.leaverreviewopen import LeaverReviewOpen
+from muistamo_contracts.v1.personalentryvisibility import PersonalEntryVisibility
 from muistamo_contracts.v1.proposaldecision import ProposalDecision
 from muistamo_contracts.v1.proposalinput import ProposalInput
 from muistamo_contracts.v1.rollbackinput import RollbackInput
@@ -260,6 +261,12 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     @app.post("/v1/knowledge/personal/entries")
     def capture(body: KnowledgeEntryInput, who: Who) -> JSONResponse:
         return ok(svc().capture(who, body.model_dump(mode="json", exclude_none=True)), 201)
+
+    @app.patch("/v1/knowledge/personal/entries/{entry_id}")
+    def set_entry_visibility(
+        entry_id: uuid.UUID, body: PersonalEntryVisibility, who: Who
+    ) -> JSONResponse:
+        return ok(svc().set_visibility(who, entry_id, body.private))
 
     @app.delete("/v1/knowledge/personal/entries/{entry_id}", status_code=204)
     def delete_entry(entry_id: uuid.UUID, who: Who) -> Response:

@@ -200,7 +200,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/KnowledgeEntry'
+                $ref: '#/components/schemas/PersonalEntry'
         default:
           $ref: '#/components/responses/Problem'
   /v1/knowledge/personal/entries/{id}:
@@ -211,9 +211,38 @@ paths:
       schema:
         type: string
         format: uuid
+    patch:
+      operationId: setEntryVisibility
+      summary: Make one of the caller's personal entries private, or shared again
+        (D59)
+      description: Private entries are never proposed, never shown in a leaver review,
+        and are purged when the person leaves. Through an assistant an entry can only
+        be made private; making it shared again needs the console. Refused while the
+        layer is frozen for a leaver review, and refused (409) while a proposal holds
+        a copy of the entry, so a private entry has no copies. Making an entry private
+        is refused unless the operator has enabled private entries. Private stops
+        a leaver's decider seeing the entry; the owner's own assistant still reads
+        it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonalEntryVisibility'
+      responses:
+        '200':
+          description: The entry, with its new visibility.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalEntry'
+        default:
+          $ref: '#/components/responses/Problem'
     delete:
       operationId: deleteEntry
       summary: Delete one of the caller's personal entries
+      description: A private entry is deleted through the console only, never through
+        an assistant.
       responses:
         '204':
           description: Deleted.
@@ -647,6 +676,9 @@ paths:
     get:
       operationId: listEvents
       summary: Export the tenant's knowledge evidence chain in seq order
+      description: 'For the tenant''s privacy officers only (D59): the chain records
+        every pack, reviewer and personal-layer change, so a colleague such as a leaver''s
+        manager must not read it. Never through an assistant.'
       parameters:
       - name: afterSeq
         in: query
@@ -2801,6 +2833,12 @@ components:
           - internal
           - confidential
           default: internal
+        private:
+          description: Private entries are never proposed, never shown in a leaver
+            review, and are purged when the person leaves (D59). Refused unless the
+            operator has enabled private entries (MUISTAMO_KNOWLEDGE_PRIVATE_ENTRIES).
+          type: boolean
+          default: false
     KnowledgeEntryPage:
       title: KnowledgeEntryPage
       description: The caller's personal entries.
@@ -2812,7 +2850,7 @@ components:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/KnowledgeEntry'
+            $ref: '#/components/schemas/PersonalEntry'
     KnowledgePack:
       title: KnowledgePack
       description: A versioned, reviewed body of company knowledge (PRD section 5).
@@ -3786,6 +3824,70 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PackVersion'
+    PersonalEntry:
+      title: PersonalEntry
+      description: An entry in the caller's own personal layer, with whether it is
+        private (D59). Only the owner ever sees this view.
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - key
+      - type
+      - title
+      - body
+      - dataClass
+      - contributor
+      - createdAt
+      - private
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          description: Stable key; the most specific layer wins for the same key.
+          type: string
+          pattern: ^[a-z0-9]+([.-][a-z0-9]+)*$
+          maxLength: 120
+        type:
+          type: string
+          enum:
+          - skill
+          - fact
+          - example
+        title:
+          type: string
+        body:
+          type: string
+        source:
+          type: string
+        dataClass:
+          type: string
+          enum:
+          - public
+          - internal
+          - confidential
+        contributor:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        private:
+          description: Private entries are never proposed, never shown in a leaver
+            review, and are purged when the person leaves (D59).
+          type: boolean
+    PersonalEntryVisibility:
+      title: PersonalEntryVisibility
+      description: Change whether one of the caller's personal entries is private
+        (D59). Through an assistant an entry can only be made private; making it shared
+        again needs the console. Copies already proposed are not recalled.
+      type: object
+      additionalProperties: false
+      required:
+      - private
+      properties:
+        private:
+          type: boolean
     PolicyDecision:
       title: PolicyDecision
       description: 'The policy engine''s answer. Release 1 runs in observe mode: nothing

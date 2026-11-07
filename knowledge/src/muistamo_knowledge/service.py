@@ -101,6 +101,9 @@ class Knowledge:
         # Called after a new pack version commits, with (actor, pack, version). Delivery targets
         # (Agent Skills destinations, FR-312) subscribe here; a failing hook never undoes a merge.
         self.on_publish: list[Callable[[Actor, str, str], None]] = []
+        # D59: whether entries may be made private. Off until every server honours the flag;
+        # the read-side filters and the purge at leaving never depend on it.
+        self.private_entries = False
 
     def _evidence(
         self,
@@ -320,38 +323,121 @@ class Knowledge:
     # Personal layer -------------------------------------------------------------------------
 
     def capture(self, actor: Actor, entry: dict[str, Any]) -> dict[str, Any]:
+        private = entry.get("private") is True
+        if private:
+            self._require_private_entries()
         with self.db.in_tenant(actor.tenant) as cur:
             self._ensure_not_frozen(cur, actor.name)
             created = self._insert_entry(cur, actor.tenant, entry, contributor=actor.name)
             cur.execute(
-                "INSERT INTO knowledge.personal_entries (tenant_id, owner, entry_id) VALUES (%s, %s, %s)",
-                (actor.tenant, actor.name, created["id"]),
+                "INSERT INTO knowledge.personal_entries (tenant_id, owner, entry_id, private)"
+                " VALUES (%s, %s, %s, %s)",
+                (actor.tenant, actor.name, created["id"], private),
             )
+            # No key, for any personal entry: a key can say what the entry is about, any entry
+            # may be made private later, and the evidence log is append-only (D59). Whether it
+            # is private is not recorded either.
             self._evidence(
                 cur,
                 actor,
                 "knowledge.entry.captured",
                 "KnowledgeEntry",
                 str(created["id"]),
-                after={"key": created["key"], "type": created["type"], "layer": "personal"},
+                after={"type": created["type"], "layer": "personal"},
             )
-            return created
+            return created | {"private": private}
+
+    def _require_private_entries(self) -> None:
+        if not self.private_entries:
+            raise Forbidden("private entries are not enabled on this server yet")
 
     def list_personal(self, actor: Actor) -> list[dict[str, Any]]:
         with self.db.in_tenant(actor.tenant) as cur:
-            return self._personal(cur, actor)
+            return self._personal_of(cur, actor.name, include_private=True)
 
     def _personal(self, cur: Cursor, actor: Actor) -> list[dict[str, Any]]:
-        return self._personal_of(cur, actor.name)
+        """The caller's own layer for resolve and retrieval: private entries included (they are
+        the person's own), as plain entries without the flag, which only the personal list
+        shows."""
+        return [
+            {k: v for k, v in e.items() if k != "private"}
+            for e in self._personal_of(cur, actor.name, include_private=True)
+        ]
 
-    def _personal_of(self, cur: Cursor, owner: str) -> list[dict[str, Any]]:
+    def _personal_of(
+        self, cur: Cursor, owner: str, *, include_private: bool
+    ) -> list[dict[str, Any]]:
+        """A person's personal layer. include_private is for the owner's own views only; every
+        other reader (a proposal, a leaver review) gets shared entries, with no trace of the
+        private ones (D59)."""
         cur.execute(
-            _ENTRY_SELECT
-            + " JOIN knowledge.personal_entries p ON p.tenant_id = e.tenant_id AND p.entry_id = e.id"
-            " WHERE p.owner = %s ORDER BY e.key, e.created_at",
+            _PERSONAL_SELECT
+            + ("" if include_private else " AND NOT p.private")
+            + " ORDER BY e.key, e.created_at",
             (owner,),
         )
-        return [_entry(r) for r in cur.fetchall()]
+        rows = cur.fetchall()
+        if not include_private:
+            return [_entry(r[:-1]) for r in rows]
+        return [_entry(r[:-1]) | {"private": bool(r[-1])} for r in rows]
+
+    def set_visibility(self, actor: Actor, entry_id: UUID, private: bool) -> dict[str, Any]:
+        """Make one of the caller's own entries private, or shared again (D59).
+
+        Through an assistant it is one-way: making an entry shared needs the console, so an
+        assistant cannot put a private note in front of a leaver's decider. That check comes
+        first, before the entry is looked up, so it says nothing about which entries exist. An
+        entry with a copy in a proposal cannot be made private: a private entry has no copies."""
+        if not private and actor.through_assistant:
+            raise Forbidden(
+                "making a private entry shared again is not available through an assistant;"
+                " use the Muistamo console"
+            )
+        if private:
+            self._require_private_entries()
+        with self.db.in_tenant(actor.tenant) as cur:
+            self._ensure_not_frozen(cur, actor.name)
+            cur.execute(
+                "SELECT private FROM knowledge.personal_entries WHERE entry_id = %s AND owner = %s"
+                " FOR UPDATE",
+                (entry_id, actor.name),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise NotFound(f"entry {entry_id}")
+            if bool(row[0]) != private:
+                if private and self._has_copies(cur, entry_id):
+                    raise Conflict(
+                        "this entry was already proposed and its copy is with the pack's"
+                        " reviewers; it cannot be made private"
+                    )
+                cur.execute(
+                    "UPDATE knowledge.personal_entries SET private = %s"
+                    " WHERE entry_id = %s AND owner = %s",
+                    (private, entry_id, actor.name),
+                )
+                self._evidence(
+                    cur,
+                    actor,
+                    "knowledge.entry.visibility-changed",
+                    "KnowledgeEntry",
+                    str(entry_id),
+                    after={"private": private},
+                )
+            return next(
+                e
+                for e in self._personal_of(cur, actor.name, include_private=True)
+                if e["id"] == entry_id
+            )
+
+    @staticmethod
+    def _has_copies(cur: Cursor, entry_id: UUID) -> bool:
+        """Whether any revision was copied from this entry (a proposal's copy)."""
+        cur.execute(
+            "SELECT EXISTS (SELECT 1 FROM knowledge.entries WHERE derived_from = %s)", (entry_id,)
+        )
+        row = cur.fetchone()
+        return bool(row and row[0])
 
     @staticmethod
     def _lock_layer(cur: Cursor, person: str) -> None:
@@ -388,11 +474,19 @@ class Knowledge:
         with self.db.in_tenant(actor.tenant) as cur:
             self._ensure_not_frozen(cur, actor.name)
             cur.execute(
-                "DELETE FROM knowledge.personal_entries WHERE entry_id = %s AND owner = %s RETURNING entry_id",
+                "DELETE FROM knowledge.personal_entries WHERE entry_id = %s AND owner = %s"
+                " RETURNING private",
                 (entry_id, actor.name),
             )
-            if cur.fetchone() is None:
+            row = cur.fetchone()
+            if row is None:
                 raise NotFound(f"entry {entry_id}")
+            if row[0] and actor.through_assistant:
+                # Deleting and re-capturing would make a private note shared: console only (D59).
+                # Raising rolls the delete back.
+                raise Forbidden(
+                    "a private entry is deleted through the Muistamo console, not an assistant"
+                )
             cur.execute("DELETE FROM knowledge.entries WHERE id = %s", (entry_id,))
             self._evidence(
                 cur,
@@ -425,7 +519,9 @@ class Knowledge:
         """Propose owner's personal entries. proposed_by is set when someone else proposes on the
         owner's behalf (a leaver's decider); the owner stays the contributor, for lineage."""
         info = self._pack(cur, pack)
-        own = {e["id"]: e for e in self._personal_of(cur, owner)}
+        # Shared entries only: a private one is never proposed, by its owner or a decider, and
+        # is refused exactly like an entry that is not there (D59).
+        own = {e["id"]: e for e in self._personal_of(cur, owner, include_private=False)}
         missing = [str(i) for i in entry_ids if i not in own]
         if missing:
             raise NotFound(f"entries {', '.join(missing)}")
@@ -1116,7 +1212,17 @@ class Knowledge:
     # Evidence -------------------------------------------------------------------------------
 
     def events(self, actor: Actor, after_seq: int, limit: int) -> list[evidence.Event]:
+        """The evidence export, for privacy officers only: the chain names every pack, reviewer
+        and personal-layer change, so a colleague (a leaver's manager) must not page through it
+        (D59)."""
         with self.db.in_tenant(actor.tenant) as cur:
+            cur.execute(
+                "SELECT EXISTS (SELECT 1 FROM knowledge.privacy_officers WHERE officer = %s)",
+                (actor.name,),
+            )
+            row = cur.fetchone()
+            if not (row and row[0]):
+                raise Forbidden("the evidence export is for privacy officers")
             return evidence.list_events(cur, after_seq, limit)
 
     # Helpers --------------------------------------------------------------------------------
@@ -1159,6 +1265,13 @@ _ENTRY_SELECT = (  # constant column list, no caller input
     "SELECT "  # noqa: S608
     + ", ".join("e." + c for c in _ENTRY_COLUMNS.split(", "))
     + " FROM knowledge.entries e"
+)
+_PERSONAL_SELECT = (  # constant, no caller input; the last column is the private flag
+    "SELECT "  # noqa: S608
+    + ", ".join("e." + c for c in _ENTRY_COLUMNS.split(", "))
+    + ", p.private FROM knowledge.entries e"
+    " JOIN knowledge.personal_entries p ON p.tenant_id = e.tenant_id AND p.entry_id = e.id"
+    " WHERE p.owner = %s"
 )
 
 

@@ -93,13 +93,31 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
 
     @server.tool(
         name="remember",
-        description="Save a fact, skill or example to the caller's personal layer. Only the caller sees it.",
+        description=(
+            "Save a fact, skill or example to the caller's personal layer. Only the caller sees it. "
+            "With private=true it is never proposed, never shown to anyone at a leaver review, and "
+            "deleted when the person leaves; no tool makes it shared again."
+        ),
     )
     async def remember(
-        ctx: Context, key: str, title: str, body: str, type: str = "fact", source: str | None = None
+        ctx: Context,
+        key: str,
+        title: str,
+        body: str,
+        type: str = "fact",
+        source: str | None = None,
+        private: bool = False,
     ) -> dict[str, Any]:
+        # The parameter is always offered: a client that asked for private and silently got a
+        # shared entry would be worse than a refusal while private entries are not enabled (D59).
         who = await actor(ctx)
-        entry = {"key": key, "type": type, "title": title, "body": body}
+        entry: dict[str, Any] = {
+            "key": key,
+            "type": type,
+            "title": title,
+            "body": body,
+            "private": private,
+        }
         if source:
             entry["source"] = source
         created = await anyio.to_thread.run_sync(
@@ -110,6 +128,7 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
             "entryId": str(created["id"]),
             "layer": "personal",
             "key": created["key"],
+            "private": created["private"],
         }
 
     @server.tool(
