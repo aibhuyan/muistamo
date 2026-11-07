@@ -211,8 +211,8 @@ def test_personal_keys_stay_out_of_the_evidence_and_the_read_log(world, on) -> N
     # No key of any personal entry, no content, and no private flag at capture.
     assert remaining(world, [KEY, BODY, "shared-key-9c1d"]) == {"entries": 2}
     assert evidence(world, "knowledge.entry.captured")[-2:] == [
-        {"type": "fact", "layer": "personal"},
-        {"type": "fact", "layer": "personal"},
+        {"type": "fact", "layer": "personal", "private": True},
+        {"type": "fact", "layer": "personal", "private": False},
     ]
     with psycopg.connect(world.db.owner_url) as conn:
         reads = conn.execute(
@@ -400,3 +400,45 @@ def test_the_access_export_includes_private_entries_for_the_person_and_officers(
         res = world.client(person).post("/v1/knowledge/privacy/access", json=subject)
         assert res.status_code == 200 and BODY in res.text, person
     assert world.client(M).post("/v1/knowledge/privacy/access", json=subject).status_code == 403
+
+
+# Defence in depth: the filters hold even if a private row reached an open review ------------
+
+
+def test_a_private_row_in_an_open_review_is_never_shown_or_merged(world, on) -> None:
+    """The purge at opening normally leaves no private row to filter; this sets one directly
+    (as the schema owner) to prove the review's own filters."""
+    a = world.client(A)
+    shared = capture(a, "shared-note", body=BODY)
+    capture(a, "other-note")
+    svc_open(on)
+    with psycopg.connect(world.db.owner_url) as conn, conn.transaction():
+        conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(world.tenant),))
+        conn.execute(
+            "UPDATE knowledge.personal_entries SET private = true WHERE entry_id = %s",
+            (shared["id"],),
+        )
+    got = world.client(M).get("/v1/knowledge/leaver-reviews/leaver-1:run-1")
+    assert [e["key"] for e in got.json()["entries"]] == ["other-note"]
+    assert BODY not in got.text
+    merge = world.client(M).post(
+        "/v1/knowledge/leaver-reviews/leaver-1:run-1/decision",
+        json={
+            "decision": "merge",
+            "reason": "x",
+            "pack": "basics",
+            "entryIds": [shared["id"]],
+            "summary": "s",
+        },
+    )
+    assert merge.status_code == 404, merge.text
+
+
+def test_the_review_count_excludes_private_rows_on_its_own(world, on, monkeypatch) -> None:
+    from muistamo_knowledge.leavers import Leavers
+
+    monkeypatch.setattr(Leavers, "_purge_private", lambda self, cur, person: 0)
+    a = world.client(A)
+    capture(a, "shared-note")
+    capture(a, KEY, private=True)
+    assert svc_open(on).json()["entryCount"] == 1

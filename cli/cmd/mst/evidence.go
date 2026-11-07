@@ -87,7 +87,7 @@ func exportCmd(opts *options) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&out, "output", "o", "", "file to write")
-	cmd.Flags().BoolVar(&fromKnowledge, "knowledge", false, "export the knowledge service's chain (--knowledge-server)")
+	cmd.Flags().BoolVar(&fromKnowledge, "knowledge", false, "export the knowledge service's chain (--knowledge-server); the actor must be one of the tenant's privacy officers")
 	_ = cmd.MarkFlagRequired("output")
 	return cmd
 }

@@ -2075,7 +2075,7 @@ export interface components {
         };
         /**
          * PersonalEntryVisibility
-         * @description Change whether one of the caller's personal entries is private (D59). Through an assistant an entry can only be made private; making it shared again needs the console. Copies already proposed are not recalled.
+         * @description Change whether one of the caller's personal entries is private (D59). Through an assistant an entry can only be made private; making it shared again needs the console. An entry with a copy in a proposal cannot be made private (409).
          */
         PersonalEntryVisibility: {
             private: boolean;

@@ -335,15 +335,16 @@ class Knowledge:
                 (actor.tenant, actor.name, created["id"], private),
             )
             # No key, for any personal entry: a key can say what the entry is about, any entry
-            # may be made private later, and the evidence log is append-only (D59). Whether it
-            # is private is not recorded either.
+            # may be made private later, and the evidence log is append-only (D59). Whether it is
+            # private is recorded (no content; the export is for privacy officers), so the purge
+            # proof can be traced back to the capture.
             self._evidence(
                 cur,
                 actor,
                 "knowledge.entry.captured",
                 "KnowledgeEntry",
                 str(created["id"]),
-                after={"type": created["type"], "layer": "personal"},
+                after={"type": created["type"], "layer": "personal", "private": private},
             )
             return created | {"private": private}
 
@@ -390,8 +391,8 @@ class Knowledge:
         entry with a copy in a proposal cannot be made private: a private entry has no copies."""
         if not private and actor.through_assistant:
             raise Forbidden(
-                "making a private entry shared again is not available through an assistant;"
-                " use the Muistamo console"
+                "making a private entry shared again is not available through an assistant; it"
+                " needs the Muistamo console, whose personal-entries page is not built yet"
             )
         if private:
             self._require_private_entries()
@@ -485,7 +486,9 @@ class Knowledge:
                 # Deleting and re-capturing would make a private note shared: console only (D59).
                 # Raising rolls the delete back.
                 raise Forbidden(
-                    "a private entry is deleted through the Muistamo console, not an assistant"
+                    "a private entry is deleted through the Muistamo console, not an assistant;"
+                    " its personal-entries page is not built yet, and the entry is deleted"
+                    " anyway when you leave"
                 )
             cur.execute("DELETE FROM knowledge.entries WHERE id = %s", (entry_id,))
             self._evidence(
@@ -1216,12 +1219,9 @@ class Knowledge:
         and personal-layer change, so a colleague (a leaver's manager) must not page through it
         (D59)."""
         with self.db.in_tenant(actor.tenant) as cur:
-            cur.execute(
-                "SELECT EXISTS (SELECT 1 FROM knowledge.privacy_officers WHERE officer = %s)",
-                (actor.name,),
-            )
-            row = cur.fetchone()
-            if not (row and row[0]):
+            from muistamo_knowledge.privacy import is_officer  # privacy imports this module
+
+            if not is_officer(cur, actor.name):
                 raise Forbidden("the evidence export is for privacy officers")
             return evidence.list_events(cur, after_seq, limit)
 
