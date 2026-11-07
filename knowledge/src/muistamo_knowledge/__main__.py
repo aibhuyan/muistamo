@@ -194,8 +194,9 @@ def add_assistant(args: argparse.Namespace) -> None:
     name = args.name.strip()
     if not 1 <= len(name) <= 100 or any(ord(c) < 0x20 or ord(c) == 0x7F for c in name):
         sys.exit("knowledge: the name must be 1-100 printable characters")
-    entra.allow_assistant(require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant, client, name)
-    print(f"tenant {tenant} allows assistant {name} ({client})")
+    url = require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL")
+    entra.allow_assistant(url, tenant, client, name, args.kind)
+    print(f"tenant {tenant} allows {args.kind} {name} ({client})")
 
 
 def remove_assistant(args: argparse.Namespace) -> None:
@@ -213,10 +214,10 @@ def list_assistants(args: argparse.Namespace) -> None:
     from muistamo_knowledge import entra
 
     tenant = _uuid_arg(args.tenant, "tenant")
-    for client, name in entra.list_assistants(
+    for client, name, kind in entra.list_assistants(
         require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant
     ):
-        print(f"{client}\t{name}")
+        print(f"{client}\t{name}\t{kind}")
 
 
 def set_privacy_officers(args: argparse.Namespace) -> None:
@@ -281,6 +282,13 @@ def main() -> None:
     add.add_argument("tenant")
     add.add_argument("client_app", help="the assistant's Entra application (client) id")
     add.add_argument("name", help='the name recorded with each read, e.g. "Claude"')
+    add.add_argument(
+        "--kind",
+        choices=["assistant", "console"],
+        default="assistant",
+        help="assistant: acts for the person, within its agent's scope, never as reviewer;"
+        " console: Muistamo's console, where the person acts as themselves",
+    )
     add.set_defaults(fn=add_assistant)
     rm = asst.add_parser("remove", help="stop accepting a client app; its next call is refused")
     rm.add_argument("tenant")

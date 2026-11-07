@@ -307,9 +307,11 @@ class SignIn:
 
     def _allowed_client(self, tenant: UUID, value: str | None) -> UUID:
         """The client, if it is an assistant the tenant allows (the same list the MCP endpoint
-        checks every token's azp against)."""
+        checks every token's azp against). Only kind 'assistant': the console signs people in
+        through its own flow, so an assistant can never obtain a console token here."""
         client = _client_id(value)
-        if self._assistants(tenant, client) is None:
+        found = self._assistants(tenant, client)
+        if found is None or found[1] != "assistant":
             raise OAuthError(400, "unauthorized_client", "this assistant is not allowed here")
         return client
 

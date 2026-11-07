@@ -151,16 +151,30 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     def actor(request: Request) -> Actor:
         if knowledge is None:
             raise Unauthenticated("knowledge service not configured")
-        tenant, name, assistant = auth.resolve_caller(resolver, request.headers)
+        tenant, name, assistant, kind = auth.resolve_caller(resolver, request.headers)
         return Actor(
             tenant=tenant,
             name=name,
             request_id=str(uuid.uuid4()),
             bearer=auth.entra_bearer(name, request.headers),
             assistant=assistant,
+            client_kind=kind,
         )
 
     Who = Annotated[Actor, Depends(actor)]
+
+    def reviewer(who: Who) -> Actor:
+        """A person acting as themselves: reviewer and admin actions are never made through an
+        assistant (maintainer decision, 2026-11-07). Reviewers use Muistamo's console, a client
+        app of kind 'console' (migration 0013)."""
+        if who.through_assistant:
+            raise Forbidden(
+                "reviewer and admin actions are not available through an assistant;"
+                " use the Muistamo console"
+            )
+        return who
+
+    Reviewer = Annotated[Actor, Depends(reviewer)]
 
     def svc() -> Knowledge:
         if knowledge is None:
@@ -198,7 +212,7 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
         return ok(svc().get_pack(who, name))
 
     @app.put("/v1/knowledge/packs/{name}")
-    def apply_pack(name: str, body: KnowledgePack, who: Who) -> JSONResponse:
+    def apply_pack(name: str, body: KnowledgePack, who: Reviewer) -> JSONResponse:
         record, created = svc().apply_pack(
             who, name, body.model_dump(mode="json", exclude_none=True)
         )
@@ -228,15 +242,15 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
         )
 
     @app.post("/v1/knowledge/packs/{name}/rollback")
-    def rollback(name: str, body: RollbackInput, who: Who) -> JSONResponse:
+    def rollback(name: str, body: RollbackInput, who: Reviewer) -> JSONResponse:
         return ok(svc().rollback(who, name, body.toVersion, body.reason), 201)
 
     @app.post("/v1/knowledge/packs/{name}/entries/{key}/verification")
-    def verify_entry(name: str, key: str, body: VerificationInput, who: Who) -> JSONResponse:
+    def verify_entry(name: str, key: str, body: VerificationInput, who: Reviewer) -> JSONResponse:
         return ok(svc().verify_entry(who, name, key, body.entryId, body.reason))
 
     @app.get("/v1/knowledge/verifications")
-    def list_verifications(who: Who) -> JSONResponse:
+    def list_verifications(who: Reviewer) -> JSONResponse:
         return ok({"items": svc().verification_queue(who)})
 
     @app.get("/v1/knowledge/personal/entries")
@@ -256,6 +270,8 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     def list_proposals(
         who: Who, role: str = Query("contributor", pattern="^(contributor|reviewer)$")
     ) -> JSONResponse:
+        if role == "reviewer" and who.through_assistant:
+            raise Forbidden("the review inbox is not available through an assistant")
         return ok({"items": svc().list_proposals(who, role)})
 
     @app.post("/v1/knowledge/proposals")
@@ -269,10 +285,14 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
 
     @app.get("/v1/knowledge/proposals/{proposal_id}")
     def get_proposal(proposal_id: uuid.UUID, who: Who) -> JSONResponse:
-        return ok(svc().get_proposal(who, proposal_id))
+        proposal = svc().get_proposal(who, proposal_id)
+        # Through an assistant, only the person's own proposals: reviewing is the console's.
+        if who.through_assistant and proposal["contributor"] != who.name:
+            raise NotFound(f"proposal {proposal_id}")
+        return ok(proposal)
 
     @app.post("/v1/knowledge/proposals/{proposal_id}/decision")
-    def decide(proposal_id: uuid.UUID, body: ProposalDecision, who: Who) -> JSONResponse:
+    def decide(proposal_id: uuid.UUID, body: ProposalDecision, who: Reviewer) -> JSONResponse:
         edits = [e.model_dump(mode="json") for e in body.edits or []]
         return ok(svc().decide(who, proposal_id, body.decision.value, body.reason, edits))
 
@@ -313,14 +333,14 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
         return ok(record)
 
     @app.put("/v1/knowledge/sources/{name}")
-    def apply_source(name: str, body: KnowledgeSource, who: Who) -> JSONResponse:
+    def apply_source(name: str, body: KnowledgeSource, who: Reviewer) -> JSONResponse:
         record, created = sources().apply(
             who, name, body.model_dump(mode="json", exclude_none=True)
         )
         return ok(record, 201 if created else 200)
 
     @app.post("/v1/knowledge/sources/{name}/sync")
-    def sync_source(name: str, who: Who) -> JSONResponse:
+    def sync_source(name: str, who: Reviewer) -> JSONResponse:
         return ok(sources().sync(who, name))
 
     @app.get("/v1/knowledge/retrieve")
@@ -339,7 +359,7 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     ) -> JSONResponse:  # noqa: N803
         # The evidence chain names every pack and reviewer: an auditor's export, never an
         # assistant's (D60).
-        if who.assistant is not None:
+        if who.through_assistant:
             raise Forbidden("the evidence export is not available to an assistant")
         items = svc().events(who, afterSeq, limit + 1)
         page: dict[str, Any] = {"items": [e.to_json() for e in items[:limit]]}
@@ -355,31 +375,33 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
         return Privacy(svc())
 
     @app.post("/v1/knowledge/privacy/erasures")
-    def erase(body: ErasureRequest, who: Who) -> JSONResponse:
+    def erase(body: ErasureRequest, who: Reviewer) -> JSONResponse:
         proof, created = privacy().erase(who, body.model_dump(mode="json", exclude_none=True))
         return ok(proof, 201 if created else 200)
 
     @app.get("/v1/knowledge/privacy/erasures/{erasure_id}")
-    def get_erasure(erasure_id: uuid.UUID, who: Who) -> JSONResponse:
+    def get_erasure(erasure_id: uuid.UUID, who: Reviewer) -> JSONResponse:
         return ok(privacy().get_erasure(who, erasure_id))
 
     @app.post("/v1/knowledge/privacy/access")
-    def export_personal_data(body: AccessRequest, who: Who) -> JSONResponse:
+    def export_personal_data(body: AccessRequest, who: Reviewer) -> JSONResponse:
         return ok(privacy().export(who, body.subject.model_dump(mode="json", exclude_none=True)))
 
     def leavers() -> Leavers:
         return Leavers(svc(), auth.identity_map_for(resolver))
 
     @app.get("/v1/knowledge/leaver-reviews")
-    def list_leaver_reviews(who: Who) -> JSONResponse:
+    def list_leaver_reviews(who: Reviewer) -> JSONResponse:
         return ok({"items": leavers().list(who)})
 
     @app.post("/v1/knowledge/leaver-reviews/{review_id}/decision")
-    def decide_leaver_review(review_id: str, body: LeaverReviewDecision, who: Who) -> JSONResponse:
+    def decide_leaver_review(
+        review_id: str, body: LeaverReviewDecision, who: Reviewer
+    ) -> JSONResponse:
         return ok(leavers().decide(who, review_id, body.model_dump(mode="json", exclude_none=True)))
 
     @app.get("/v1/knowledge/leaver-reviews/{review_id}")
-    def get_leaver_review(review_id: str, who: Who) -> JSONResponse:
+    def get_leaver_review(review_id: str, who: Reviewer) -> JSONResponse:
         return ok(leavers().get(who, review_id))
 
     # Service calls from the control plane. Signed with the tenant's service secret; never a
@@ -449,7 +471,7 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     signin = oauth.SignIn(
         public,
         knowledge.db.entra_registration if knowledge is not None else (lambda _: None),
-        knowledge.db.entra_assistant if knowledge is not None else (lambda _t, _c: None),
+        knowledge.db.entra_client if knowledge is not None else (lambda _t, _c: None),
     )
 
     def canonical_tenant(value: str) -> uuid.UUID | None:

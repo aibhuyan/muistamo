@@ -218,6 +218,49 @@ def test_mcp_propose_knowledge_outside_the_template_captures_nothing(scoped) -> 
     assert after == before, "a refused proposal captured an entry"
 
 
+# The console ------------------------------------------------------------------------------
+
+CONSOLE = uuid.UUID("7d000000-0000-4000-8000-0000000c0501")
+
+
+def console_token(ew) -> str:
+    from muistamo_knowledge import entra
+
+    world = ew.world
+    entra.allow_assistant(world.db.owner_url, world.tenant, CONSOLE, "Muistamo console", "console")
+    return ew.directory.token(PERSON, azp=str(CONSOLE))
+
+
+def test_the_console_reads_packs_as_the_person_not_as_an_agent(scoped) -> None:
+    """The console is the person acting as themselves: no agent scope on pack reads."""
+    ew, _ = scoped
+    console = ew.client(console_token(ew))
+    assert console.get("/v1/knowledge/packs/legal").status_code == 200
+    res = console.get("/v1/knowledge/packs")
+    assert {p["document"]["metadata"]["name"] for p in res.json()["items"]} == {
+        "finance",
+        "legal",
+        "rules",
+    }
+    assert "agentScope" not in res.json()
+
+
+def test_a_console_token_over_mcp_is_still_agent_scoped(scoped) -> None:
+    """MCP is the assistant surface: a console token presented there (copied into an assistant's
+    hands) gets the agent's scope, never the console's."""
+    ew, _ = scoped
+    token = console_token(ew)
+    before = ew.client(token).get("/v1/knowledge/personal/entries").json()["items"]
+    result = ew.mcp(
+        token,
+        "propose_knowledge",
+        {"pack": "legal", "key": "k3", "title": "t", "body": "b", "summary": "s"},
+    )
+    assert result.is_error, result
+    after = ew.client(token).get("/v1/knowledge/personal/entries").json()["items"]
+    assert after == before, "a refused proposal captured an entry"
+
+
 # Unchanged ----------------------------------------------------------------------------------
 
 

@@ -32,6 +32,8 @@ GRAPH_APP = "00000003-0000-0000-c000-000000000000"
 
 # The assistant client app ("Claude") the e2e tenant allows; tokens name it as azp.
 ASSISTANT = uuid.UUID("5a5a5a5a-0000-4000-8000-00000000c1a0")
+# Muistamo's console, where a person (a reviewer, a manager) acts as themselves.
+CONSOLE = uuid.UUID("5a5a5a5a-0000-4000-8000-0000000c0501")
 
 
 def write_certificates(directory: str) -> tuple[str, str, str]:

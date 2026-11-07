@@ -399,7 +399,24 @@ def main() -> None:
         wait_for("the knowledge service", lambda: _up(kn + "/healthz"))
 
         step("knowledge: packs and SharePoint sources, indexed by the indexer app")
-        reviewer = {"Authorization": "Bearer " + ms.user_token(REVIEWER)}
+        # Reviewers act through the console as themselves, never through an assistant.
+        run(
+            python
+            + ["tenant", "assistant", "add", tenant, str(fake_microsoft.CONSOLE), "Console"]
+            + ["--kind", "console"],
+            kenv,
+        )
+        reviewer = {
+            "Authorization": "Bearer " + ms.user_token(REVIEWER, azp=fake_microsoft.CONSOLE)
+        }
+        # The same reviewer through their assistant cannot change a pack.
+        status, _ = http(
+            "GET",
+            f"{kn}/v1/knowledge/proposals?role=reviewer",
+            None,
+            bearer(ms.user_token(REVIEWER)),
+        )
+        assert status == 403, status
         for name, library in (("finance", "Documents"), ("legal", "Legal")):
             pack = {
                 "apiVersion": "muistamo.dev/v1",
@@ -580,7 +597,12 @@ def main() -> None:
         # The leaver's agent identity is disabled; the colleague's stays enabled.
         assert not ms.identities[identity]["accountEnabled"], ms.identities
         assert [i["accountEnabled"] for k, i in ms.identities.items() if k != identity] == [True]
-        manager = bearer(ms.user_token(MANAGER))
+        manager = bearer(ms.user_token(MANAGER, azp=fake_microsoft.CONSOLE))
+        # Not through the manager's assistant: deciding a leaver review is the console's.
+        status, _ = http(
+            "GET", f"{kn}/v1/knowledge/leaver-reviews", None, bearer(ms.user_token(MANAGER))
+        )
+        assert status == 403, status
         review = wait_for("the review opened", lambda: _review(kn, manager), timeout=60)
         assert review["status"] == "open" and review["person"] == f"entra:{PERSON}", review
         assert review["decider"] == f"entra:{MANAGER}" and review["generation"] == 2, review
@@ -588,7 +610,7 @@ def main() -> None:
             "GET", f"{kn}/v1/knowledge/leaver-reviews/{review['id']}", None, manager
         )
         assert status == 200 and sorted(e["key"] for e in body["entries"]) == NOTES, (status, body)
-        other = bearer(ms.user_token(OTHER))
+        other = bearer(ms.user_token(OTHER, azp=fake_microsoft.CONSOLE))
         status, _ = http("GET", f"{kn}/v1/knowledge/leaver-reviews/{review['id']}", None, other)
         assert status == 404, status
         assert _frozen(kn, bearer(token)), "the leaver's layer is not frozen"

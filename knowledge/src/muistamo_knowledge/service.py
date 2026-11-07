@@ -66,6 +66,16 @@ class Actor:
     # The allowed assistant an Entra caller's token was obtained by ("Claude", "Copilot"), as
     # the tenant named it; None for development callers. Recorded with each read.
     assistant: str | None = field(default=None, compare=False)
+    # The allowed client's kind: 'assistant' or 'console' (migration 0013); None for development
+    # callers.
+    client_kind: str | None = field(default=None, compare=False)
+
+    @property
+    def through_assistant(self) -> bool:
+        """An Entra caller acts through an assistant, for the person, unless its client is the
+        console, where the person acts as themselves. Fail closed: anything else is an
+        assistant."""
+        return self.name.startswith("entra:") and self.client_kind != "console"
 
 
 def bump_minor(version: str) -> str:
