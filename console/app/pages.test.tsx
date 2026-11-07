@@ -111,6 +111,12 @@ test("my knowledge shows each entry's visibility and the matching action", async
   expect(html).toContain("Share again");
   expect(html).toContain(">Private<");
   expect(html).toContain(">Shared<");
-  expect(html).toContain('name="private" value="true"');
-  expect(html).toContain('name="private" value="false"');
+  // Each entry carries its own action: the shared one is offered privacy, the private one sharing.
+  const [shared, isPrivate] = html.split("my-note body");
+  expect(shared).toContain('name="private" value="true"');
+  expect(shared).toContain("Make private");
+  expect(shared).not.toContain('name="private" value="false"');
+  expect(isPrivate).toContain('name="private" value="false"');
+  expect(isPrivate).toContain("Share again");
+  expect(html).toContain('<input type="checkbox" required="" name="confirm" value="yes"/>');
 });

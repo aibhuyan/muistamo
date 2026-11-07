@@ -185,6 +185,15 @@ describe("my knowledge", () => {
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
+  test("a refused delete is shown in the service's words and nothing is revalidated", async () => {
+    signInAs("a@example.invalid");
+    stubFetch(409, { title: "Conflict", status: 409, detail: "this personal layer is frozen" });
+    expect(await deleteEntry("e-1", {}, form({ confirm: "yes" }))).toEqual({
+      problem: { title: "Conflict", status: 409, detail: "this personal layer is frozen" },
+    });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
   test("a delete needs the confirmation and then sends DELETE", async () => {
     signInAs("a@example.invalid");
     const fetch = vi.fn(async () => new Response(null, { status: 204 }));

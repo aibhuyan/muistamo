@@ -15,9 +15,11 @@ export default async function MyKnowledgePage() {
     <>
       <h1>My knowledge</h1>
       <p className="muted">
-        What you taught your assistants. Only you see these entries. A private entry is never proposed, never shown
-        to anyone at your leaver review, and deleted when you leave. Your own assistant still reads it to help you;
-        private stops your manager seeing it, not your assistant repeating what it read.
+        What you taught your assistants. Only you see this list. A shared entry can be proposed to a pack and is shown
+        to whoever decides your leaver review. A private entry is never proposed, never shown at your leaver review,
+        and is deleted when you leave; a privacy officer answering a data-access request can still export it. Your
+        own assistant still reads private entries to help you: private stops your manager seeing them, not your
+        assistant repeating what it read.
       </p>
       <p className="muted">
         An assistant can make an entry private, but only you, here, can share it again or delete a private entry.
@@ -46,6 +48,9 @@ export default async function MyKnowledgePage() {
               <label>
                 <input type="checkbox" name="confirm" value="yes" required /> Delete this entry for good
               </label>
+              {e.private ? null : (
+                <p className="muted">Copies you already proposed to a pack stay with its reviewers.</p>
+              )}
             </DecisionForm>
           </section>
         ))
