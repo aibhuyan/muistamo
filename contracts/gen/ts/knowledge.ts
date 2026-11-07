@@ -604,6 +604,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mcp/t/{tenant}/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant: components["parameters"]["Tenant"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A tenant's MCP endpoint, the URL an assistant is configured with (docs/assistants-plan.md)
+         * @description As /mcp/knowledge, for one tenant: a caller whose token resolves to another tenant is refused. A 401 carries WWW-Authenticate with resource_metadata (RFC 9728) and the scope to request, so the assistant can send the person to sign in with their Entra directory.
+         */
+        post: operations["mcpTenantKnowledge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/oauth-protected-resource/mcp/t/{tenant}/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant: components["parameters"]["Tenant"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Protected resource metadata (RFC 9728) for a tenant's MCP endpoint
+         * @description Unauthenticated, as RFC 9728 requires. Served only when the knowledge service knows its public URL (MUISTAMO_KNOWLEDGE_PUBLIC_URL) and the tenant has an Entra registration; otherwise 404, the same for an unknown tenant.
+         */
+        get: operations["getMcpProtectedResourceMetadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2163,6 +2207,23 @@ export interface components {
             items: components["schemas"]["Proposal"][];
         };
         /**
+         * ProtectedResourceMetadata
+         * @description OAuth 2.0 protected resource metadata (RFC 9728) for a tenant's MCP endpoint: where an assistant (Claude, Copilot, ...) sends the person to sign in, and which scope to ask for. The authorization server is the tenant's own Entra directory.
+         */
+        ProtectedResourceMetadata: {
+            /**
+             * Format: uri
+             * @description The tenant's MCP endpoint URL.
+             */
+            resource: string;
+            /** @description The tenant's Entra v2.0 authority. */
+            authorization_servers: string[];
+            /** @description Fully qualified (Entra does not take the resource parameter): api://<audience>/Knowledge.Read. */
+            scopes_supported: string[];
+            bearer_methods_supported: "header"[];
+            resource_name: string;
+        };
+        /**
          * Provenance
          * @description How much to trust an entry, as a 0-100 score and the factors that make it up (FR-307). Informational: it does not change ranking. reviewed +40 (merged through a reviewed proposal), source +20 (names where it comes from), reviewer-edited +10 (the reviewer corrected it at merge), freshness +30 current, +10 due, 0 expired.
          */
@@ -2518,6 +2579,7 @@ export interface components {
         };
     };
     parameters: {
+        Tenant: string;
         Name: string;
         ProposalId: string;
     };
@@ -3326,6 +3388,50 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Problem"];
+        };
+    };
+    mcpTenantKnowledge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant: components["parameters"]["Tenant"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description An MCP JSON-RPC response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+        };
+    };
+    getMcpProtectedResourceMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant: components["parameters"]["Tenant"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The metadata. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtectedResourceMetadata"];
+                };
+            };
+            404: components["responses"]["Problem"];
         };
     };
 }

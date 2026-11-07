@@ -2,7 +2,8 @@
 
 HUMAN REVIEW REQUIRED (CLAUDE.md): the authentication seam and the injection boundary.
 
-Served over streamable HTTP at /mcp/knowledge, statelessly: the caller is resolved from each HTTP
+Served over streamable HTTP at /mcp/knowledge and, per tenant, at /mcp/t/<tenant>/knowledge (the
+URL an assistant is configured with), statelessly: the caller is resolved from each HTTP
 request with the same resolver as the REST API, never bound once per session. A request whose
 caller cannot be resolved is refused before it reaches the MCP SDK (require_identity), and every
 tool resolves the caller again from the same headers.
@@ -12,11 +13,14 @@ other side must treat it as data, not instructions; the tool results say so expl
 
 With MUISTAMO_KNOWLEDGE_ENTRA=true the resolver is entra.EntraBearer: each request carries the
 person's Entra access token, and a request without a valid one is refused with a Bearer challenge.
-OAuth protected-resource metadata (RFC 9728) is not served: each tenant has its own directory and
-audience, so one public document cannot describe them; clients are configured per tenant.
+Each tenant's endpoint has its own protected-resource metadata (RFC 9728) and a thin sign-in layer
+in front of its Entra directory (oauth.py); the shared /mcp/knowledge has neither, as one
+document cannot describe every tenant's directory.
 """
 
+from collections.abc import Callable
 from typing import Any
+from uuid import UUID
 
 import anyio
 from mcp.server.mcpserver import Context, MCPServer
@@ -153,23 +157,44 @@ def _cite(citation: dict[str, Any]) -> dict[str, Any]:
     return {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in citation.items()}
 
 
-def require_identity(app: ASGIApp, resolver: Resolver, knowledge: Knowledge | None) -> ASGIApp:
-    """Refuse any MCP HTTP request whose caller cannot be resolved, before the SDK sees it."""
+def require_identity(
+    app: ASGIApp,
+    resolver: Resolver,
+    knowledge: Knowledge | None,
+    tenant_challenge: Callable[[UUID, bool], str | None] | None = None,
+) -> ASGIApp:
+    """Refuse any MCP HTTP request whose caller cannot be resolved, before the SDK sees it.
+
+    With tenant_challenge, the mount is one tenant's endpoint (its path names the tenant): a
+    caller resolved to any other tenant is refused too, and a 401 carries that tenant's sign-in
+    discovery (RFC 9728) from tenant_challenge(tenant, token_presented) when it has one."""
+    scoped = tenant_challenge is not None
 
     async def guarded(scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
             headers = {
                 k.decode("latin-1"): v.decode("latin-1") for k, v in scope.get("headers", [])
             }
+            path_tenant = _path_tenant(scope) if scoped else None
             try:
                 if knowledge is None:
                     raise Unauthenticated("knowledge service not configured")
+                if scoped and path_tenant is None:
+                    raise Unauthenticated("the endpoint names no tenant")
                 # A token resolver may fetch the directory's keys: never on the event loop.
                 tenant, _ = await anyio.to_thread.run_sync(lambda: resolver(headers))
                 # The tenant must be registered, exactly as for REST.
                 await anyio.to_thread.run_sync(lambda: _check_tenant(knowledge, tenant))
+                if scoped and tenant != path_tenant:
+                    raise Unauthenticated("the token is for another tenant's endpoint")
             except (Unauthenticated, UnknownTenant):
                 challenge = getattr(resolver, "challenge", None)
+                if scoped and path_tenant is not None and tenant_challenge is not None:
+                    found, presented = tenant_challenge, bool(headers.get("authorization"))
+                    challenge = (
+                        await anyio.to_thread.run_sync(lambda: found(path_tenant, presented))
+                        or challenge
+                    )
                 response = JSONResponse(
                     {"title": "Unauthorized", "status": 401},
                     status_code=401,
@@ -181,6 +206,16 @@ def require_identity(app: ASGIApp, resolver: Resolver, knowledge: Knowledge | No
         await app(scope, receive, send)
 
     return guarded
+
+
+def _path_tenant(scope: Scope) -> UUID | None:
+    """The tenant a scoped mount's path names, in canonical form only."""
+    value = scope.get("path_params", {}).get("tenant")
+    try:
+        parsed = UUID(str(value))
+    except ValueError:
+        return None
+    return parsed if str(parsed) == value else None
 
 
 def _check_tenant(knowledge: Knowledge, tenant) -> None:

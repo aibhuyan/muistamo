@@ -1572,6 +1572,21 @@ func (e ProposalDecisionRecordDecision) Valid() bool {
 	}
 }
 
+// Defines values for ProtectedResourceMetadataBearerMethodsSupported.
+const (
+	ProtectedResourceMetadataBearerMethodsSupportedHeader ProtectedResourceMetadataBearerMethodsSupported = "header"
+)
+
+// Valid indicates whether the value is a known member of the ProtectedResourceMetadataBearerMethodsSupported enum.
+func (e ProtectedResourceMetadataBearerMethodsSupported) Valid() bool {
+	switch e {
+	case ProtectedResourceMetadataBearerMethodsSupportedHeader:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProvenanceFactorsFactor.
 const (
 	ProvenanceFactorsFactorFreshness      ProvenanceFactorsFactor = "freshness"
@@ -3386,6 +3401,23 @@ type ProposalInput struct {
 type ProposalPage struct {
 	Items []Proposal `json:"items"`
 }
+
+// ProtectedResourceMetadata OAuth 2.0 protected resource metadata (RFC 9728) for a tenant's MCP endpoint: where an assistant (Claude, Copilot, ...) sends the person to sign in, and which scope to ask for. The authorization server is the tenant's own Entra directory.
+type ProtectedResourceMetadata struct {
+	// AuthorizationServers The tenant's Entra v2.0 authority.
+	AuthorizationServers   []string                                          `json:"authorization_servers"`
+	BearerMethodsSupported []ProtectedResourceMetadataBearerMethodsSupported `json:"bearer_methods_supported"`
+
+	// Resource The tenant's MCP endpoint URL.
+	Resource     string `json:"resource"`
+	ResourceName string `json:"resource_name"`
+
+	// ScopesSupported Fully qualified (Entra does not take the resource parameter): api://<audience>/Knowledge.Read.
+	ScopesSupported []string `json:"scopes_supported"`
+}
+
+// ProtectedResourceMetadataBearerMethodsSupported defines model for ProtectedResourceMetadata.BearerMethodsSupported.
+type ProtectedResourceMetadataBearerMethodsSupported string
 
 // Provenance How much to trust an entry, as a 0-100 score and the factors that make it up (FR-307). Informational: it does not change ranking. reviewed +40 (merged through a reviewed proposal), source +20 (names where it comes from), reviewer-edited +10 (the reviewer corrected it at merge), freshness +30 current, +10 due, 0 expired.
 type Provenance struct {

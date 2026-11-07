@@ -47,6 +47,15 @@ class Database:
             row = cur.fetchone()
             return (row[0], row[1]) if row else None
 
+    def entra_registration(self, tenant: UUID) -> tuple[UUID, UUID] | None:
+        """The (directory, audience) a tenant is registered with, or None.
+
+        Read before any token is known, through knowledge.entra_registration() (migration 0011)."""
+        with self.pool.connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT * FROM knowledge.entra_registration(%s)", (tenant,))
+            row = cur.fetchone()
+            return (row[0], row[1]) if row else None
+
     def key_registered(self, key_id: str) -> bool:
         with self.pool.connection() as conn, conn.cursor() as cur:
             cur.execute(
