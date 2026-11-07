@@ -421,6 +421,9 @@ class Sources:
         except FutureTimeout:
             log.warning("delegation timed out; no sources", extra={"tenant": str(actor.tenant)})
             return Outcome(None, "unavailable")
+        except Exception:  # noqa: BLE001 - any failure is no delegation (fail closed)
+            log.exception("delegation failed; no sources", extra={"tenant": str(actor.tenant)})
+            return Outcome(None, "unavailable")
 
     @staticmethod
     def _authorise(

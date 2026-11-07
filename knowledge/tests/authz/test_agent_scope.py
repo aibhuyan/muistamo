@@ -207,12 +207,13 @@ def test_mcp_propose_knowledge_outside_the_template_captures_nothing(scoped) -> 
     ew, _ = scoped
     token = ew.directory.token(PERSON)
     before = person(ew).get("/v1/knowledge/personal/entries").json()["items"]
-    result = ew.mcp(
-        token,
-        "propose_knowledge",
-        {"pack": "legal", "key": "k2", "title": "t", "body": "b", "summary": "s"},
-    )
-    assert result.is_error, result
+    for target in ("legal", "rules"):  # outside, and mandatory (privacy-officer owned)
+        result = ew.mcp(
+            token,
+            "propose_knowledge",
+            {"pack": target, "key": "k2", "title": "t", "body": "b", "summary": "s"},
+        )
+        assert result.is_error, (target, result)
     after = person(ew).get("/v1/knowledge/personal/entries").json()["items"]
     assert after == before, "a refused proposal captured an entry"
 
@@ -226,3 +227,69 @@ def test_development_callers_are_unchanged(scoped) -> None:
     assert res.status_code == 200 and keys(res) == {"finance-fact", "legal-fact", "rules-fact"}
     assert "agentScope" not in res.json()
     assert ew.world.client(A).get("/v1/knowledge/packs/legal").status_code == 200
+
+
+def test_an_unavailable_control_plane_leaves_only_mandatory_packs(scoped) -> None:
+    ew, plane = scoped
+    plane.outcome = Outcome(None, "unavailable")
+    res = person(ew).get("/v1/knowledge/resolve", params={"packs": "finance,finance"})
+    assert keys(res) == {"rules-fact"}
+    assert res.json()["agentScope"] == {
+        "delegation": {"status": "unavailable", "reason": "unavailable"},
+        "packsOutsideAgentScope": ["finance"],  # once, however often it was asked for
+    }
+
+
+def test_a_failing_control_plane_client_fails_closed(scoped) -> None:
+    ew, plane = scoped
+
+    def broken(tenant, user_token, instance=None):
+        raise RuntimeError("the client broke")
+
+    plane.request = broken
+    assert person(ew).get("/v1/knowledge/packs/finance").status_code == 403
+    assert keys(person(ew).get("/v1/knowledge/resolve", params={"packs": "finance"})) == {
+        "rules-fact"
+    }
+
+
+def test_agent_scope_never_lists_the_template(scoped) -> None:
+    ew, _ = scoped
+    report = person(ew).get("/v1/knowledge/resolve", params={"packs": "legal"}).json()["agentScope"]
+    assert set(report) == {"delegation", "packsOutsideAgentScope"}
+    assert set(report["delegation"]) == {"status", "agent"}
+
+
+def test_sources_outside_scope_are_hidden_and_refused_alike(scoped) -> None:
+    ew, _ = scoped
+    from muistamo_knowledge.connectors import InMemoryConnector
+
+    ew.world.knowledge.connectors = {
+        "test": lambda s, spec, tenant=None: InMemoryConnector(documents=[])
+    }
+    for name in ("finance", "legal"):
+        source = {
+            "apiVersion": "muistamo.dev/v1",
+            "kind": "KnowledgeSource",
+            "metadata": {"name": f"{name}-site"},
+            "spec": {"pack": name, "connector": "test", "test": {"documents": []}},
+        }
+        assert (
+            ew.world.client(R).put(f"/v1/knowledge/sources/{name}-site", json=source).status_code
+            == 201
+        )
+    client = person(ew)
+    listed = {
+        s["document"]["metadata"]["name"]
+        for s in client.get("/v1/knowledge/sources").json()["items"]
+    }
+    assert listed == {"finance-site"}
+    assert client.get("/v1/knowledge/sources/finance-site").status_code == 200
+    for name in ("legal-site", "no-such-site"):  # outside, or absent: the same answer
+        assert client.get(f"/v1/knowledge/sources/{name}").status_code == 403, name
+
+
+def test_the_evidence_export_is_not_for_assistants(scoped) -> None:
+    ew, _ = scoped
+    assert person(ew).get("/v1/knowledge/events").status_code == 403
+    assert ew.world.client(A).get("/v1/knowledge/events").status_code == 200

@@ -282,7 +282,7 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
         scope = sources().agent_scope(who)
         if scope is None:
             return ok({"items": svc().resolve(who, names)})
-        outside = [n for n in names if n not in scope.allowed]
+        outside = sorted({n for n in names if n not in scope.allowed})
         within = [n for n in names if n in scope.allowed]
         return ok({"items": svc().resolve(who, within), "agentScope": scope.report(outside)})
 
@@ -291,11 +291,26 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
 
     @app.get("/v1/knowledge/sources")
     def list_sources(who: Who) -> JSONResponse:
-        return ok({"items": sources().list(who)})
+        scope = sources().agent_scope(who)
+        items = sources().list(who)
+        if scope is not None:  # D60: only the sources of packs in the agent's scope
+            items = [s for s in items if s["document"]["spec"]["pack"] in scope.allowed]
+        return ok({"items": items})
 
     @app.get("/v1/knowledge/sources/{name}")
     def get_source(name: str, who: Who) -> JSONResponse:
-        return ok(sources().get(who, name))
+        scope = sources().agent_scope(who)
+        try:
+            record = sources().get(who, name)
+        except NotFound:
+            if scope is not None:  # an assistant learns nothing of what is outside its scope
+                raise Forbidden(
+                    f"source {name!r} is outside this assistant's agent scope"
+                ) from None
+            raise
+        if scope is not None and record["document"]["spec"]["pack"] not in scope.allowed:
+            raise Forbidden(f"source {name!r} is outside this assistant's agent scope")
+        return ok(record)
 
     @app.put("/v1/knowledge/sources/{name}")
     def apply_source(name: str, body: KnowledgeSource, who: Who) -> JSONResponse:
@@ -322,6 +337,10 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     def events(
         who: Who, afterSeq: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)
     ) -> JSONResponse:  # noqa: N803
+        # The evidence chain names every pack and reviewer: an auditor's export, never an
+        # assistant's (D60).
+        if who.assistant is not None:
+            raise Forbidden("the evidence export is not available to an assistant")
         items = svc().events(who, afterSeq, limit + 1)
         page: dict[str, Any] = {"items": [e.to_json() for e in items[:limit]]}
         if len(items) > limit:
