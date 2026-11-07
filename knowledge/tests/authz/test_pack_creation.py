@@ -160,3 +160,53 @@ def test_the_operator_command_replaces_the_list(world) -> None:
     )
     assert cli("not-a-uuid", "dev:" + R).returncode != 0
     assert cli(str(world.tenant), "x\ny").returncode != 0  # the table refuses control characters
+    assert cli(str(world.tenant), "alice@example.invalid").returncode != 0  # no scheme
+    assert (
+        cli(str(world.tenant), "dev:" + "x" * 317).returncode != 0
+    )  # the table: at most 320 characters
+
+
+def test_an_officer_cannot_turn_a_mandatory_pack_into_an_ordinary_one_alone(admins) -> None:
+    """Otherwise an officer would create an ordinary pack in two calls: mandatory, then not."""
+    world = admins
+    rules = pack("finance", layer="company", mandatory=True)
+    assert world.client(DPO).put("/v1/knowledge/packs/finance", json=rules).status_code == 201
+    ordinary = pack("finance", reviewers=["dev:" + DPO])
+    res = world.client(DPO).put("/v1/knowledge/packs/finance", json=ordinary)
+    assert res.status_code == 403 and "knowledge administrator" in res.json()["detail"]
+    stored = world.client(DPO).get("/v1/knowledge/packs/finance").json()
+    assert stored["document"]["spec"]["mandatory"] is True
+    world.admins(ADMIN, DPO)  # an officer who is also an administrator may
+    assert world.client(DPO).put("/v1/knowledge/packs/finance", json=ordinary).status_code == 200
+
+
+def test_the_server_role_can_neither_update_nor_delete_the_list(admins) -> None:
+    world = admins
+    for sql in (
+        "UPDATE knowledge.knowledge_admins SET admin = 'dev:someone-else@example.invalid'",
+        "DELETE FROM knowledge.knowledge_admins",
+    ):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            with world.knowledge.db.in_tenant(world.tenant) as cur:
+                cur.execute(sql)
+
+
+def test_every_table_that_can_hold_an_identity_is_classified(world) -> None:
+    """A new table with a text column is personal data (access export, erasure scan) unless it
+    is named here as holding none."""
+    from muistamo_knowledge.privacy import PERSONAL_DATA_TABLES
+
+    holds_no_identity = {
+        "documents",  # copies of company documents (privacy.py says why)
+        "evidence_heads",
+        "evidence_signing_keys",
+        "assistants",  # client apps and their display names
+    }
+    with psycopg.connect(world.db.owner_url) as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT table_name FROM information_schema.columns"
+            " WHERE table_schema = 'knowledge' AND data_type IN ('text', 'jsonb', 'ARRAY')"
+        ).fetchall()
+    tables = {r[0] for r in rows}
+    unclassified = tables - set(PERSONAL_DATA_TABLES) - holds_no_identity
+    assert unclassified == set(), unclassified

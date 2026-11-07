@@ -44,6 +44,7 @@ TABLES = [
     "evidence_events",
     "reads",
     "privacy_officers",
+    "knowledge_admins",
     "erasure_requests",
     "service_secrets",
     "leaver_reviews",

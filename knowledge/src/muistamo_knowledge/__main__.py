@@ -228,6 +228,10 @@ def set_knowledge_admins(args: argparse.Namespace) -> None:
     from muistamo_knowledge.service import replace_knowledge_admins
 
     tenant = _uuid_arg(args.tenant, "tenant")
+    for admin in args.admins:
+        if not admin.startswith(("entra:", "dev:")):
+            # Fail loudly: a name without a scheme would be stored and match no caller.
+            sys.exit(f"knowledge admin {admin!r}: name it as entra:<object id> or dev:<email>")
     replace_knowledge_admins(
         require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant, args.admins
     )

@@ -186,6 +186,14 @@ class Knowledge:
 
                 if not is_officer(cur, actor.name):
                     raise Forbidden("only privacy officers can create or change a mandatory pack")
+                if was and not mandatory and not is_knowledge_admin(cur, actor.name):
+                    # Making a mandatory pack ordinary is also creating an ordinary pack, at a
+                    # name a template may use: an officer who is also a knowledge administrator
+                    # (otherwise officers would create ordinary packs in two calls).
+                    raise Forbidden(
+                        "making a mandatory pack ordinary needs a privacy officer who is also a"
+                        " knowledge administrator"
+                    )
             elif row is None:
                 # Creating a pack names its reviewers, who then decide what it says; a template
                 # may already name it, so its agents would be told whatever they merge. The AI
