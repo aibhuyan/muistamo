@@ -11,6 +11,7 @@ const { decideProposal } = await import("./proposals/actions");
 const { decideLeaverReview } = await import("./leaver-reviews/actions");
 const { decideCatalogueRequest } = await import("./catalogue/actions");
 const { signIn, signOut } = await import("./sign-in/actions");
+const { setEntryVisibility, deleteEntry } = await import("./my-knowledge/actions");
 
 function form(fields: Record<string, string | string[]>): FormData {
   const data = new FormData();
@@ -140,6 +141,62 @@ describe("leaver review merge", () => {
     const result = await decideLeaverReview("r-1", {}, form({ decision: "merge", reason: "r", pack: "ops", summary: "s" }));
     expect(result.problem?.status).toBe(422);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("my knowledge", () => {
+  const ENTRY = "http://knowledge.test/v1/knowledge/personal/entries/e-1";
+
+  test("without a session nothing is changed", async () => {
+    const fetch = stubFetch();
+    await expect(setEntryVisibility("e-1", {}, form({ private: "true" }))).rejects.toEqual(new Redirect("/sign-in"));
+    await expect(deleteEntry("e-1", {}, form({ confirm: "yes" }))).rejects.toEqual(new Redirect("/sign-in"));
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["true", true],
+    ["false", false],
+  ])("private=%s is sent as the signed-in person", async (choice, expected) => {
+    signInAs("a@example.invalid");
+    const fetch = stubFetch(200, {});
+    expect(await setEntryVisibility("e-1", {}, form({ private: choice }))).toEqual({});
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(ENTRY);
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toEqual({ private: expected });
+    expect((init.headers as Record<string, string>)["X-Muistamo-Actor"]).toBe("a@example.invalid");
+    expect(revalidatePath).toHaveBeenCalledWith("/my-knowledge");
+  });
+
+  test("anything but true or false is not sent", async () => {
+    signInAs("a@example.invalid");
+    const fetch = stubFetch();
+    expect((await setEntryVisibility("e-1", {}, form({ private: "maybe" }))).problem?.status).toBe(422);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("the service's refusal is shown in its own words", async () => {
+    signInAs("a@example.invalid");
+    stubFetch(409, { title: "Conflict", status: 409, detail: "this entry was already proposed" });
+    expect(await setEntryVisibility("e-1", {}, form({ private: "true" }))).toEqual({
+      problem: { title: "Conflict", status: 409, detail: "this entry was already proposed" },
+    });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  test("a delete needs the confirmation and then sends DELETE", async () => {
+    signInAs("a@example.invalid");
+    const fetch = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    expect((await deleteEntry("e-1", {}, form({}))).problem?.status).toBe(422);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await deleteEntry("e-1", {}, form({ confirm: "yes" }))).toEqual({});
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(ENTRY);
+    expect(init.method).toBe("DELETE");
+    expect(init.body).toBeUndefined();
+    expect(revalidatePath).toHaveBeenCalledWith("/my-knowledge");
   });
 });
 

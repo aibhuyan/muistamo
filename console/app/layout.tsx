@@ -21,6 +21,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           {session ? (
             <>
               <nav>
+                <Link href="/my-knowledge">My knowledge</Link>
                 <Link href="/proposals">Proposals</Link>
                 <Link href="/leaver-reviews">Leaver reviews</Link>
                 <Link href="/catalogue">Catalogue</Link>

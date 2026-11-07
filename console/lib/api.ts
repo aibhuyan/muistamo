@@ -13,6 +13,7 @@ export type Proposal = Knowledge["schemas"]["Proposal"];
 export type ProposalDecision = Knowledge["schemas"]["ProposalDecision"];
 export type LeaverReview = Knowledge["schemas"]["LeaverReview"];
 export type LeaverReviewDecision = Knowledge["schemas"]["LeaverReviewDecision"];
+export type PersonalEntry = Knowledge["schemas"]["PersonalEntry"];
 export type CatalogueRequest = ControlPlane["schemas"]["CatalogueRequest"];
 export type CatalogueDecision = ControlPlane["schemas"]["CatalogueDecision"];
 
@@ -35,7 +36,7 @@ function baseUrl(service: Service): string {
 async function call<T>(
   session: Session,
   service: Service,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<Result<T>> {
@@ -67,6 +68,8 @@ async function call<T>(
     );
     return { ok: false, problem: { title: `The ${service} service is unreachable`, status: 503 } };
   }
+  // 204 No Content (a delete) has no body to read.
+  if (response.status === 204) return { ok: true, data: undefined as T };
   if (response.ok) return { ok: true, data: (await response.json()) as T };
   return { ok: false, problem: await readProblem(response) };
 }
@@ -103,6 +106,16 @@ export const api = {
     call<LeaverReview>(s, "knowledge", "GET", `/v1/knowledge/leaver-reviews/${id(reviewId)}`),
   decideLeaverReview: (s: Session, reviewId: string, decision: LeaverReviewDecision) =>
     call<LeaverReview>(s, "knowledge", "POST", `/v1/knowledge/leaver-reviews/${id(reviewId)}/decision`, decision),
+
+  // The signed-in person's own personal layer (D59): only they see it, private entries included.
+  personalEntries: (s: Session) =>
+    call<{ items: PersonalEntry[] }>(s, "knowledge", "GET", "/v1/knowledge/personal/entries"),
+  setEntryVisibility: (s: Session, entryId: string, makePrivate: boolean) =>
+    call<PersonalEntry>(s, "knowledge", "PATCH", `/v1/knowledge/personal/entries/${id(entryId)}`, {
+      private: makePrivate,
+    }),
+  deleteEntry: (s: Session, entryId: string) =>
+    call<undefined>(s, "knowledge", "DELETE", `/v1/knowledge/personal/entries/${id(entryId)}`),
 
   pendingCatalogueRequests: (s: Session) =>
     call<{ items: CatalogueRequest[] }>(s, "control-plane", "GET", "/v1/catalogue/requests?state=pending"),

@@ -166,3 +166,15 @@ button {
   display: block;
   font-size: 1.6rem;
 }
+
+.badge {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.badge.private {
+  font-weight: 600;
+}
