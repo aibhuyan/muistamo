@@ -17,6 +17,12 @@ SITE = "https://contoso.sharepoint.com/sites/finance"
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
 
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins("reviewer-r@example.invalid")
+
+
 def connector(fake_graph, documents):
     directory, client = uuid.uuid4(), uuid.uuid4()
     graph = fake_graph(documents, directory, client)

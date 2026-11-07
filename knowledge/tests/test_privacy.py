@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 import psycopg
+import pytest
 from muistamo_knowledge import evidence
 from muistamo_knowledge.privacy import PERSONAL_DATA_TABLES, replace_officers, rows_mentioning
 
@@ -24,6 +25,12 @@ PACK = {
         "mergePolicy": {"requires": ["review"]},
     },
 }
+
+
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(A, B, C)
 
 
 def subject(**extra) -> dict:
@@ -228,6 +235,7 @@ def test_access_export(world) -> None:
     sections = own.json()["sections"]
     assert len(sections["personal_entries"]) == 1 and len(sections["reads"]) == 1
     assert sections["evidence_events"], "the person's evidence events belong in their export"
+    assert len(sections["knowledge_admins"]) == 1  # A is one (the module's pack creators)
     # Anyone else's data needs an officer; an officer sees everything erasure would act on.
     other = world.client(B).post("/v1/knowledge/privacy/access", json={"subject": subject()})
     assert other.status_code == 403

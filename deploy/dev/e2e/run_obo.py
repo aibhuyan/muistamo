@@ -64,6 +64,8 @@ ADMIN = os.environ.get(
     "postgres://muistamo:dev-only-not-a-secret@127.0.0.1:5432/muistamo",
 )
 PERSON, OTHER, REVIEWER, MANAGER = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+# The AI platform team: the one knowledge administrator, who creates packs for their owners.
+PLATFORM = uuid.uuid4()
 # Test builds only: the leaver grace period (control plane, -tags e2e) and the review period
 # (knowledge_e2e.py). The grace period outlasts steps 5 and 6, and the review its deadline.
 GRACE_SECONDS, REVIEW_SECONDS = 60, 5
@@ -418,6 +420,8 @@ def main() -> None:
         reviewer = {
             "Authorization": "Bearer " + ms.user_token(REVIEWER, azp=fake_microsoft.CONSOLE)
         }
+        platform = bearer(ms.user_token(PLATFORM, azp=fake_microsoft.CONSOLE))
+        run(python + ["tenant", "knowledge-admins", tenant, f"entra:{PLATFORM}"], kenv)
         # The same reviewer through their assistant cannot change a pack.
         status, _ = http(
             "GET",
@@ -437,7 +441,10 @@ def main() -> None:
                     "mergePolicy": {"requires": ["review"]},
                 },
             }
-            status, body = http("PUT", f"{kn}/v1/knowledge/packs/{name}", pack, reviewer)
+            # Only the knowledge administrator creates a pack, even one naming its owner.
+            status, _ = http("PUT", f"{kn}/v1/knowledge/packs/{name}", pack, reviewer)
+            assert status == 403, status
+            status, body = http("PUT", f"{kn}/v1/knowledge/packs/{name}", pack, platform)
             assert status == 201, (status, body)
             source = {
                 "apiVersion": "muistamo.dev/v1",

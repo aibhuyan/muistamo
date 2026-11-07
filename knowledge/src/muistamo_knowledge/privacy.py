@@ -40,6 +40,7 @@ PERSONAL_DATA_TABLES = (
     "sources",
     "reads",
     "privacy_officers",
+    "knowledge_admins",
     "erasure_requests",
     "leaver_reviews",
     "leaver_review_fences",

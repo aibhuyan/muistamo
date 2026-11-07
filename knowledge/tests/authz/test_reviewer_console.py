@@ -25,6 +25,12 @@ CONSOLE = uuid.UUID("7e000000-0000-4000-8000-0000000c0501")
 REFUSED = "not available through an assistant"
 
 
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(f"entra:{REVIEWER}")
+
+
 def pack(name: str) -> dict:
     return {
         "apiVersion": "muistamo.dev/v1",

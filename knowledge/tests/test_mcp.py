@@ -1,6 +1,7 @@
 """The MCP knowledge server through a real SDK client session (FR-311, FR-313)."""
 
 import psycopg
+import pytest
 from muistamo_knowledge.connectors import InMemoryConnector
 
 A, R = "person-a@example.invalid", "reviewer-r@example.invalid"
@@ -10,6 +11,12 @@ PACK = {
     "metadata": {"name": "finance"},
     "spec": {"layer": "role", "reviewers": ["dev:" + R], "mergePolicy": {"requires": ["review"]}},
 }
+
+
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(R)
 
 
 def setup(world) -> None:

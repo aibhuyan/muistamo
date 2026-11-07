@@ -48,6 +48,13 @@ DOCUMENTS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(R)
+    world.admins(A, R, tenant=world.other_tenant)
+
+
 @dataclass
 class Harness:
     """What the suite needs from a connector: control over its source-side permissions."""

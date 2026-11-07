@@ -20,6 +20,12 @@ A, R, DPO = "author-a@example.invalid", "reviewer-r@example.invalid", "dpo@examp
 OUTSIDE = "this assistant's agent scope"
 
 
+@pytest.fixture(autouse=True)
+def _pack_creators(world) -> None:
+    """This module's pack creators are knowledge administrators (migration 0015)."""
+    world.admins(R)
+
+
 def pack(name: str, layer: str = "role", mandatory: bool | None = None) -> dict:
     spec: dict = {
         "layer": layer,
