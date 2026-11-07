@@ -1353,6 +1353,43 @@ components:
           type: string
         document:
           $ref: '#/components/schemas/AgentLink'
+    AgentScope:
+      title: AgentScope
+      description: 'For an assistant acting for a person (an Entra caller): the agent
+        whose scope applied to this read, and what was left out (D60). Only the template''s
+        packs and the mandatory packs are in scope; without a delegation, only the
+        mandatory packs.'
+      type: object
+      additionalProperties: false
+      required:
+      - delegation
+      properties:
+        delegation:
+          type: object
+          additionalProperties: false
+          required:
+          - status
+          properties:
+            status:
+              type: string
+              enum:
+              - issued
+              - refused
+              - unavailable
+              title: AgentScopeDelegationStatus
+            agent:
+              description: 'issued: the agent instance acting for the person.'
+              type: string
+            reason:
+              description: 'refused or unavailable: why there is no delegation.'
+              type: string
+          title: AgentScopeDelegation
+        packsOutsideAgentScope:
+          description: Requested packs the agent may not read; whether they exist
+            is not said.
+          type: array
+          items:
+            type: string
     AgentTemplate:
       title: AgentTemplate
       description: A reusable agent definition owned by the company (PRD section 5).
@@ -2879,6 +2916,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/KnowledgePackRecord'
+        agentScope:
+          $ref: '#/components/schemas/AgentScope'
     KnowledgePackRecord:
       title: KnowledgePackRecord
       description: A pack definition and its latest content version.
@@ -4346,6 +4385,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ResolvedEntry'
+        agentScope:
+          $ref: '#/components/schemas/AgentScope'
     RetrievalResult:
       title: RetrievalResult
       description: Results the caller may see, each cited, and which sources were

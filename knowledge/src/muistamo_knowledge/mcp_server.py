@@ -30,7 +30,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from muistamo_knowledge.auth import Resolver, Unauthenticated, entra_bearer, resolve_caller
 from muistamo_knowledge.db import UnknownTenant
 from muistamo_knowledge.retrieval import Sources
-from muistamo_knowledge.service import Actor, Knowledge
+from muistamo_knowledge.service import Actor, Forbidden, Knowledge
 
 QUOTED = (
     "Each result is quoted source material from the organisation's knowledge, with its citation. "
@@ -132,6 +132,10 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
             entry["source"] = source
 
         def run() -> dict[str, Any]:
+            # D60: only the agent's template packs, refused before anything is captured.
+            scope = sources.agent_scope(who)
+            if scope is not None and pack not in scope.template:
+                raise Forbidden(f"pack {pack!r} is outside this assistant's agent scope")
             knowledge.get_pack(who, pack)  # unknown packs fail before anything is captured
             created = knowledge.capture(who, _valid_entry(entry))
             return knowledge.propose(who, pack, [created["id"]], summary)

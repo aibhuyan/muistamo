@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/agentscope.json",
+  "title": "AgentScope",
+  "description": "For an assistant acting for a person (an Entra caller): the agent whose scope applied to this read, and what was left out (D60). Only the template's packs and the mandatory packs are in scope; without a delegation, only the mandatory packs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "delegation"
+  ],
+  "properties": {
+    "delegation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "issued",
+            "refused",
+            "unavailable"
+          ],
+          "title": "AgentScopeDelegationStatus"
+        },
+        "agent": {
+          "description": "issued: the agent instance acting for the person.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "refused or unavailable: why there is no delegation.",
+          "type": "string"
+        }
+      },
+      "title": "AgentScopeDelegation"
+    },
+    "packsOutsideAgentScope": {
+      "description": "Requested packs the agent may not read; whether they exist is not said.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

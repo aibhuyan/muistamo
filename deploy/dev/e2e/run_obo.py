@@ -537,6 +537,16 @@ def main() -> None:
         assert documents(found) == [] and found["coverage"]["packsOutsideAgentScope"] == [
             "legal"
         ], found
+        # And on every other read an assistant can make (D60): not listed, not resolved, refused.
+        me = bearer(token)
+        status, body = http("GET", f"{kn}/v1/knowledge/packs", None, me)
+        listed = {p["document"]["metadata"]["name"] for p in body["items"]}
+        assert status == 200 and "legal" not in listed and "finance" in listed, body
+        status, body = http("GET", f"{kn}/v1/knowledge/resolve?packs=legal", None, me)
+        assert status == 200 and body["agentScope"]["packsOutsideAgentScope"] == ["legal"], body
+        for path in ("legal", "legal/versions"):
+            status, _ = http("GET", f"{kn}/v1/knowledge/packs/{path}", None, me)
+            assert status == 403, (path, status)
 
         step("6. HR leaver: agent suspended, key revoked, no delegation, the layer is reviewed")
         ms.libraries["Documents"][0]["readers"] = [str(PERSON)]

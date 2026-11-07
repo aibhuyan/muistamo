@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
-from . import knowledgepackrecord
+from . import agentscope, knowledgepackrecord
 
 
 class KnowledgePackPage(BaseModel):
@@ -11,3 +11,4 @@ class KnowledgePackPage(BaseModel):
         extra="forbid",
     )
     items: list[knowledgepackrecord.KnowledgePackRecord]
+    agentScope: agentscope.AgentScope | None = None
