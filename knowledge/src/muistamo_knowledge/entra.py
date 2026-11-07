@@ -50,8 +50,9 @@ class Registration:
 
 # Finds the registration for a directory (None when the directory is not registered).
 Lookup = Callable[[uuid.UUID], Registration | None]
-# The name of a client app the tenant allows as an assistant (None when it is not allowed).
-Assistants = Callable[[uuid.UUID, uuid.UUID], str | None]
+# The (name, kind) of a client app the tenant allows: 'assistant' (acting for a person) or
+# 'console' (the person acting as themselves); None when it is not allowed.
+Assistants = Callable[[uuid.UUID, uuid.UUID], "tuple[str, str] | None"]
 # Fetches a directory's published key set as JSON.
 FetchKeys = Callable[[uuid.UUID], bytes]
 
@@ -145,14 +146,15 @@ class EntraBearer:
         self._sets: dict[uuid.UUID, _KeySet] = {}
 
     def __call__(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str]:
-        tenant, user, _ = self._verify(headers)
+        tenant, user, _, _ = self._verify(headers)
         return tenant, user
 
-    def resolve_caller(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str, str]:
-        """The tenant, the person and the allowed assistant, from one verification of the token."""
+    def resolve_caller(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str, str, str]:
+        """The tenant, the person, and the allowed client's name and kind, from one
+        verification of the token."""
         return self._verify(headers)
 
-    def _verify(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str, str]:
+    def _verify(self, headers: Mapping[str, str]) -> tuple[uuid.UUID, str, str, str]:
         scheme, _, token = _header(headers, "Authorization").partition(" ")
         if scheme.lower() != "bearer" or not token or " " in token or len(token) > MAX_TOKEN:
             raise Unauthenticated("missing or malformed bearer token")
@@ -199,8 +201,8 @@ class EntraBearer:
         client_app = _canonical_uuid(claims.get("azp"))
         if client_app is None:
             raise Unauthenticated("bearer token names no client app")
-        assistant = self._assistants(registration.tenant, client_app)
-        if assistant is None:
+        client = self._assistants(registration.tenant, client_app)
+        if client is None:
             # Logged so an operator can see why (for example a tenant with no assistants added
             # yet); the client app id is public, the token is not logged.
             log.warning(
@@ -208,7 +210,7 @@ class EntraBearer:
                 extra={"tenant": str(registration.tenant), "client_app": str(client_app)},
             )
             raise Unauthenticated("the token's client app is not an assistant the tenant allows")
-        return registration.tenant, f"entra:{user}", assistant
+        return registration.tenant, f"entra:{user}", client[0], client[1]
 
     def _key(self, directory: uuid.UUID, kid: str) -> RSAPublicKey:
         """The directory's signing key kid, fetching the keys when the cache is old or lacks it,
@@ -246,11 +248,13 @@ class EntraBearer:
 
 
 def assistants(db: Any) -> Assistants:
-    """Allowed-assistant lookup through the knowledge database (db.Database.entra_assistant)."""
-    return db.entra_assistant
+    """Allowed-client lookup through the knowledge database (db.Database.entra_client)."""
+    return db.entra_client
 
 
-def allow_assistant(owner_url: str, tenant: uuid.UUID, client_app: uuid.UUID, name: str) -> None:
+def allow_assistant(
+    owner_url: str, tenant: uuid.UUID, client_app: uuid.UUID, name: str, kind: str = "assistant"
+) -> None:
     """Allow a client app (its Entra application id) as one of the tenant's assistants, under a
     display name, as the schema owner (an operator command). Renaming is allowed."""
     import psycopg
@@ -258,9 +262,10 @@ def allow_assistant(owner_url: str, tenant: uuid.UUID, client_app: uuid.UUID, na
     with psycopg.connect(owner_url) as conn, conn.transaction():
         conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(tenant),))
         conn.execute(
-            "INSERT INTO knowledge.assistants (tenant_id, client_app, name) VALUES (%s, %s, %s)"
-            " ON CONFLICT (tenant_id, client_app) DO UPDATE SET name = EXCLUDED.name",
-            (tenant, client_app, name),
+            "INSERT INTO knowledge.assistants (tenant_id, client_app, name, kind)"
+            " VALUES (%s, %s, %s, %s) ON CONFLICT (tenant_id, client_app)"
+            " DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind",
+            (tenant, client_app, name, kind),
         )
 
 
@@ -278,16 +283,17 @@ def remove_assistant(owner_url: str, tenant: uuid.UUID, client_app: uuid.UUID) -
         return cur.rowcount == 1
 
 
-def list_assistants(owner_url: str, tenant: uuid.UUID) -> list[tuple[uuid.UUID, str]]:
+def list_assistants(owner_url: str, tenant: uuid.UUID) -> list[tuple[uuid.UUID, str, str]]:
     import psycopg
 
     with psycopg.connect(owner_url) as conn, conn.transaction():
         conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(tenant),))
         rows = conn.execute(
-            "SELECT client_app, name FROM knowledge.assistants WHERE tenant_id = %s ORDER BY name",
+            "SELECT client_app, name, kind FROM knowledge.assistants WHERE tenant_id = %s"
+            " ORDER BY name",
             (tenant,),
         ).fetchall()
-        return [(r[0], r[1]) for r in rows]
+        return [(r[0], r[1], r[2]) for r in rows]
 
 
 def registrations(db: Any) -> Lookup:

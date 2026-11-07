@@ -389,7 +389,7 @@ class Sources:
         """For an Entra caller, the scope of the agent acting for them on this read, asked of the
         control plane now (use-time, invariant 1); None for any other caller. Every read but
         retrieval applies it in the API and MCP layers; retrieval has its own (above)."""
-        if not actor.name.startswith("entra:"):
+        if not actor.through_assistant:  # development callers, and a person in the console
             return None
         outcome = (
             self._delegate(actor) if actor.bearer is not None else Outcome(None, "unavailable")

@@ -84,14 +84,16 @@ def test_the_server_role_cannot_read_or_change_the_allowlist(entra_world) -> Non
             conn.rollback()
             conn.execute("SELECT set_config('muistamo.tenant_id', %s, false)", (str(world.tenant),))
         # Only the lookup function, which names one app's assistant for one tenant.
-        name = conn.execute(
-            "SELECT knowledge.entra_assistant(%s, %s)", (world.tenant, allowed(entra_world))
-        ).fetchone()[0]
-        assert name == "Test assistant"
+        found = conn.execute(
+            "SELECT name, kind FROM knowledge.entra_client(%s, %s)",
+            (world.tenant, allowed(entra_world)),
+        ).fetchall()
+        assert found == [("Test assistant", "assistant")]
         other = conn.execute(
-            "SELECT knowledge.entra_assistant(%s, %s)", (world.other_tenant, allowed(entra_world))
-        ).fetchone()[0]
-        assert other is None
+            "SELECT name, kind FROM knowledge.entra_client(%s, %s)",
+            (world.other_tenant, allowed(entra_world)),
+        ).fetchall()
+        assert other == []
 
 
 @pytest.mark.parametrize("name", ["", "x" * 101, "bad\nname"])

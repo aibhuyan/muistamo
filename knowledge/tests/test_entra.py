@@ -26,7 +26,10 @@ def resolver(directory, clock=time.time) -> entra.EntraBearer:
     registered = {DIRECTORY: entra.Registration(TENANT, AUDIENCE)}
     # Every assistant is allowed here; the allowlist has its own suite (test_assistants.py).
     return entra.EntraBearer(
-        registered.get, lambda _t, _c: "Test assistant", fetch=directory.fetch, clock=clock
+        registered.get,
+        lambda _t, _c: ("Test assistant", "assistant"),
+        fetch=directory.fetch,
+        clock=clock,
     )
 
 
