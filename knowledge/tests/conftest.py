@@ -167,6 +167,8 @@ def world(testdb: TestDB) -> Iterator[World]:
 # Entra callers (PR C): a fake directory that publishes its key and signs people's tokens.
 DIRECTORY = uuid.UUID("33333333-3333-4333-8333-333333333333")
 AUDIENCE = uuid.UUID("44444444-4444-4444-8444-444444444444")
+# The assistant client app the test tenant allows (migration 0012); every token names it as azp.
+ASSISTANT = uuid.UUID("55555555-5555-4555-8555-555555555555")
 
 
 class FakeDirectory:
@@ -189,6 +191,7 @@ class FakeDirectory:
             "sub": "obviously-fake-subject",
             "ver": "2.0",
             "scp": "openid Knowledge.Read",
+            "azp": str(ASSISTANT),
             "iat": now,
             "nbf": now - 60,
             "exp": now + 1800,
@@ -283,7 +286,12 @@ def entra_world(world: World) -> EntraWorld:
 
     directory = FakeDirectory()
     entra.register(world.db.owner_url, world.tenant, DIRECTORY, AUDIENCE)
-    resolver = entra.EntraBearer(entra.registrations(world.knowledge.db), fetch=directory.fetch)
+    entra.allow_assistant(world.db.owner_url, world.tenant, ASSISTANT, "Test assistant")
+    resolver = entra.EntraBearer(
+        entra.registrations(world.knowledge.db),
+        entra.assistants(world.knowledge.db),
+        fetch=directory.fetch,
+    )
     return EntraWorld(world=world, directory=directory, resolver=resolver)
 
 

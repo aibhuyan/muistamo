@@ -66,7 +66,7 @@ def serve(_: argparse.Namespace) -> None:
             " caller, and a leaver's personal layer is not frozen for review until callers are"
             " matched to HR people. Require user assignment on the enterprise application."
         )
-        resolver = entra.EntraBearer(entra.registrations(db))
+        resolver = entra.EntraBearer(entra.registrations(db), entra.assistants(db))
     enable_test = os.environ.get("MUISTAMO_ENABLE_TEST_CONNECTOR") == "true"
     if enable_test:
         logging.warning(
@@ -177,6 +177,48 @@ def set_entra_tenant(args: argparse.Namespace) -> None:
     print(f"tenant {tenant} accepts Entra tokens of directory {directory} for audience {audience}")
 
 
+def _uuid_arg(value: str, what: str) -> uuid.UUID:
+    try:
+        parsed = uuid.UUID(value)
+    except ValueError:
+        sys.exit(f"knowledge: {what} must be a UUID")
+    if str(parsed) != value:  # the canonical (lower-case) form only
+        sys.exit(f"knowledge: {what} must be a UUID")
+    return parsed
+
+
+def add_assistant(args: argparse.Namespace) -> None:
+    from muistamo_knowledge import entra
+
+    tenant, client = _uuid_arg(args.tenant, "tenant"), _uuid_arg(args.client_app, "client app")
+    name = args.name.strip()
+    if not 1 <= len(name) <= 100 or any(ord(c) < 0x20 or ord(c) == 0x7F for c in name):
+        sys.exit("knowledge: the name must be 1-100 printable characters")
+    entra.allow_assistant(require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant, client, name)
+    print(f"tenant {tenant} allows assistant {name} ({client})")
+
+
+def remove_assistant(args: argparse.Namespace) -> None:
+    from muistamo_knowledge import entra
+
+    tenant, client = _uuid_arg(args.tenant, "tenant"), _uuid_arg(args.client_app, "client app")
+    if not entra.remove_assistant(
+        require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant, client
+    ):
+        sys.exit(f"knowledge: {client} is not an allowed assistant of tenant {tenant}")
+    print(f"tenant {tenant} no longer allows {client}")
+
+
+def list_assistants(args: argparse.Namespace) -> None:
+    from muistamo_knowledge import entra
+
+    tenant = _uuid_arg(args.tenant, "tenant")
+    for client, name in entra.list_assistants(
+        require("MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL"), tenant
+    ):
+        print(f"{client}\t{name}")
+
+
 def set_privacy_officers(args: argparse.Namespace) -> None:
     from muistamo_knowledge.privacy import replace_officers
 
@@ -232,6 +274,21 @@ def main() -> None:
         "--replace", action="store_true", help="re-point a tenant already mapped to a directory"
     )
     en.set_defaults(fn=set_entra_tenant)
+    asst = tenant.add_parser(
+        "assistant", help="which assistants may reach the tenant's knowledge (owner URL)"
+    ).add_subparsers(required=True)
+    add = asst.add_parser("add", help="allow a client app (its Entra application id) by name")
+    add.add_argument("tenant")
+    add.add_argument("client_app", help="the assistant's Entra application (client) id")
+    add.add_argument("name", help='the name recorded with each read, e.g. "Claude"')
+    add.set_defaults(fn=add_assistant)
+    rm = asst.add_parser("remove", help="stop accepting a client app; its next call is refused")
+    rm.add_argument("tenant")
+    rm.add_argument("client_app")
+    rm.set_defaults(fn=remove_assistant)
+    ls = asst.add_parser("list", help="the tenant's allowed assistants")
+    ls.add_argument("tenant")
+    ls.set_defaults(fn=list_assistants)
     priv = sub.add_parser("privacy", help="privacy officers").add_subparsers(required=True)
     po = priv.add_parser("officers", help="replace the tenant's privacy officers (owner URL)")
     po.add_argument("tenant")

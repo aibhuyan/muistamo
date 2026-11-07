@@ -27,7 +27,7 @@ from mcp.server.mcpserver import Context, MCPServer
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from muistamo_knowledge.auth import Resolver, Unauthenticated, entra_bearer
+from muistamo_knowledge.auth import Resolver, Unauthenticated, entra_bearer, resolve_caller
 from muistamo_knowledge.db import UnknownTenant
 from muistamo_knowledge.retrieval import Sources
 from muistamo_knowledge.service import Actor, Knowledge
@@ -50,12 +50,16 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
     async def actor(ctx: Context) -> Actor:
         # A token resolver reads the database and may fetch keys: never on the event loop.
         headers = dict(ctx.headers or {})
-        tenant, name = await anyio.to_thread.run_sync(lambda: resolver(headers))
+        # One verification: the tenant, the person and the assistant together.
+        tenant, name, assistant = await anyio.to_thread.run_sync(
+            lambda: resolve_caller(resolver, headers)
+        )
         return Actor(
             tenant=tenant,
             name=name,
             request_id=f"mcp:{ctx.request_id}",
             bearer=entra_bearer(name, headers),
+            assistant=assistant,
         )
 
     sources = Sources(knowledge)

@@ -303,9 +303,18 @@ class Sources:
         citations = [{k: v for k, v in i["citation"].items() if k in keep} for i in items]
         with self.k.db.in_tenant(actor.tenant) as cur:
             cur.execute(
-                "INSERT INTO knowledge.reads (tenant_id, id, person, tool, result_count, citations, agent)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (actor.tenant, uuid.uuid4(), actor.name, tool, len(items), Jsonb(citations), agent),
+                "INSERT INTO knowledge.reads (tenant_id, id, person, tool, result_count, citations,"
+                " agent, assistant) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    actor.tenant,
+                    uuid.uuid4(),
+                    actor.name,
+                    tool,
+                    len(items),
+                    Jsonb(citations),
+                    agent,
+                    actor.assistant,
+                ),
             )
 
     @staticmethod

@@ -30,6 +30,10 @@ SITE = "https://contoso.sharepoint.com/sites/finance"
 GRAPH_APP = "00000003-0000-0000-c000-000000000000"
 
 
+# The assistant client app ("Claude") the e2e tenant allows; tokens name it as azp.
+ASSISTANT = uuid.UUID("5a5a5a5a-0000-4000-8000-00000000c1a0")
+
+
 def write_certificates(directory: str) -> tuple[str, str, str]:
     """A throwaway CA and a certificate for HOSTS. Returns (ca, cert, key) file paths."""
     now = datetime.datetime.now(datetime.UTC)
@@ -111,7 +115,7 @@ class Microsoft:
         self.issued: dict[str, tuple[str, str, int]] = {}
         self.lock = threading.Lock()
 
-    def user_token(self, oid: uuid.UUID, lifetime: int = 1800) -> str:
+    def user_token(self, oid: uuid.UUID, lifetime: int = 1800, azp: uuid.UUID = ASSISTANT) -> str:
         now = int(time.time())
         return jwt.encode(
             {
@@ -122,6 +126,7 @@ class Microsoft:
                 "sub": f"e2e-{oid}",
                 "ver": "2.0",
                 "scp": "Knowledge.Read",
+                "azp": str(azp),  # the assistant's client app that obtained the token
                 "iat": now,
                 "nbf": now - 30,
                 "exp": now + lifetime,

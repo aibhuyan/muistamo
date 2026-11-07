@@ -34,7 +34,10 @@ pytestmark = pytest.mark.authz
 
 PUBLIC = "https://knowledge.example.invalid"
 PERSON = uuid.UUID("8b000000-0000-4000-8000-00000000000a")
-CLIENT = "8c000000-0000-4000-8000-0000000000c1"  # an assistant's client, registered in Entra
+# An assistant's client, registered in Entra and on the test tenant's allowlist (conftest's
+# ASSISTANT); NOT_ALLOWED is a real Entra client the tenant has not allowed.
+CLIENT = "55555555-5555-4555-8555-555555555555"
+NOT_ALLOWED = "8c000000-0000-4000-8000-0000000000c1"
 REDIRECT = "https://assistant.example.invalid/callback"
 ENTRA = "https://login.microsoftonline.com"
 
@@ -255,7 +258,7 @@ def test_authorize_sends_the_person_to_their_entra_without_resource(entra_world,
         {"code_challenge_method": None},
         {"response_type": "token"},
         {"client_id": "not-an-app-id"},
-        {"client_id": CLIENT.upper()},
+        {"client_id": "{" + CLIENT + "}"},  # parses as a UUID, but not canonical
         {"redirect_uri": None},
         {"resource": f"{PUBLIC}/mcp/t/{uuid.uuid4()}/knowledge"},  # another tenant's endpoint
         {"resource": "https://elsewhere.example.invalid/mcp"},
@@ -563,7 +566,7 @@ def test_an_entra_answer_that_is_not_json_is_a_temporary_failure(
 
 def test_the_registration_cache_is_bounded() -> None:
     lookups = []
-    signin = oauth.SignIn(PUBLIC, lambda t: lookups.append(t))
+    signin = oauth.SignIn(PUBLIC, lambda t: lookups.append(t), lambda _t, _c: None)
     for _ in range(oauth.CACHE_ENTRIES + 50):
         assert signin.registered(uuid.uuid4()) is None
     assert len(signin._cache) == oauth.CACHE_ENTRIES
