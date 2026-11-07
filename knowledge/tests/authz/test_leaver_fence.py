@@ -13,7 +13,7 @@ import uuid
 
 import psycopg
 import pytest
-from muistamo_knowledge import auth, entra
+from muistamo_knowledge import auth, entra, evidence
 from muistamo_knowledge.leavers import set_service_secret
 
 pytestmark = pytest.mark.authz
@@ -118,7 +118,9 @@ class Live:
         )
 
     def actions(self) -> list[tuple[str, dict]]:
-        events = self.world.knowledge.events(self.world.actor("auditor@example.invalid"), 0, 1000)
+        # Read directly: the export itself is for privacy officers (D59).
+        with self.world.knowledge.db.in_tenant(self.world.tenant) as cur:
+            events = evidence.list_events(cur, 0, 1000)
         return [(e.action, e.after or {}) for e in events]
 
 
@@ -405,3 +407,68 @@ def test_a_live_review_is_not_cancelled_by_id(live) -> None:
     assert live.open("leave-2:run", 2).status_code == 201
     res = live.post("/v1/knowledge/internal/leaver-reviews/leave-2:run/cancel")
     assert res.status_code == 422 and live.frozen()
+
+
+# Private entries (D59) on live, generation-ordered reviews ----------------------------------
+
+PRIVATE = {
+    "key": "private-note",
+    "type": "fact",
+    "title": "Private",
+    "body": "Only mine: d59-live-body.",
+    "private": True,
+}
+
+
+def private_purges(live) -> list[dict]:
+    return [a for name, a in live.actions() if name == "knowledge.personal.private-purged"]
+
+
+def keys(live) -> set[str]:
+    return {e["key"] for e in live.entries()}
+
+
+@pytest.fixture
+def private_live(live) -> Live:
+    live.world.knowledge.private_entries = True
+    res = live.person(PERSON).post("/v1/knowledge/personal/entries", json=PRIVATE)
+    assert res.status_code == 201 and res.json()["private"] is True, res.text
+    return live
+
+
+def test_a_superseded_open_never_purges_private_entries(private_live) -> None:
+    """A late open from an old leaving, after a rehire, must not delete notes the rehired person
+    keeps: the purge runs only once the open is known to be current."""
+    live = private_live
+    assert live.fence(2).status_code == 200
+    late = live.open("leave-1:run-1", 1)
+    assert late.status_code == 409 and late.json()["type"] == SUPERSEDED
+    assert keys(live) == {"fiscal-year", "private-note"}
+    assert private_purges(live) == []
+
+
+def test_another_run_of_the_same_leaving_purges_nothing_more(private_live) -> None:
+    live = private_live
+    assert live.open("leave-2:run-1", 2).status_code == 201
+    assert keys(live) == {"fiscal-year"}
+    # A private row that appeared since (inserted directly: the layer is frozen) is left to the
+    # review that already holds the layer; the takeover returns before any purge.
+    entry = live.owner_sql(
+        "SELECT entry_id FROM knowledge.personal_entries WHERE owner = %s", (P,)
+    )[0][0]
+    live.owner_sql(
+        "UPDATE knowledge.personal_entries SET private = true WHERE entry_id = %s", (entry,)
+    )
+    assert live.open("leave-2:run-2", 2).status_code == 200
+    assert private_purges(live) == [{"review": "leave-2:run-1", "purgedPrivateEntries": 1}]
+    assert live.owner_sql(
+        "SELECT private FROM knowledge.personal_entries WHERE entry_id = %s", (entry,)
+    ) == [(True,)]
+
+
+def test_after_a_rehire_the_person_finds_only_their_shared_entries(private_live) -> None:
+    live = private_live
+    assert live.open("leave-2:run-1", 2).status_code == 201
+    assert live.fence(3).status_code == 200  # rehired: the review is cancelled
+    assert not live.frozen()
+    assert keys(live) == {"fiscal-year"}  # private notes went at leaving (D59)

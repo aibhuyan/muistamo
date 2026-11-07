@@ -121,7 +121,7 @@ def test_capture_propose_review_merge_rollback(world) -> None:
     assert versions[0] == "0.3.0" and set(versions) == {"0.1.0", "0.2.0", "0.3.0"}
 
     # Every write is in the chain, and the chain verifies.
-    events = world.knowledge.events(world.actor(A), 0, 1000)
+    events = world.all_events()
     evidence.verify(events, {world.key.key_id: world.key.public})
     actions = [e.action for e in events]
     for want in (
@@ -285,7 +285,7 @@ def test_a_merged_correction_retires_its_authors_personal_copy(world) -> None:
     # The merged entry and its lineage are untouched.
     v1 = b.get("/v1/knowledge/packs/equity-research-basics/versions/0.1.0").json()
     assert [e["entry"]["body"] for e in v1["entries"]] == ["Our fiscal year ends on 30 June."]
-    events = world.knowledge.events(world.actor(A), 0, 1000)
+    events = world.all_events()
     approval = [e for e in events if e.action == "knowledge.proposal.approved"]
     assert approval[-1].after["retiredPersonalEntries"] == [proposed], approval[-1].after
     evidence.verify(events, {world.key.key_id: world.key.public})

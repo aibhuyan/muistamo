@@ -124,11 +124,7 @@ def test_open_freezes_the_layer_and_only_the_decider_sees_it(world, svc) -> None
             == 404
         ), other
         assert world.client(other).get("/v1/knowledge/leaver-reviews").json()["items"] == []
-    reads = [
-        e
-        for e in world.knowledge.events(world.actor(M), 0, 1000)
-        if e.action == "knowledge.leaver-review.read"
-    ]
+    reads = [e for e in world.all_events() if e.action == "knowledge.leaver-review.read"]
     assert len(reads) == 1 and reads[0].actor == "dev:" + M
 
 

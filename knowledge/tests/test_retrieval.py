@@ -62,9 +62,7 @@ def test_sync_indexes_and_removes_vanished_documents(world) -> None:
             "SELECT count(*) FROM knowledge.evidence_events WHERE after::text LIKE '%Budget guidance%'"
         ).fetchone()[0]
         assert bodies == 0
-    evidence.verify(
-        world.knowledge.events(world.actor(A), 0, 1000), {world.key.key_id: world.key.public}
-    )
+    evidence.verify(world.all_events(), {world.key.key_id: world.key.public})
 
 
 def test_retrieve_cites_entries_and_documents(world) -> None:

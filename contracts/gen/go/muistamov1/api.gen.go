@@ -1392,6 +1392,48 @@ func (e MoneyCurrency) Valid() bool {
 	}
 }
 
+// Defines values for PersonalEntryDataClass.
+const (
+	PersonalEntryDataClassConfidential PersonalEntryDataClass = "confidential"
+	PersonalEntryDataClassInternal     PersonalEntryDataClass = "internal"
+	PersonalEntryDataClassPublic       PersonalEntryDataClass = "public"
+)
+
+// Valid indicates whether the value is a known member of the PersonalEntryDataClass enum.
+func (e PersonalEntryDataClass) Valid() bool {
+	switch e {
+	case PersonalEntryDataClassConfidential:
+		return true
+	case PersonalEntryDataClassInternal:
+		return true
+	case PersonalEntryDataClassPublic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalEntryType.
+const (
+	PersonalEntryTypeExample PersonalEntryType = "example"
+	PersonalEntryTypeFact    PersonalEntryType = "fact"
+	PersonalEntryTypeSkill   PersonalEntryType = "skill"
+)
+
+// Valid indicates whether the value is a known member of the PersonalEntryType enum.
+func (e PersonalEntryType) Valid() bool {
+	switch e {
+	case PersonalEntryTypeExample:
+		return true
+	case PersonalEntryTypeFact:
+		return true
+	case PersonalEntryTypeSkill:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PolicyDecisionDecision.
 const (
 	PolicyDecisionDecisionAllow PolicyDecisionDecision = "allow"
@@ -2773,6 +2815,9 @@ type KnowledgeEntryInput struct {
 	// Key Stable key; the most specific layer wins for the same key.
 	Key string `json:"key"`
 
+	// Private Private entries are never proposed, never shown in a leaver review, and are purged when the person leaves (D59). Refused unless the operator has enabled private entries (MUISTAMO_KNOWLEDGE_PRIVATE_ENTRIES).
+	Private *bool `json:"private,omitempty"`
+
 	// Source Where this knowledge comes from (URL, document, person).
 	Source *string                 `json:"source,omitempty"`
 	Title  string                  `json:"title"`
@@ -2787,7 +2832,7 @@ type KnowledgeEntryInputType string
 
 // KnowledgeEntryPage The caller's personal entries.
 type KnowledgeEntryPage struct {
-	Items []KnowledgeEntry `json:"items"`
+	Items []PersonalEntry `json:"items"`
 }
 
 // KnowledgePack A versioned, reviewed body of company knowledge (PRD section 5).
@@ -3228,6 +3273,35 @@ type PackVersion struct {
 // PackVersionPage A pack's versions, newest first.
 type PackVersionPage struct {
 	Items []PackVersion `json:"items"`
+}
+
+// PersonalEntry An entry in the caller's own personal layer, with whether it is private (D59). Only the owner ever sees this view.
+type PersonalEntry struct {
+	Body        string                 `json:"body"`
+	Contributor string                 `json:"contributor"`
+	CreatedAt   time.Time              `json:"createdAt"`
+	DataClass   PersonalEntryDataClass `json:"dataClass"`
+	Id          openapi_types.UUID     `json:"id"`
+
+	// Key Stable key; the most specific layer wins for the same key.
+	Key string `json:"key"`
+
+	// Private Private entries are never proposed, never shown in a leaver review, and are purged when the person leaves (D59).
+	Private bool              `json:"private"`
+	Source  *string           `json:"source,omitempty"`
+	Title   string            `json:"title"`
+	Type    PersonalEntryType `json:"type"`
+}
+
+// PersonalEntryDataClass defines model for PersonalEntry.DataClass.
+type PersonalEntryDataClass string
+
+// PersonalEntryType defines model for PersonalEntry.Type.
+type PersonalEntryType string
+
+// PersonalEntryVisibility Change whether one of the caller's personal entries is private (D59). Through an assistant an entry can only be made private; making it shared again needs the console. An entry with a copy in a proposal cannot be made private (409).
+type PersonalEntryVisibility struct {
+	Private bool `json:"private"`
 }
 
 // PolicyDecision The policy engine's answer. Release 1 runs in observe mode: nothing is enforced yet (the gateway is not built), so enforced is always false and wouldBlock says what enforcement would do.

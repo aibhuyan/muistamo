@@ -185,6 +185,7 @@ def test_tenants_are_isolated_through_the_api(world) -> None:
     assert other.get("/v1/knowledge/packs").json()["items"] == []
     assert other.get("/v1/knowledge/personal/entries").json()["items"] == []
     assert other.get("/v1/knowledge/proposals").json()["items"] == []
+    replace_officers(world.db.owner_url, world.other_tenant, ["dev:" + A])  # the export's role
     assert other.get("/v1/knowledge/events").json()["items"] == []
     # Tenant A's published pack cannot be exported from another tenant.
     exported = other.get("/v1/knowledge/packs/equity-research-basics/versions/latest/skills.zip")

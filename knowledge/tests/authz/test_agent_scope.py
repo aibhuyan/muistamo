@@ -335,4 +335,5 @@ def test_sources_outside_scope_are_hidden_and_refused_alike(scoped) -> None:
 def test_the_evidence_export_is_not_for_assistants(scoped) -> None:
     ew, _ = scoped
     assert person(ew).get("/v1/knowledge/events").status_code == 403
-    assert ew.world.client(A).get("/v1/knowledge/events").status_code == 200
+    assert ew.world.client(DPO).get("/v1/knowledge/events").status_code == 200
+    assert ew.world.client(A).get("/v1/knowledge/events").status_code == 403  # officers only

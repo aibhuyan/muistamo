@@ -41,3 +41,9 @@ class KnowledgeEntryInput(BaseModel):
         ),
     ] = None
     dataClass: DataClass | None = "internal"
+    private: Annotated[
+        bool | None,
+        Field(
+            description="Private entries are never proposed, never shown in a leaver review, and are purged when the person leaves (D59). Refused unless the operator has enabled private entries (MUISTAMO_KNOWLEDGE_PRIVATE_ENTRIES)."
+        ),
+    ] = False

@@ -71,6 +71,14 @@ GRACE_SECONDS, REVIEW_SECONDS = 60, 5
 # when it merged).
 NOTES = ["e2e-note"]
 NOTE = {"key": "e2e-note", "type": "fact", "title": "A note", "body": "Close the books in April."}
+# D59: a private note is never shown to the decider and is deleted when the review opens.
+PRIVATE_NOTE = {
+    "key": "e2e-private-note",
+    "type": "fact",
+    "title": "A private note",
+    "body": "Only for me: prepare the handover.",
+    "private": True,
+}
 TEMPLATE = {
     "apiVersion": "muistamo.dev/v1",
     "kind": "AgentTemplate",
@@ -356,6 +364,7 @@ def main() -> None:
             **os.environ,
             **e2e,
             "MUISTAMO_KNOWLEDGE_MIGRATE_DATABASE_URL": kdb,
+            "MUISTAMO_KNOWLEDGE_PRIVATE_ENTRIES": "true",
             "MUISTAMO_KNOWLEDGE_DATABASE_URL": _url(
                 f"muistamo_e2e_k_{suffix}", "muistamo_knowledge_app"
             ),
@@ -569,6 +578,10 @@ def main() -> None:
         ms.libraries["Documents"][0]["readers"] = [str(PERSON)]
         status, body = http("POST", f"{kn}/v1/knowledge/personal/entries", NOTE, bearer(token))
         assert status == 201, (status, body)
+        status, body = http(
+            "POST", f"{kn}/v1/knowledge/personal/entries", PRIVATE_NOTE, bearer(token)
+        )
+        assert status == 201 and body["private"] is True, (status, body)
         hr_event(cp, tenant, hr_secret, "leave-1", "leaver", 60)
         wait_for(
             "the agent suspended", lambda: _state(cp, operator, instance) == "suspended", timeout=90
@@ -610,6 +623,12 @@ def main() -> None:
             "GET", f"{kn}/v1/knowledge/leaver-reviews/{review['id']}", None, manager
         )
         assert status == 200 and sorted(e["key"] for e in body["entries"]) == NOTES, (status, body)
+        assert review["entryCount"] == len(NOTES), review  # the private note is not counted
+        assert PRIVATE_NOTE["body"] not in json.dumps(body), "the decider saw a private note"
+        status, mine = http("GET", f"{kn}/v1/knowledge/personal/entries", None, bearer(token))
+        assert status == 200 and PRIVATE_NOTE["key"] not in {e["key"] for e in mine["items"]}, (
+            "the private note survived the leaving"
+        )
         other = bearer(ms.user_token(OTHER, azp=fake_microsoft.CONSOLE))
         status, _ = http("GET", f"{kn}/v1/knowledge/leaver-reviews/{review['id']}", None, other)
         assert status == 404, status

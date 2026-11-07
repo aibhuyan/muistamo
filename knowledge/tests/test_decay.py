@@ -90,7 +90,7 @@ def verification(world, pack_name: str, key: str, reason: str) -> dict:
 
 
 def events(world, action: str) -> list:
-    return [e for e in world.knowledge.events(world.actor(R), 0, 1000) if e.action == action]
+    return [e for e in world.all_events() if e.action == action]
 
 
 @pytest.fixture
@@ -588,7 +588,7 @@ def test_self_extension_is_refused_for_historical_entries_too(world, clock) -> N
 def test_decay_writes_roll_back_if_their_evidence_fails(rules, clock, monkeypatch, action) -> None:
     clock.advance(16)
     latest = rules.client(R).get("/v1/knowledge/packs/rules").json()["latestVersion"]
-    before = rules.knowledge.events(rules.actor(R), 0, 1000)
+    before = rules.all_events()
     original = rules.knowledge._evidence
 
     def fail(cur, actor, event, *args, **kwargs):
@@ -608,7 +608,7 @@ def test_decay_writes_roll_back_if_their_evidence_fails(rules, clock, monkeypatc
             rules.knowledge.sweep_decay(rules.tenant)
     assert rules.client(R).get("/v1/knowledge/packs/rules").json()["latestVersion"] == latest
     assert queue(rules)[0]["decay"]["status"] == "expired"
-    assert rules.knowledge.events(rules.actor(R), 0, 1000) == before
+    assert rules.all_events() == before
 
 
 @pytest.mark.parametrize(

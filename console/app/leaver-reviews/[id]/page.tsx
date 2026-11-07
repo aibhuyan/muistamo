@@ -25,6 +25,10 @@ export default async function LeaverReviewPage({ params }: { params: Promise<{ i
         {r.proposalId ? ` · became proposal ${r.proposalId}` : ""}
       </p>
       <p className="muted">Your opening of this page is recorded in the evidence log.</p>
+      <p className="muted">
+        Only entries the person shared are shown. Entries they marked private are never shown here
+        and were deleted when they left.
+      </p>
 
       {r.status !== "open" ? (
         <p>This review is closed.</p>

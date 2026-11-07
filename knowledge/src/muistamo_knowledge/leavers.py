@@ -203,7 +203,7 @@ class Leavers:
         """The review and the leaver's personal entries, to its decider only. Recorded."""
         with self.k.db.in_tenant(actor.tenant) as cur:
             review = self._for_decider(cur, actor, review_id)
-            review["entries"] = self.k._personal_of(cur, review["person"])
+            review["entries"] = self.k._personal_of(cur, review["person"], include_private=False)
             self.k._evidence(
                 cur,
                 actor,
@@ -280,7 +280,11 @@ class Leavers:
                 return same, False
         if other is not None:
             raise Conflict(f"review {other[0]} is already open for this person")
-        count = len(self.k._personal_of(cur, person))
+        # D59: the person's private entries are purged at leaving, here, before anything is
+        # counted or frozen, so the decider never sees or counts them. Refused (superseded)
+        # opens never reach this point; repeated opens returned above.
+        private_purged = self._purge_private(cur, person)
+        count = len(self.k._personal_of(cur, person, include_private=False))
         now = datetime.now(UTC)
         status, outcome, closed = ("closed", "empty", now) if count == 0 else ("open", None, None)
         cur.execute(
@@ -316,6 +320,17 @@ class Leavers:
             | ({"outcome": outcome} if outcome else {})
             | ({"generation": generation} if generation is not None else {}),
         )
+        if private_purged:
+            # Proof of the purge, for privacy officers (the evidence export is theirs only):
+            # a count, never keys or content.
+            self.k._evidence(
+                cur,
+                actor,
+                "knowledge.personal.private-purged",
+                "LeaverReview",
+                review_id,
+                after={"review": review_id, "purgedPrivateEntries": private_purged},
+            )
         return review, True
 
     def _decide(
@@ -483,6 +498,22 @@ class Leavers:
             " closed_at = now() WHERE id = %s",
             (outcome, proposal, review_id),
         )
+
+    def _purge_private(self, cur: Cursor, person: str) -> int:
+        """Delete the person's private entries and their revisions, completely. A private entry
+        never has copies (making an entry private is refused while one exists), so every
+        revision goes; if any could not, the whole open is rolled back rather than leave one."""
+        cur.execute(
+            "DELETE FROM knowledge.personal_entries WHERE owner = %s AND private RETURNING entry_id",
+            (person,),
+        )
+        ids = [r[0] for r in cur.fetchall()]
+        if not ids:
+            return 0
+        cur.execute("DELETE FROM knowledge.entries WHERE id = ANY(%s)", (ids,))
+        if cur.rowcount != len(ids):
+            raise RuntimeError("a private entry's revision could not be purged")
+        return len(ids)
 
     def _purge(self, cur: Cursor, person: str) -> int:
         """Delete the person's personal layer. Copies already in proposals remain."""

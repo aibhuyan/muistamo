@@ -202,11 +202,18 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete one of the caller's personal entries */
+        /**
+         * Delete one of the caller's personal entries
+         * @description A private entry is deleted through the console only, never through an assistant.
+         */
         delete: operations["deleteEntry"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Make one of the caller's personal entries private, or shared again (D59)
+         * @description Private entries are never proposed, never shown in a leaver review, and are purged when the person leaves. Through an assistant an entry can only be made private; making it shared again needs the console. Refused while the layer is frozen for a leaver review, and refused (409) while a proposal holds a copy of the entry, so a private entry has no copies. Making an entry private is refused unless the operator has enabled private entries. Private stops a leaver's decider seeing the entry; the owner's own assistant still reads it.
+         */
+        patch: operations["setEntryVisibility"];
         trace?: never;
     };
     "/v1/knowledge/proposals": {
@@ -574,7 +581,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export the tenant's knowledge evidence chain in seq order */
+        /**
+         * Export the tenant's knowledge evidence chain in seq order
+         * @description For the tenant's privacy officers only (D59): the chain records every pack, reviewer and personal-layer change, so a colleague such as a leaver's manager must not read it. Never through an assistant.
+         */
         get: operations["listEvents"];
         put?: never;
         post?: never;
@@ -1596,13 +1606,18 @@ export interface components {
              * @enum {string}
              */
             dataClass: "public" | "internal" | "confidential";
+            /**
+             * @description Private entries are never proposed, never shown in a leaver review, and are purged when the person leaves (D59). Refused unless the operator has enabled private entries (MUISTAMO_KNOWLEDGE_PRIVATE_ENTRIES).
+             * @default false
+             */
+            private: boolean;
         };
         /**
          * KnowledgeEntryPage
          * @description The caller's personal entries.
          */
         KnowledgeEntryPage: {
-            items: components["schemas"]["KnowledgeEntry"][];
+            items: components["schemas"]["PersonalEntry"][];
         };
         /**
          * KnowledgePack
@@ -2035,6 +2050,35 @@ export interface components {
          */
         PackVersionPage: {
             items: components["schemas"]["PackVersion"][];
+        };
+        /**
+         * PersonalEntry
+         * @description An entry in the caller's own personal layer, with whether it is private (D59). Only the owner ever sees this view.
+         */
+        PersonalEntry: {
+            /** Format: uuid */
+            id: string;
+            /** @description Stable key; the most specific layer wins for the same key. */
+            key: string;
+            /** @enum {string} */
+            type: "skill" | "fact" | "example";
+            title: string;
+            body: string;
+            source?: string;
+            /** @enum {string} */
+            dataClass: "public" | "internal" | "confidential";
+            contributor: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Private entries are never proposed, never shown in a leaver review, and are purged when the person leaves (D59). */
+            private: boolean;
+        };
+        /**
+         * PersonalEntryVisibility
+         * @description Change whether one of the caller's personal entries is private (D59). Through an assistant an entry can only be made private; making it shared again needs the console. An entry with a copy in a proposal cannot be made private (409).
+         */
+        PersonalEntryVisibility: {
+            private: boolean;
         };
         /**
          * PolicyDecision
@@ -2859,7 +2903,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["KnowledgeEntry"];
+                    "application/json": components["schemas"]["PersonalEntry"];
                 };
             };
             default: components["responses"]["Problem"];
@@ -2882,6 +2926,33 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    setEntryVisibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalEntryVisibility"];
+            };
+        };
+        responses: {
+            /** @description The entry, with its new visibility. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalEntry"];
+                };
             };
             default: components["responses"]["Problem"];
         };

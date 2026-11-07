@@ -99,9 +99,7 @@ def test_export_matches_the_published_version(world) -> None:
     assert all(
         "Ends 30 June" not in str(r[0]) for r in rows
     )  # evidence names the archive, not its content
-    evidence.verify(
-        world.knowledge.events(world.actor(A), 0, 1000), {world.key.key_id: world.key.public}
-    )
+    evidence.verify(world.all_events(), {world.key.key_id: world.key.public})
 
 
 def test_publish_hooks_fire_after_commit_and_never_undo_a_merge(world) -> None:
