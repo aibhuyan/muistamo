@@ -60,7 +60,9 @@ def build(knowledge: Knowledge, resolver: Resolver) -> MCPServer:
             request_id=f"mcp:{ctx.request_id}",
             bearer=entra_bearer(name, headers),
             assistant=assistant,
-            client_kind=kind,
+            # The MCP endpoint is the assistant surface: whatever client obtained the token, a
+            # caller here is an assistant, agent-scoped (D60), never the console (fail closed).
+            client_kind="assistant" if kind is not None else None,
         )
 
     sources = Sources(knowledge)

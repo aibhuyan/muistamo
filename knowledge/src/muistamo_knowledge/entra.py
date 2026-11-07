@@ -256,16 +256,33 @@ def allow_assistant(
     owner_url: str, tenant: uuid.UUID, client_app: uuid.UUID, name: str, kind: str = "assistant"
 ) -> None:
     """Allow a client app (its Entra application id) as one of the tenant's assistants, under a
-    display name, as the schema owner (an operator command). Renaming is allowed."""
+    display name, as the schema owner (an operator command). Renaming is allowed. Changing a
+    client's kind is an authorisation change (a console acts as the person, unscoped), so it is
+    logged."""
     import psycopg
 
     with psycopg.connect(owner_url) as conn, conn.transaction():
         conn.execute("SELECT set_config('muistamo.tenant_id', %s, true)", (str(tenant),))
+        before = conn.execute(
+            "SELECT kind FROM knowledge.assistants WHERE tenant_id = %s AND client_app = %s"
+            " FOR UPDATE",
+            (tenant, client_app),
+        ).fetchone()
         conn.execute(
             "INSERT INTO knowledge.assistants (tenant_id, client_app, name, kind)"
             " VALUES (%s, %s, %s, %s) ON CONFLICT (tenant_id, client_app)"
             " DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind",
             (tenant, client_app, name, kind),
+        )
+    if before is not None and before[0] != kind:
+        log.warning(
+            "allowed client kind changed",
+            extra={
+                "tenant": str(tenant),
+                "client_app": str(client_app),
+                "from_kind": before[0],
+                "to_kind": kind,
+            },
         )
 
 

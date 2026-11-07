@@ -11,8 +11,9 @@
 ALTER TABLE knowledge.assistants
   ADD COLUMN kind text NOT NULL DEFAULT 'assistant' CHECK (kind IN ('assistant', 'console'));
 
--- The client's name and kind for a tenant's client app, or no row. Replaces entra_assistant().
-DROP FUNCTION knowledge.entra_assistant(uuid, uuid);
+-- The client's name and kind for a tenant's client app, or no row. Replaces entra_assistant(),
+-- which stays (expand, then contract) so servers still running the previous code keep working
+-- during a rolling deploy; a later migration drops it once every server calls entra_client().
 CREATE FUNCTION knowledge.entra_client(p_tenant uuid, p_client_app uuid)
 RETURNS TABLE (name text, kind text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = knowledge, pg_temp AS $$

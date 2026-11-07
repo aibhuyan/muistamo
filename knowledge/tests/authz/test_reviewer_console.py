@@ -163,6 +163,59 @@ def test_through_an_assistant_a_person_sees_only_their_own_proposals(setup) -> N
     assert through_assistant(ew).get(f"/v1/knowledge/proposals/{proposal}").status_code == 404
 
 
+def test_the_assistant_sign_in_never_hands_out_a_console_token(setup, monkeypatch) -> None:
+    """The sign-in layer serves assistants only: a client asking as the console is refused before
+    anything reaches Entra (the console signs people in through its own flow)."""
+    from muistamo_knowledge import oauth
+
+    monkeypatch.setenv("MUISTAMO_KNOWLEDGE_PUBLIC_URL", "https://knowledge.example.invalid")
+    calls = []
+    monkeypatch.setattr(
+        oauth, "entra_transport", lambda url, form: calls.append(url) or (200, b"{}")
+    )
+    ew, _ = setup
+    tenant = ew.world.tenant
+    resource = f"https://knowledge.example.invalid/mcp/t/{tenant}/knowledge"
+    authorize = ew.client(None).get(
+        f"/oauth/t/{tenant}/authorize",
+        params={
+            "response_type": "code",
+            "client_id": str(CONSOLE),
+            "redirect_uri": "http://127.0.0.1:33418/callback",
+            "scope": "Knowledge.Read",
+            "code_challenge": "c" * 43,
+            "code_challenge_method": "S256",
+            "resource": resource,
+        },
+        follow_redirects=False,
+    )
+    assert authorize.status_code == 400 and authorize.json()["error"] == "unauthorized_client"
+    token = ew.client(None).post(
+        f"/oauth/t/{tenant}/token",
+        data={
+            "grant_type": "refresh_token",
+            "client_id": str(CONSOLE),
+            "refresh_token": "x",
+            "resource": resource,
+        },
+    )
+    assert token.status_code == 400 and token.json()["error"] == "unauthorized_client"
+    assert calls == []
+
+
+def test_changing_a_clients_kind_is_logged(entra_world, caplog) -> None:
+    world = entra_world.world
+    app = uuid.UUID("7e000000-0000-4000-8000-0000000c0502")
+    entra.allow_assistant(world.db.owner_url, world.tenant, app, "Some app")
+    with caplog.at_level("WARNING", logger="muistamo_knowledge.entra"):
+        entra.allow_assistant(world.db.owner_url, world.tenant, app, "Some app")  # unchanged
+        assert not [r for r in caplog.records if r.getMessage() == "allowed client kind changed"]
+        entra.allow_assistant(world.db.owner_url, world.tenant, app, "Some app", "console")
+    changed = [r for r in caplog.records if r.getMessage() == "allowed client kind changed"]
+    assert len(changed) == 1
+    assert (changed[0].from_kind, changed[0].to_kind) == ("assistant", "console")
+
+
 def test_a_client_of_any_other_kind_is_an_assistant(entra_world) -> None:
     """Fail closed: only kind 'console' acts as the person themselves."""
     import psycopg

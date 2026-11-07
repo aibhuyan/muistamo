@@ -235,7 +235,9 @@ class Sources:
         template: set[str] | None = None
         deadline = time.monotonic() + RETRIEVAL_BUDGET_SECONDS
         # Every Entra caller is delegated: an entra: identity never gets development scope, even
-        # if its token was somehow not carried along (fail closed).
+        # if its token was somehow not carried along (fail closed). This includes the console:
+        # source documents are searched only with the delegation's on-behalf-of token (invariant
+        # 1), so retrieval is agent-scoped for every Entra caller, unlike the pack reads.
         if actor.name.startswith("entra:"):
             outcome = (
                 self._delegate(actor) if actor.bearer is not None else Outcome(None, "unavailable")
