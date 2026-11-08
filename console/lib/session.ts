@@ -4,15 +4,22 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
-// Development-only sign-in. The signed-in person picks any tenant and identity, exactly like the
-// services' X-Muistamo-Tenant/X-Muistamo-Actor development headers it is turned into, so the
-// cookie needs no signature: it grants nothing the headers do not. Real sign-in (Entra) replaces
-// this module. Without MUISTAMO_CONSOLE_INSECURE_DEV_LOGIN=true there is no session at all and the
-// console makes no service calls.
+import { mode } from "./entra/config";
+import { readSession } from "./entra/cookies";
+
+// Who is signed in, in one of two exclusive modes (never both; lib/entra/config.ts):
+// - Development sign-in: the person picks any tenant and identity, exactly like the services'
+//   X-Muistamo-Tenant/X-Muistamo-Actor development headers it is turned into, so the cookie needs
+//   no signature: it grants nothing the headers do not. Only with
+//   MUISTAMO_CONSOLE_INSECURE_DEV_LOGIN=true.
+// - Entra sign-in (MUISTAMO_CONSOLE_TENANTS): OpenID Connect against the tenant's directory; the
+//   person's tokens stay in an encrypted cookie that only serviceHeaders reads (lib/entra).
+// Without either there is no session at all and the console makes no service calls.
 
 export const SESSION_COOKIE = "muistamo_dev_session";
 
-export type Session = { tenant: string; person: string };
+// What pages may know about the signed-in person. Never a token.
+export type Session = { tenant: string; person: string; name?: string };
 
 const TENANT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // Printable ASCII only: the person travels in an HTTP header, which cannot carry anything else.
@@ -21,7 +28,7 @@ const PERSON = /^[!#-;=?A-~]+@[!#-;=?A-~]+$/;
 let warned = false;
 
 export function devLoginEnabled(): boolean {
-  const enabled = process.env.MUISTAMO_CONSOLE_INSECURE_DEV_LOGIN === "true";
+  const enabled = mode() === "dev";
   if (enabled && !warned) {
     warned = true;
     // The services warn when they trust development headers; so does the console.
@@ -30,6 +37,10 @@ export function devLoginEnabled(): boolean {
     );
   }
   return enabled;
+}
+
+export function entraEnabled(): boolean {
+  return mode() === "entra";
 }
 
 // Strict: anything but exactly {tenant, person} in the expected shapes is no session.
@@ -57,15 +68,21 @@ export function validSession(tenant: unknown, person: unknown): Session | null {
 }
 
 export async function getSession(): Promise<Session | null> {
-  // Always at request time: the flag must never be read once at build time and baked into a page.
+  // Always at request time: the mode must never be read once at build time and baked into a page.
   await connection();
+  if (entraEnabled()) {
+    const s = await readSession(await cookies());
+    // An access token past its expiry (the proxy could not renew it) is no session: fail closed.
+    if (!s || s.atExp <= Date.now()) return null;
+    return { tenant: s.tenant, person: s.person, name: s.name };
+  }
   if (!devLoginEnabled()) return null;
   const store = await cookies();
   return parseSession(store.get(SESSION_COOKIE)?.value);
 }
 
 // For pages and Server Actions: the session, or a redirect to sign in (which itself refuses when
-// development sign-in is off).
+// no sign-in is configured).
 export async function requireSession(): Promise<Session> {
   const session = await getSession();
   if (!session) redirect("/sign-in");
@@ -89,8 +106,17 @@ export async function endSession(): Promise<void> {
   store.delete(SESSION_COOKIE);
 }
 
-// The only place a session becomes service credentials.
-export function serviceHeaders(session: Session): Record<string, string> {
-  if (!devLoginEnabled()) throw new Error("development sign-in is disabled");
+// The only place a session becomes service credentials. In Entra mode only the person's bearer
+// token is sent, never the development headers; it is read here, from the encrypted cookie, and
+// must belong to the same session the page was given.
+export async function serviceHeaders(session: Session): Promise<Record<string, string>> {
+  if (entraEnabled()) {
+    const s = await readSession(await cookies());
+    if (!s || s.person !== session.person || s.tenant !== session.tenant || s.atExp <= Date.now()) {
+      throw new Error("no current Entra session");
+    }
+    return { Authorization: `Bearer ${s.at}` };
+  }
+  if (!devLoginEnabled()) throw new Error("no sign-in is configured");
   return { "X-Muistamo-Tenant": session.tenant, "X-Muistamo-Actor": session.person };
 }
