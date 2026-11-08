@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,6 +44,41 @@ func (InsecureDevHeaders) Resolve(r *http.Request) (uuid.UUID, string, error) {
 		return uuid.Nil, "", errUnauthenticated
 	}
 	return tenant, "dev:" + actor, nil
+}
+
+// ConsoleRoutes is the explicit list of routes a person signed in through the console may call
+// (docs/control-plane-console-plan.md). Every other route refuses a console caller before any
+// handler runs. It grows with the console, one reviewed entry at a time.
+func ConsoleRoute(r *http.Request) bool {
+	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/catalogue/requests":
+		return true
+	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/catalogue/requests/") &&
+		strings.HasSuffix(r.URL.Path, "/decision") && strings.Count(r.URL.Path, "/") == 5:
+		return true
+	}
+	return false
+}
+
+// WithConsole resolves a request with a bearer token through console (only on ConsoleRoute, and
+// never together with development headers) and any other request through fallback.
+type WithConsole struct {
+	Console  TenantResolver
+	Fallback TenantResolver
+}
+
+// Resolve implements TenantResolver.
+func (w WithConsole) Resolve(r *http.Request) (uuid.UUID, string, error) {
+	if r.Header.Get("Authorization") == "" {
+		return w.Fallback.Resolve(r)
+	}
+	if r.Header.Get("X-Muistamo-Tenant") != "" || r.Header.Get("X-Muistamo-Actor") != "" {
+		return uuid.Nil, "", errUnauthenticated // one identity per request, never two
+	}
+	if !ConsoleRoute(r) {
+		return uuid.Nil, "", errUnauthenticated
+	}
+	return w.Console.Resolve(r)
 }
 
 type actorKey struct{}

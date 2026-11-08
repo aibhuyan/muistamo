@@ -182,6 +182,26 @@ func SetPrivacyOfficers(ctx context.Context, url string, tenant uuid.UUID, offic
 	return replaceTenantList(ctx, url, tenant, "privacy_officers", "officer", officers)
 }
 
+// SetConsoleClient records the tenant's console app and its control-plane API app
+// (docs/control-plane-console-plan.md): console callers are accepted only with tokens the console
+// app obtained for that API app. Only an operator sets it, as owner.
+func SetConsoleClient(ctx context.Context, url string, tenant, clientApp, apiApp uuid.UUID) error {
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO console_clients (tenant_id, client_app, api_app) VALUES ($1, $2, $3)
+			ON CONFLICT (tenant_id) DO UPDATE SET client_app = EXCLUDED.client_app, api_app = EXCLUDED.api_app, updated_at = now()`,
+			tenant, clientApp, apiApp)
+		if err != nil {
+			return fmt.Errorf("set console client: %w", err)
+		}
+		return nil
+	})
+}
+
 // replaceTenantList replaces one tenant's rows in a (tenant_id, value) table. table and column are
 // constants from this package, never input.
 func replaceTenantList(ctx context.Context, url string, tenant uuid.UUID, table, column string, values []string) error {

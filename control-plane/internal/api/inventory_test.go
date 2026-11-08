@@ -28,6 +28,7 @@ var noPersonalData = map[string]string{
 	"throttle_marks":            "key id and minute of a key's first rate-limit refusal",
 	"key_spend":                 "recorded spend per key, month and currency",
 	"delegation_nonces":         "the knowledge service's single-use request nonces and when they were seen",
+	"console_clients":           "the tenant's console and control-plane API app ids",
 }
 
 func TestEveryTenantTableIsClassifiedForPrivacy(t *testing.T) {

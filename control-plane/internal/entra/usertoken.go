@@ -87,6 +87,59 @@ func (c *Client) ValidateUserToken(ctx context.Context, raw string, now time.Tim
 	return UserClaims{ObjectID: user, Expiry: std.Expiry.Time()}, nil
 }
 
+// ConsoleScope is the delegated scope a console token for the control plane must carry.
+const ConsoleScope = "Registry.Console"
+
+type consoleTokenClaims struct {
+	userTokenClaims
+	AuthorizedParty string `json:"azp"`
+}
+
+// ValidateConsoleToken checks a person's Entra access token from the console for the control plane
+// at now: the same rules as a user token (RS256 under the binding directory's keys, its issuer and
+// tenant, version 2.0, current, a user object id, not an app token), but for the tenant's own
+// control-plane API app (one audience, apiApp, never the blueprint), with the Registry.Console
+// scope, obtained by the tenant's console app (azp = clientApp).
+func (c *Client) ValidateConsoleToken(ctx context.Context, raw string, now time.Time, apiApp, clientApp uuid.UUID) (UserClaims, error) {
+	if len(raw) == 0 || len(raw) > maxUserToken {
+		return UserClaims{}, ErrUserToken
+	}
+	token, err := jwt.ParseSigned(raw, []jose.SignatureAlgorithm{jose.RS256})
+	if err != nil || len(token.Headers) != 1 || token.Headers[0].KeyID == "" {
+		return UserClaims{}, ErrUserToken
+	}
+	key, err := c.signingKey(ctx, token.Headers[0].KeyID, now)
+	if err != nil {
+		return UserClaims{}, err
+	}
+	var std jwt.Claims
+	var claims consoleTokenClaims
+	if err := token.Claims(key, &std, &claims); err != nil {
+		return UserClaims{}, ErrUserToken
+	}
+	if std.Expiry == nil || std.NotBefore == nil || len(std.Audience) != 1 || std.Audience[0] != apiApp.String() {
+		return UserClaims{}, ErrUserToken
+	}
+	expected := jwt.Expected{Issuer: "https://login.microsoftonline.com/" + c.binding.EntraTenantId + "/v2.0", Time: now}
+	if std.ValidateWithLeeway(expected, tokenLeeway) != nil {
+		return UserClaims{}, ErrUserToken
+	}
+	user, valid := canonicalID(claims.ObjectID)
+	if !valid || claims.TenantID != c.binding.EntraTenantId || claims.Version != "2.0" || claims.TokenType == "app" {
+		return UserClaims{}, ErrUserToken
+	}
+	if azp, ok := canonicalID(claims.AuthorizedParty); !ok || azp != clientApp {
+		return UserClaims{}, ErrUserToken
+	}
+	if !containsWord(claims.Scope, ConsoleScope) {
+		return UserClaims{}, ErrUserToken
+	}
+	return UserClaims{ObjectID: user, Expiry: std.Expiry.Time()}, nil
+}
+
+// Directory is the Entra directory this client's binding is for.
+func (c *Client) Directory() string { return c.binding.EntraTenantId }
+
 func containsWord(list, word string) bool {
 	for _, item := range strings.Fields(list) {
 		if item == word {

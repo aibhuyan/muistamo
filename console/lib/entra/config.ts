@@ -13,6 +13,9 @@ export type TenantConfig = {
   clientId: string; // the console's own app registration in that directory
   audience: string; // the blueprint app the knowledge service accepts tokens for
   scope: string; // the full delegated scope, e.g. api://<blueprint>/Knowledge.Read
+  // The control plane's own API app scope, api://<api app>/Registry.Console; without it the
+  // console makes no control-plane call under Entra sign-in.
+  controlPlaneScope?: string;
   clientSecret: string;
 };
 
@@ -63,7 +66,7 @@ export function parseTenants(raw: string, readSecret: (path: string) => string):
   const list = (doc as { tenants: unknown[] }).tenants;
   if (list.length === 0) fail("the tenants file names no tenant");
   const seen = { tenant: new Set<string>(), directory: new Set<string>() };
-  const allowed = ["tenant", "name", "directory", "clientId", "audience", "scope", "secretFile"];
+  const allowed = ["tenant", "name", "directory", "clientId", "audience", "scope", "controlPlaneScope", "secretFile"];
   return list.map((entry, i) => {
     if (typeof entry !== "object" || entry === null) fail(`tenant ${i} is not an object`);
     const e = entry as Record<string, unknown>;
@@ -83,6 +86,15 @@ export function parseTenants(raw: string, readSecret: (path: string) => string):
     if (!scope.endsWith(`/${KNOWLEDGE_SCOPE}`) || /\s/.test(scope)) {
       fail(`tenant ${i} scope must be the blueprint's full ${KNOWLEDGE_SCOPE} scope`);
     }
+    let controlPlaneScope: string | undefined;
+    if (e.controlPlaneScope !== undefined) {
+      controlPlaneScope = text(e.controlPlaneScope, `tenant ${i} controlPlaneScope`, 300);
+      const app = /^api:\/\/([0-9a-f-]{36})\/Registry\.Console$/.exec(controlPlaneScope)?.[1];
+      // Never the blueprint: the control plane must not accept what the knowledge service gets.
+      if (!app || !UUID.test(app) || app === audience || app === clientId) {
+        fail(`tenant ${i} controlPlaneScope must be api://<control-plane API app>/Registry.Console`);
+      }
+    }
     const secretFile = text(e.secretFile, `tenant ${i} secretFile`, 1000);
     let clientSecret: string;
     try {
@@ -91,7 +103,16 @@ export function parseTenants(raw: string, readSecret: (path: string) => string):
       fail(`tenant ${i}: the client secret file cannot be read`);
     }
     if (clientSecret.length < 16) fail(`tenant ${i}: the client secret file is empty or too short`);
-    return { tenant, name: text(e.name, `tenant ${i} name`), directory, clientId, audience, scope, clientSecret };
+    return {
+      tenant,
+      name: text(e.name, `tenant ${i} name`),
+      directory,
+      clientId,
+      audience,
+      scope,
+      ...(controlPlaneScope ? { controlPlaneScope } : {}),
+      clientSecret,
+    };
   });
 }
 

@@ -5,7 +5,7 @@ import type { components as ControlPlane } from "@contracts/muistamo";
 
 import { headers as requestHeaders } from "next/headers";
 
-import { type Session, serviceHeaders } from "./session";
+import { NotAvailable, type Session, serviceHeaders } from "./session";
 
 // The console's own request id (set by proxy.ts), for every log line about a service call.
 async function consoleRequestId(): Promise<string | null> {
@@ -51,7 +51,17 @@ async function call<T>(
   path: string,
   body?: unknown,
 ): Promise<Result<T>> {
-  const headers: Record<string, string> = { ...(await serviceHeaders(session)), Accept: "application/json" };
+  let credentials: Record<string, string>;
+  try {
+    credentials = await serviceHeaders(session, service);
+  } catch (error) {
+    if (error instanceof NotAvailable) {
+      // Honest coverage: say it is not set up, rather than fail as if the service were down.
+      return { ok: false, problem: { title: `The ${service} service is not available with this sign-in`, status: 501, detail: error.message } };
+    }
+    throw error;
+  }
+  const headers: Record<string, string> = { ...credentials, Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const url = baseUrl(service) + path;
   const requestId = await consoleRequestId();

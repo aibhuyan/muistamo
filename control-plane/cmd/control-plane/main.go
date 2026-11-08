@@ -20,6 +20,7 @@ import (
 	"go.temporal.io/sdk/worker"
 
 	"muistamo.dev/muistamo/control-plane/internal/api"
+	"muistamo.dev/muistamo/control-plane/internal/entra"
 	"muistamo.dev/muistamo/control-plane/internal/evidence"
 	"muistamo.dev/muistamo/control-plane/internal/lifecycle"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
@@ -92,6 +93,14 @@ func serveCmd(log *slog.Logger) *cobra.Command {
 					return err
 				}
 				delegator = d
+				// People signed in to the console, for the tenants with a binding (and a console
+				// client row); on the explicit console routes only.
+				console, err := entra.NewConsoleResolver(d)
+				if err != nil {
+					return fmt.Errorf("console callers: %w", err)
+				}
+				resolver = api.WithConsole{Console: console, Fallback: resolver}
+				log.Info("console callers accepted on the console routes", "binding_count", len(configs))
 				log.Info("knowledge delegations served", "binding_count", len(configs))
 				log.Warn("knowledge delegation responses carry bearer tokens: serve the API only over TLS outside development")
 			} else {
@@ -239,6 +248,31 @@ func tenantCmd() *cobra.Command {
 			return nil
 		},
 	})
+	console := &cobra.Command{Use: "console", Short: "The tenant's console at the control plane"}
+	console.AddCommand(&cobra.Command{
+		Use:   "set TENANT_ID CONSOLE_APP_ID CONTROL_PLANE_API_APP_ID",
+		Short: "Accept console tokens obtained by CONSOLE_APP for CONTROL_PLANE_API_APP (MUISTAMO_MIGRATE_DATABASE_URL)",
+		Args:  cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var ids [3]uuid.UUID
+			for i, a := range args {
+				id, err := uuid.Parse(a)
+				if err != nil || id.String() != a {
+					return fmt.Errorf("argument %d must be a lower-case UUID", i+1)
+				}
+				ids[i] = id
+			}
+			if ids[1] == ids[2] {
+				return fmt.Errorf("the console app and the control-plane API app must differ")
+			}
+			if err := store.SetConsoleClient(cmd.Context(), requireEnv("MUISTAMO_MIGRATE_DATABASE_URL"), ids[0], ids[1], ids[2]); err != nil {
+				return err
+			}
+			cmd.Printf("tenant %s accepts console tokens of app %s for %s\n", ids[0], ids[1], ids[2])
+			return nil
+		},
+	})
+	tenant.AddCommand(console)
 	tenant.AddCommand(&cobra.Command{
 		Use:   "hr-secret TENANT_ID",
 		Short: "Create the tenant's HR webhook secret and print it once (MUISTAMO_MIGRATE_DATABASE_URL)",

@@ -118,6 +118,8 @@ class Microsoft:
         # The console's web sign-in (OpenID Connect code flow with PKCE): its confidential
         # client, the one redirect URI registered for it, single-use codes and refresh tokens.
         self.console_secret = "obviously-fake-console-secret"
+        # The tenant's "Muistamo control plane" API app: console tokens for the control plane.
+        self.control_plane_api = uuid.uuid4()
         self.console_redirect = ""  # set by the run once the console's port is known
         self.codes: dict[str, dict[str, Any]] = {}
         self.refresh_tokens: dict[str, str] = {}  # refresh token -> user oid
@@ -143,6 +145,28 @@ class Microsoft:
                 "iat": now,
                 "nbf": now - 30,
                 "exp": now + lifetime,
+            },
+            self.key,
+            algorithm="RS256",
+            headers={"kid": self.kid},
+        )
+
+    def control_plane_token(self, oid: str) -> str:
+        """A console token for the control plane's own API app (never the blueprint)."""
+        now = int(time.time())
+        return jwt.encode(
+            {
+                "iss": f"https://login.microsoftonline.com/{self.directory}/v2.0",
+                "aud": str(self.control_plane_api),
+                "tid": str(self.directory),
+                "oid": oid,
+                "sub": f"e2e-cp-{oid}",
+                "ver": "2.0",
+                "scp": "Registry.Console",
+                "azp": str(CONSOLE),
+                "iat": now,
+                "nbf": now - 30,
+                "exp": now + 1800,
             },
             self.key,
             algorithm="RS256",
@@ -274,6 +298,19 @@ def serve(state: Microsoft, cert: str, key: str) -> ThreadingHTTPServer:
                 id_token = None
             refresh = f"e2e-refresh-{uuid.uuid4().hex}"
             state.refresh_tokens[refresh] = oid
+            # The same refresh token gives a token for another resource (Entra's behaviour).
+            control_plane_scope = f"api://{state.control_plane_api}/Registry.Console"
+            if grant == "refresh_token" and form.get("scope", "").split() == [control_plane_scope]:
+                return self._send(
+                    200,
+                    {
+                        "token_type": "Bearer",
+                        "access_token": state.control_plane_token(oid),
+                        "expires_in": 1800,
+                        "refresh_token": refresh,
+                        "scope": control_plane_scope,
+                    },
+                )
             answer = {
                 "token_type": "Bearer",
                 "access_token": state.user_token(
