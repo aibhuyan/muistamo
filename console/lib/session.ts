@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { mode } from "./entra/config";
+import { mode, tenantConfig } from "./entra/config";
+import { controlPlaneToken } from "./entra/controlplane";
 import { readSession } from "./entra/cookies";
 
 // Who is signed in, in one of two exclusive modes (never both; lib/entra/config.ts):
@@ -106,16 +107,26 @@ export async function endSession(): Promise<void> {
   store.delete(SESSION_COOKIE);
 }
 
+export class NotAvailable extends Error {}
+
 // The only place a session becomes service credentials. In Entra mode only the person's bearer
 // token is sent, never the development headers; it is read here, from the encrypted cookie, and
-// must belong to the same session the page was given.
-export async function serviceHeaders(session: Session): Promise<Record<string, string>> {
+// must belong to the same session the page was given. Each service gets only its own token: the
+// knowledge service the blueprint's, the control plane its own API app's
+// (docs/control-plane-console-plan.md).
+export async function serviceHeaders(
+  session: Session,
+  service: "knowledge" | "control-plane",
+): Promise<Record<string, string>> {
   if (entraEnabled()) {
     const s = await readSession(await cookies());
     if (!s || s.person !== session.person || s.tenant !== session.tenant || s.atExp <= Date.now()) {
       throw new Error("no current Entra session");
     }
-    return { Authorization: `Bearer ${s.at}` };
+    if (service === "knowledge") return { Authorization: `Bearer ${s.at}` };
+    const t = tenantConfig(s.tenant);
+    if (!t?.controlPlaneScope) throw new NotAvailable("the control plane is not set up for Entra sign-in here");
+    return { Authorization: `Bearer ${await controlPlaneToken(t, s)}` };
   }
   if (!devLoginEnabled()) throw new Error("no sign-in is configured");
   return { "X-Muistamo-Tenant": session.tenant, "X-Muistamo-Actor": session.person };

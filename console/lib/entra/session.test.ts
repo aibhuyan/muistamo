@@ -13,11 +13,17 @@ vi.mock("next/server", async () => ({ ...(await vi.importActual("next/server")),
 vi.mock("next/cache", async () => ({ revalidatePath: (await import("@/test/next")).revalidatePath }));
 
 const refresh = vi.fn();
+const cpToken = vi.fn();
+vi.mock("./controlplane", async () => ({
+  ...(await vi.importActual("./controlplane")),
+  controlPlaneToken: (...a: unknown[]) => cpToken(...a),
+}));
 vi.mock("./flow", async () => ({ ...(await vi.importActual("./flow")), refreshSession: (...a: unknown[]) => refresh(...a) }));
 
 const { resetEntraConfig } = await import("./config");
 const { SESSION_COOKIE, readSession, writeSession } = await import("./cookies");
 const { getSession, requireSession, serviceHeaders } = await import("@/lib/session");
+const { api } = await import("@/lib/api");
 const { default: MyKnowledgePage } = await import("@/app/my-knowledge/page");
 const { proxy } = await import("@/proxy");
 const { NextRequest } = await import("next/server");
@@ -27,7 +33,7 @@ const CLIENT = "c0c0c0c0-0000-4000-8000-0000000c0501";
 const AT = "obviously-fake-access-token-value";
 const RT = "obviously-fake-refresh-token-value";
 
-function configure(clientId = CLIENT) {
+function configure(clientId = CLIENT, controlPlane = true) {
   const dir = mkdtempSync(join(tmpdir(), "console-entra-"));
   writeFileSync(join(dir, "secret"), "obviously-fake-console-secret");
   writeFileSync(
@@ -41,6 +47,7 @@ function configure(clientId = CLIENT) {
           clientId,
           audience: "b1b1b1b1-0000-4000-8000-00000000b1b1",
           scope: "api://b1b1b1b1-0000-4000-8000-00000000b1b1/Knowledge.Read",
+          ...(controlPlane ? { controlPlaneScope: "api://a9a9a9a9-0000-4000-8000-0000000a9a9a/Registry.Console" } : {}),
           secretFile: join(dir, "secret"),
         },
       ],
@@ -77,6 +84,9 @@ beforeEach(() => {
   reset();
   configure();
   refresh.mockReset();
+  cpToken.mockReset();
+  vi.stubEnv("MUISTAMO_KNOWLEDGE_URL", "http://knowledge.test");
+  vi.stubEnv("MUISTAMO_CONTROL_PLANE_URL", "http://control-plane.test");
 });
 
 describe("the Entra session", () => {
@@ -106,10 +116,46 @@ describe("the Entra session", () => {
 
   test("only the bearer token is sent, never development headers", async () => {
     await writeSession(store, session());
-    const headers = await serviceHeaders({ tenant: TENANT, person: session().person });
+    const headers = await serviceHeaders({ tenant: TENANT, person: session().person }, "knowledge");
     expect(headers).toEqual({ Authorization: `Bearer ${AT}` });
     // Another person's page session never gets this cookie's token.
-    await expect(serviceHeaders({ tenant: TENANT, person: "entra:someone-else" })).rejects.toThrow();
+    await expect(serviceHeaders({ tenant: TENANT, person: "entra:someone-else" }, "knowledge")).rejects.toThrow();
+  });
+
+  test("each service gets only its own token", async () => {
+    await writeSession(store, session());
+    cpToken.mockResolvedValue("obviously-fake-control-plane-token");
+    const who = { tenant: TENANT, person: session().person };
+    expect(await serviceHeaders(who, "knowledge")).toEqual({ Authorization: `Bearer ${AT}` });
+    expect(await serviceHeaders(who, "control-plane")).toEqual({ Authorization: "Bearer obviously-fake-control-plane-token" });
+    const fetch = vi.fn(async () => jsonResponse(200, { items: [] }));
+    vi.stubGlobal("fetch", fetch);
+    await api.pendingCatalogueRequests(who);
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain("control-plane.test");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer obviously-fake-control-plane-token");
+  });
+
+  test("without a control-plane scope the catalogue says it is not set up, and calls nothing", async () => {
+    configure(CLIENT, false);
+    await writeSession(store, session());
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const res = await api.pendingCatalogueRequests({ tenant: TENANT, person: session().person });
+    expect(res).toMatchObject({ ok: false, problem: { status: 501 } });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(cpToken).not.toHaveBeenCalled();
+  });
+
+  test("a control-plane token that cannot be had is a try-again problem, logged without a token", async () => {
+    await writeSession(store, session());
+    cpToken.mockRejectedValue(Object.assign(new Error("refused"), { error: "invalid_grant" }));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await api.pendingCatalogueRequests({ tenant: TENANT, person: session().person });
+    expect(res).toMatchObject({ ok: false, problem: { status: 503 } });
+    expect(String(error.mock.calls[0][0])).not.toContain(AT);
+    expect(String(error.mock.calls[0][0])).not.toContain(RT);
+    error.mockRestore();
   });
 
   test("no token ever reaches the rendered page", async () => {

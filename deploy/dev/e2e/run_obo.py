@@ -524,6 +524,25 @@ def main() -> None:
         console = f"http://127.0.0.1:{c_port}"
         ms.console_redirect = f"{console}/auth/callback"
         (work / "console-secret").write_text(ms.console_secret)
+        # The control plane accepts the console's own tokens (docs/control-plane-console-plan.md):
+        # the console app, for the tenant's control-plane API app; the reviewer approves as entra.
+        cp_api = ms.control_plane_api
+        run(
+            [binary, "tenant", "console", "set", tenant, str(fake_microsoft.CONSOLE), str(cp_api)],
+            base,
+        )
+        run(
+            [binary, "catalogue", "approvers", "set", "--tenant", tenant, f"entra:{REVIEWER}"], base
+        )
+        controller = json.loads(json.dumps(TEMPLATE))
+        controller["metadata"]["name"] = "controller"
+        controller["spec"]["riskTier"] = "medium"
+        status, body = http("PUT", cp + "/v1/templates/controller", controller, operator)
+        assert status in (200, 201), (status, body)
+        status, pending = http(
+            "POST", cp + "/v1/templates/controller/versions/1/publication", None, operator
+        )
+        assert status == 201 and pending["state"] == "pending", (status, pending)
         (work / "console-tenants.json").write_text(
             json.dumps(
                 {
@@ -535,6 +554,7 @@ def main() -> None:
                             "clientId": str(fake_microsoft.CONSOLE),
                             "audience": str(blueprint),
                             "scope": f"api://{blueprint}/Knowledge.Read",
+                            "controlPlaneScope": f"api://{cp_api}/Registry.Console",
                             "secretFile": str(work / "console-secret"),
                         }
                     ]
@@ -571,6 +591,36 @@ def main() -> None:
         status, page = console_get(console, "/my-knowledge", jar)
         assert status == 200 and "My knowledge" in page, (status, page[-500:])
         assert "Bearer" not in page and "eyJ" not in page, "a token reached the page"
+        # The catalogue inbox through the console: the control plane accepts the reviewer's own
+        # console token for its API app, and the reviewer approves the pending request.
+        status, page = console_get(console, "/catalogue", jar)
+        assert status == 200 and "<h2>controller<!-- --> v<!-- -->1</h2>" in page, (
+            status,
+            page[-800:],
+        )
+        status, _ = console_decide(console, "/catalogue", "<h2>controller<!-- -->", jar)
+        assert status == 303, status
+        status, page = console_get(console, "/catalogue", jar)
+        assert status == 200 and "Nothing pending." in page, (status, page[-800:])
+        status, published = http("GET", cp + "/v1/catalogue", None, operator)
+        assert status == 200 and '"controller"' in json.dumps(published), (status, published)
+        # A blueprint token (what the knowledge service receives) never acts on the control plane.
+        status, _ = http(
+            "GET",
+            cp + "/v1/catalogue/requests",
+            None,
+            bearer(ms.user_token(REVIEWER, azp=fake_microsoft.CONSOLE)),
+        )
+        assert status == 401, status
+        # Nor does a console token on a route outside the console's list.
+        reviewer_cp = bearer(ms.control_plane_token(str(REVIEWER)))
+        assert http("GET", cp + "/v1/instances", None, reviewer_cp)[0] == 401
+        assert http("GET", cp + "/v1/catalogue/requests", None, reviewer_cp)[0] == 200
+        # A current employee who is not an approver sees only their own requests (none).
+        status, theirs = http(
+            "GET", cp + "/v1/catalogue/requests", None, bearer(ms.control_plane_token(str(OTHER)))
+        )
+        assert status == 200 and theirs["items"] == [], (status, theirs)
         # A callback is used once: the browser's transaction cookie is deleted, and a saved copy
         # replayed with the same code is refused because Entra redeems a code once.
         replay, replay_jar = console_callback_replay(console, fake, ca, PLATFORM)
@@ -755,6 +805,14 @@ def main() -> None:
         status, _ = http("GET", f"{kn}/v1/knowledge/leaver-reviews/{review['id']}", None, other)
         assert status == 404, status
         assert _frozen(kn, bearer(token)), "the leaver's layer is not frozen"
+        # The control plane refuses the leaver's console token at once (no cache there).
+        status, _ = http(
+            "GET",
+            cp + "/v1/catalogue/requests",
+            None,
+            bearer(ms.control_plane_token(str(PERSON))),
+        )
+        assert status == 401, status
         # In the console the leaver acts no more, though their Entra account still works.
         leaver_console = bearer(ms.user_token(PERSON, azp=fake_microsoft.CONSOLE))
         status, body = http("GET", f"{kn}/v1/knowledge/personal/entries", None, leaver_console)
@@ -1007,6 +1065,33 @@ def _authorize(console: str, fake: str, ca: str, user: uuid.UUID) -> tuple[dict[
     status, callback, _ = fake_get(fake, ca, res.headers["location"] + f"&login_hint={user}")
     assert status == 302 and callback.startswith(console + "/auth/callback?"), (status, callback)
     return jar, callback
+
+
+def console_decide(console: str, path: str, heading: str, jar: dict[str, str]) -> tuple[int, str]:
+    """Approve the item under heading with the page's own decision form, as without JavaScript."""
+    import re
+
+    status, page = console_get(console, path, jar)
+    assert status == 200, status
+    section = page[page.index(heading) :]
+    form = re.search(r"<form[^>]*>(.*?)</form>", section, re.S)
+    assert form, section[:800]
+    fields = re.findall(r'<input type="hidden" name="([^"]+)"(?: value="([^"]*)")?', form.group(1))
+    from html import unescape
+
+    # A bound Server Action carries JSON in its hidden fields, HTML-escaped in the page.
+    parts = [(unescape(name), (None, unescape(value))) for name, value in fields]
+    parts += [("decision", (None, "approve")), ("reason", (None, "e2e: fit to publish"))]
+    cookie = "; ".join(f"{k}={v}" for k, v in jar.items())
+    res = httpx2.post(
+        console + path,
+        files=parts,
+        headers={"Cookie": cookie, "Origin": console},
+        follow_redirects=False,
+        timeout=30,
+    )
+    _merge_cookies(jar, res.headers.get_list("set-cookie"))
+    return res.status_code, res.headers.get("location", "")
 
 
 def console_sign_out(console: str, jar: dict[str, str]) -> tuple[int, str]:

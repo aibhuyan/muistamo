@@ -40,6 +40,9 @@ type Actor struct {
 	Tenant    uuid.UUID
 	Name      string
 	RequestID string
+	// The console app a person's token was obtained by, for a console caller; uuid.Nil otherwise.
+	// Evidence of their actions names it (docs/control-plane-console-plan.md).
+	ClientApp uuid.UUID
 }
 
 // Service implements the registry on top of store.DB.
@@ -463,6 +466,19 @@ func checkRevision(ifMatch string, revision int) error {
 // recordEvidence appends a signed event inside the caller's transaction. A failure aborts the
 // whole write (CLAUDE.md invariants 3 and 4).
 func recordEvidence(ctx context.Context, tx pgx.Tx, signer evidence.Signer, actor Actor, action, kind, name string, before, after any) error {
+	if actor.ClientApp != uuid.Nil {
+		// The event body names the client app and its kind; the chain format is unchanged.
+		detail, ok := after.(map[string]any)
+		if !ok {
+			return fmt.Errorf("evidence of a console caller needs a map body: %w", ErrInvalid)
+		}
+		withClient := make(map[string]any, len(detail)+1)
+		for k, v := range detail {
+			withClient[k] = v
+		}
+		withClient["client"] = map[string]any{"app": actor.ClientApp.String(), "kind": "console"}
+		after = withClient
+	}
 	_, err := evidence.Append(ctx, tx, signer, evidence.Entry{
 		Tenant: actor.Tenant, Actor: actor.Name, Action: action,
 		SubjectKind: kind, SubjectName: name, Before: before, After: after, RequestID: actor.RequestID,

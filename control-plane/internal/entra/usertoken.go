@@ -53,39 +53,112 @@ type userTokenClaims struct {
 // version 2.0; current within a minute's skew; the Knowledge.Read scope; a user object id; and
 // not an app-only token.
 func (c *Client) ValidateUserToken(ctx context.Context, raw string, now time.Time) (UserClaims, error) {
-	if len(raw) == 0 || len(raw) > maxUserToken {
-		return UserClaims{}, ErrUserToken
-	}
-	token, err := jwt.ParseSigned(raw, []jose.SignatureAlgorithm{jose.RS256})
-	if err != nil || len(token.Headers) != 1 || token.Headers[0].KeyID == "" {
-		return UserClaims{}, ErrUserToken
-	}
-	key, err := c.signingKey(ctx, token.Headers[0].KeyID, now)
+	t, err := c.personToken(ctx, raw, now)
 	if err != nil {
 		return UserClaims{}, err
 	}
-	var std jwt.Claims
-	var claims userTokenClaims
-	if err := token.Claims(key, &std, &claims); err != nil {
+	// Delegated scopes are space separated; an app-only token has none.
+	if t.audience != c.binding.BlueprintAppId || !containsWord(t.scope, KnowledgeScope) {
 		return UserClaims{}, ErrUserToken
 	}
-	if std.Expiry == nil || std.NotBefore == nil || len(std.Audience) != 1 || std.Audience[0] != c.binding.BlueprintAppId {
-		return UserClaims{}, ErrUserToken
+	return t.user, nil
+}
+
+// personToken holds what every person's token for Muistamo establishes, before the checks that
+// depend on who it is for (the blueprint, or the control plane's own API app).
+type personToken struct {
+	user     UserClaims
+	audience string // exactly one
+	scope    string
+	azp      string
+}
+
+// personToken checks what every person's token must be: RS256 under one of the binding
+// directory's current signing keys; that directory's issuer and tenant; version 2.0; current
+// within a minute's skew, with expiry and not-before present; exactly one audience; a user object
+// id; not an app-only token. A failure to fetch the keys is returned as is (not ErrUserToken).
+func (c *Client) personToken(ctx context.Context, raw string, now time.Time) (personToken, error) {
+	if len(raw) == 0 || len(raw) > maxUserToken {
+		return personToken{}, ErrUserToken
+	}
+	token, err := jwt.ParseSigned(raw, []jose.SignatureAlgorithm{jose.RS256})
+	if err != nil || len(token.Headers) != 1 || token.Headers[0].KeyID == "" {
+		return personToken{}, ErrUserToken
+	}
+	key, err := c.signingKey(ctx, token.Headers[0].KeyID, now)
+	if err != nil {
+		return personToken{}, err
+	}
+	var std jwt.Claims
+	var claims consoleTokenClaims
+	if err := token.Claims(key, &std, &claims); err != nil {
+		return personToken{}, ErrUserToken
+	}
+	if std.Expiry == nil || std.NotBefore == nil || len(std.Audience) != 1 {
+		return personToken{}, ErrUserToken
 	}
 	expected := jwt.Expected{Issuer: "https://login.microsoftonline.com/" + c.binding.EntraTenantId + "/v2.0", Time: now}
 	if std.ValidateWithLeeway(expected, tokenLeeway) != nil {
-		return UserClaims{}, ErrUserToken
+		return personToken{}, ErrUserToken
 	}
 	user, valid := canonicalID(claims.ObjectID)
 	if !valid || claims.TenantID != c.binding.EntraTenantId || claims.Version != "2.0" || claims.TokenType == "app" {
-		return UserClaims{}, ErrUserToken
+		return personToken{}, ErrUserToken
 	}
-	// Delegated scopes are space separated; an app-only token has none.
-	if !containsWord(claims.Scope, KnowledgeScope) {
-		return UserClaims{}, ErrUserToken
-	}
-	return UserClaims{ObjectID: user, Expiry: std.Expiry.Time()}, nil
+	return personToken{
+		user:     UserClaims{ObjectID: user, Expiry: std.Expiry.Time()},
+		audience: std.Audience[0],
+		scope:    claims.Scope,
+		azp:      claims.AuthorizedParty,
+	}, nil
 }
+
+// ConsoleScope is the delegated scope a console token for the control plane must carry.
+const ConsoleScope = "Registry.Console"
+
+type consoleTokenClaims struct {
+	userTokenClaims
+	AuthorizedParty string `json:"azp"`
+}
+
+// ConsoleToken is a person's token from the console, verified (signature, directory, current),
+// with the audience and client app still to be matched against the tenant's console client.
+type ConsoleToken struct {
+	User      UserClaims
+	Audience  string
+	ClientApp uuid.UUID
+}
+
+// VerifyConsoleToken verifies a console token for the control plane at now, before anything is
+// read for the tenant: the person-token rules, the Registry.Console scope, and a client app (azp).
+// The caller then requires Audience = the tenant's control-plane API app (never the blueprint)
+// and ClientApp = the tenant's console app.
+func (c *Client) VerifyConsoleToken(ctx context.Context, raw string, now time.Time) (ConsoleToken, error) {
+	t, err := c.personToken(ctx, raw, now)
+	if err != nil {
+		return ConsoleToken{}, err
+	}
+	azp, ok := canonicalID(t.azp)
+	if !ok || !containsWord(t.scope, ConsoleScope) || t.audience == c.binding.BlueprintAppId {
+		return ConsoleToken{}, ErrUserToken
+	}
+	return ConsoleToken{User: t.user, Audience: t.audience, ClientApp: azp}, nil
+}
+
+// ValidateConsoleToken is VerifyConsoleToken plus the tenant's own apps.
+func (c *Client) ValidateConsoleToken(ctx context.Context, raw string, now time.Time, apiApp, clientApp uuid.UUID) (UserClaims, error) {
+	t, err := c.VerifyConsoleToken(ctx, raw, now)
+	if err != nil {
+		return UserClaims{}, err
+	}
+	if t.Audience != apiApp.String() || t.ClientApp != clientApp {
+		return UserClaims{}, ErrUserToken
+	}
+	return t.User, nil
+}
+
+// Directory is the Entra directory this client's binding is for.
+func (c *Client) Directory() string { return c.binding.EntraTenantId }
 
 func containsWord(list, word string) bool {
 	for _, item := range strings.Fields(list) {

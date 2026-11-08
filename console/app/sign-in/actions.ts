@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { type ActionState, field, invalid } from "@/lib/actions";
 import { tenantConfig } from "@/lib/entra/config";
+import { forgetControlPlaneToken } from "@/lib/entra/controlplane";
 import { clearSession, readSession } from "@/lib/entra/cookies";
 import { endSessionUrl } from "@/lib/entra/flow";
 import { devLoginEnabled, endSession, entraEnabled, startSession, validSession } from "@/lib/session";
@@ -23,6 +24,7 @@ export async function signOut(): Promise<void> {
     const store = await cookies();
     const session = await readSession(store);
     clearSession(store);
+    if (session) forgetControlPlaneToken(session.sid);
     const t = session ? tenantConfig(session.tenant) : null;
     let url: URL | null = null;
     try {

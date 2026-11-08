@@ -182,6 +182,38 @@ func SetPrivacyOfficers(ctx context.Context, url string, tenant uuid.UUID, offic
 	return replaceTenantList(ctx, url, tenant, "privacy_officers", "officer", officers)
 }
 
+// SetConsoleClient records the tenant's console app and its control-plane API app
+// (docs/control-plane-console-plan.md): console callers are accepted only with tokens the console
+// app obtained for that API app. Only an operator sets it, as owner.
+func SetConsoleClient(ctx context.Context, url string, tenant, clientApp, apiApp uuid.UUID) error {
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+		// Neither app may be the tenant's blueprint: the control plane must never accept what the
+		// knowledge service receives.
+		var blueprint *uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT b.blueprint_app_id FROM identity_enrollments e
+			JOIN entra_bindings b ON b.tenant_id = e.tenant_id AND b.binding_version = e.binding_version
+			WHERE e.tenant_id = $1`, tenant).Scan(&blueprint)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("read the tenant's blueprint: %w", err)
+		}
+		if blueprint != nil && (*blueprint == apiApp || *blueprint == clientApp) {
+			return fmt.Errorf("the console and control-plane API apps must not be the tenant's blueprint app")
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO console_clients (tenant_id, client_app, api_app) VALUES ($1, $2, $3)
+			ON CONFLICT (tenant_id) DO UPDATE SET client_app = EXCLUDED.client_app, api_app = EXCLUDED.api_app, updated_at = now()`,
+			tenant, clientApp, apiApp)
+		if err != nil {
+			return fmt.Errorf("set console client: %w", err)
+		}
+		return nil
+	})
+}
+
 // replaceTenantList replaces one tenant's rows in a (tenant_id, value) table. table and column are
 // constants from this package, never input.
 func replaceTenantList(ctx context.Context, url string, tenant uuid.UUID, table, column string, values []string) error {
