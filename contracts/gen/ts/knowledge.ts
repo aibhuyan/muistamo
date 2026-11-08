@@ -1688,6 +1688,33 @@ export interface components {
             version?: string;
         };
         /**
+         * KnowledgePersonCurrent
+         * @description Whether the person is a current employee at this moment, as the control plane's HR record and Entra user link say. Anything but current is not current.
+         */
+        KnowledgePersonCurrent: {
+            current: boolean;
+            /**
+             * @description Why not current: the token did not validate, the user is not linked to a current joiner (a leaver, or a person Muistamo has no HR record or link for), or the tenant's identity binding is changing.
+             * @enum {string}
+             */
+            reason?: "token-invalid" | "user-unlinked" | "identity-not-ready";
+        };
+        /**
+         * KnowledgePersonCurrentRequest
+         * @description The knowledge service asks whether the person who sent userToken is a current employee: their Entra user is linked to an HR person whose latest accepted HR event is the joiner that made the link. A signed service call: the signature, its time window and the single-use nonce together refuse replays.
+         */
+        KnowledgePersonCurrentRequest: {
+            /**
+             * @description Always person-current. The knowledge-to-control-plane signature covers the body, not the route: this constant makes the body valid for this route only, so a captured status request can never be replayed as a delegation request, nor the reverse.
+             * @constant
+             */
+            purpose: "person-current";
+            /** @description The person's Entra access token for Muistamo, as the knowledge service received it. Validated, never stored or recorded. */
+            userToken: string;
+            /** @description 128 random bits, hex encoded. Each nonce is accepted once. */
+            nonce: string;
+        };
+        /**
          * KnowledgeRead
          * @description One retrieval a person made: what they were shown, never the query text (invariant 5).
          */

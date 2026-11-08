@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"time"
@@ -207,4 +208,37 @@ func (d *Delegator) Delegate(ctx context.Context, actor registry.Actor, req muis
 			}
 			return token, expiry, err
 		})
+}
+
+// Current implements api.Delegator: whether the token's person is a current employee, with the
+// tenant's binding validating the token and the registry deciding by the delegation's rule.
+func (d *Delegator) Current(ctx context.Context, actor registry.Actor, req muistamov1.KnowledgePersonCurrentRequest) (muistamov1.KnowledgePersonCurrent, error) {
+	client := d.clients[actor.Tenant]
+	if client == nil {
+		return muistamov1.KnowledgePersonCurrent{}, registry.ErrDelegationNotConfigured
+	}
+	user, err := client.ValidateUserToken(ctx, req.UserToken, time.Now())
+	if err != nil {
+		if !errors.Is(err, ErrUserToken) {
+			// The token could not be checked (signing keys unreachable): no answer, so the
+			// knowledge service refuses with "try again" rather than "not an employee".
+			return muistamov1.KnowledgePersonCurrent{}, fmt.Errorf("validate user token: %w", err)
+		}
+		reason := muistamov1.KnowledgePersonCurrentReasonTokenInvalid
+		return muistamov1.KnowledgePersonCurrent{Current: false, Reason: &reason}, nil
+	}
+	entraTenant := uuid.MustParse(client.binding.EntraTenantId)
+	version := uuid.MustParse(client.binding.BindingVersion)
+	refused, err := d.registry.PersonCurrent(ctx, actor, registry.DelegationRequest{BindingVersion: version, EntraTenant: entraTenant, User: user.ObjectID})
+	if err != nil {
+		return muistamov1.KnowledgePersonCurrent{}, err
+	}
+	if refused != "" {
+		reason := muistamov1.KnowledgePersonCurrentReason(refused)
+		if !reason.Valid() {
+			reason = muistamov1.KnowledgePersonCurrentReasonUserUnlinked // fail closed, never unknown
+		}
+		return muistamov1.KnowledgePersonCurrent{Current: false, Reason: &reason}, nil
+	}
+	return muistamov1.KnowledgePersonCurrent{Current: true}, nil
 }

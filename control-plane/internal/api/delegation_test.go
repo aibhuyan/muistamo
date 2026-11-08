@@ -43,6 +43,16 @@ func (d *fakeDelegator) Delegate(_ context.Context, actor registry.Actor, req mu
 		GraphToken: "obviously-fake-graph-token", ExpiresAt: time.Now().Add(time.Hour)}, nil
 }
 
+func (d *fakeDelegator) Current(_ context.Context, actor registry.Actor, _ muistamov1.KnowledgePersonCurrentRequest) (muistamov1.KnowledgePersonCurrent, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.asked = append(d.asked, actor)
+	if d.err != nil {
+		return muistamov1.KnowledgePersonCurrent{}, d.err
+	}
+	return muistamov1.KnowledgePersonCurrent{Current: true}, nil
+}
+
 func newDelegationHarness(t *testing.T, delegator api.Delegator, logs *strings.Builder) harness {
 	t.Helper()
 	db := testdb.New(t)
@@ -207,5 +217,78 @@ func TestDelegationNoncesArePrunedOnlyAfterTheSignatureWindow(t *testing.T) {
 	// The application role can never rewrite a nonce's time.
 	if err := testdb.ExecErr(h.db.AppURL, tenant, `UPDATE delegation_nonces SET seen_at = now() - interval '1 hour'`); err == nil {
 		t.Fatal("the application role updated a nonce")
+	}
+}
+
+func currentBody(nonce string) string {
+	return `{"purpose":"person-current","userToken":"` + fakeUserToken + `","nonce":"` + nonce + `"}`
+}
+
+func (h harness) postCurrent(t *testing.T, tenant uuid.UUID, key []byte, at time.Time, body string) response {
+	t.Helper()
+	return h.call(t, tenant, http.MethodPost, "/v1/internal/knowledge/people/current", body, "X-Muistamo-Signature", signature.Sign(key, []byte(body), at))
+}
+
+func TestPersonCurrentIsASignedSingleUseKnowledgeCall(t *testing.T) {
+	d := &fakeDelegator{}
+	var logs strings.Builder
+	h := newDelegationHarness(t, d, &logs)
+	tenant := h.tenant(t, "acme")
+	secret := knowledgeSecret(t, h, tenant)
+	key := signature.DirectionKey(secret, signature.KnowledgeToControlPlane, tenant.String())
+	body := currentBody(newNonce())
+	ok := h.postCurrent(t, tenant, key, time.Now(), body)
+	if ok.status != http.StatusOK || ok.body["current"] != true || ok.cacheControl != "no-store" {
+		t.Fatalf("signed request = %d %s", ok.status, ok.raw)
+	}
+	for name, res := range map[string]response{
+		"the other direction's key": h.postCurrent(t, tenant, secret, time.Now(), currentBody(newNonce())),
+		"stale":                     h.postCurrent(t, tenant, key, time.Now().Add(-6*time.Minute), currentBody(newNonce())),
+		"replayed nonce":            h.postCurrent(t, tenant, key, time.Now(), body),
+		"dev headers only":          h.call(t, tenant, http.MethodPost, "/v1/internal/knowledge/people/current", currentBody(newNonce())),
+	} {
+		if res.status != http.StatusUnauthorized {
+			t.Errorf("%s: %d %s", name, res.status, res.raw)
+		}
+	}
+	if len(d.asked) != 1 {
+		t.Fatalf("an unauthenticated request reached the delegator: %d", len(d.asked))
+	}
+	// A signed status request replayed at the delegation route is refused even while its nonce
+	// is unused (the signature covers the body, not the route; the purpose binds the route).
+	fresh := currentBody(newNonce())
+	if res := h.postDelegation(t, tenant, key, time.Now(), fresh); res.status < 400 || res.status >= 500 || res.status == http.StatusUnauthorized {
+		t.Fatalf("a status request at the delegation route = %d %s", res.status, res.raw)
+	}
+	// And the reverse: a delegation request is never a status request.
+	if res := h.postCurrent(t, tenant, key, time.Now(), delegationBody(newNonce())); res.status < 400 || res.status >= 500 || res.status == http.StatusUnauthorized {
+		t.Fatalf("a delegation request at the status route = %d %s", res.status, res.raw)
+	}
+	if len(d.asked) != 1 {
+		t.Fatalf("a request for the other route reached the delegator: %d", len(d.asked))
+	}
+	// Neither validation answer echoes the token.
+	for _, b := range []string{fresh, delegationBody(newNonce())} {
+		res := h.postCurrent(t, tenant, key, time.Now(), strings.Replace(b, `"nonce"`, `"extra":1,"nonce"`, 1))
+		if strings.Contains(res.raw, fakeUserToken) {
+			t.Fatalf("a refused request echoed the token: %s", res.raw)
+		}
+	}
+	// The fresh status request still works at its own route: the nonce was never used.
+	if res := h.postCurrent(t, tenant, key, time.Now(), fresh); res.status != http.StatusOK {
+		t.Fatalf("the status request after a refused replay = %d", res.status)
+	}
+	if strings.Contains(logs.String(), fakeUserToken) {
+		t.Fatal("the user token reached the logs")
+	}
+}
+
+func TestPersonCurrentWithoutEntraIsNotConfigured(t *testing.T) {
+	var logs strings.Builder
+	h := newDelegationHarness(t, nil, &logs)
+	tenant := h.tenant(t, "acme")
+	key := signature.DirectionKey(knowledgeSecret(t, h, tenant), signature.KnowledgeToControlPlane, tenant.String())
+	if res := h.postCurrent(t, tenant, key, time.Now(), currentBody(newNonce())); res.status != http.StatusNotImplemented {
+		t.Fatalf("without a delegator = %d %s", res.status, res.raw)
 	}
 }

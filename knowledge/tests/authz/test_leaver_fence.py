@@ -15,6 +15,7 @@ import psycopg
 import pytest
 from muistamo_knowledge import auth, entra, evidence
 from muistamo_knowledge.leavers import set_service_secret
+from muistamo_knowledge.privacy import replace_officers
 
 pytestmark = pytest.mark.authz
 
@@ -22,6 +23,7 @@ SECRET = b"mks_test-only-not-a-secret-0123456789abcdef"
 SUPERSEDED = "https://muistamo.dev/problems/superseded"
 PERSON = uuid.UUID("7a000000-0000-4000-8000-00000000000a")
 CONSOLE = uuid.UUID("7a000000-0000-4000-8000-0000000c0501")
+ASSISTANT = uuid.UUID("55555555-5555-4555-8555-555555555555")  # conftest's allowed assistant
 MANAGER = uuid.UUID("7a000000-0000-4000-8000-00000000000b")
 OTHER = uuid.UUID("7a000000-0000-4000-8000-00000000000c")
 P, M = f"entra:{PERSON}", f"entra:{MANAGER}"
@@ -222,7 +224,12 @@ def test_a_decision_is_refused_once_a_later_generation_is_known(live) -> None:
     assert [e["key"] for e in live.entries()] == ["fiscal-year"]
     assert live.actions()[-1] == (
         "knowledge.leaver-review.refused",
-        {"reason": "superseded", "generation": 2, "fence": 3},
+        {
+            "reason": "superseded",
+            "generation": 2,
+            "fence": 3,
+            "client": {"app": str(CONSOLE), "kind": "console"},  # the manager, in the console
+        },
     )
 
 
@@ -472,3 +479,188 @@ def test_after_a_rehire_the_person_finds_only_their_shared_entries(private_live)
     assert live.fence(3).status_code == 200  # rehired: the review is cancelled
     assert not live.frozen()
     assert keys(live) == {"fiscal-year"}  # private notes went at leaving (D59)
+
+
+# The console admits only current employees (docs/console-entra-signin-plan.md, PR 0) --------
+
+NOT_CURRENT = "only for current employees"
+
+
+def test_only_a_current_employee_acts_in_the_console(live) -> None:
+    """The control plane, which owns HR status, decides at use time; knowledge asks it for every
+    console call (cached briefly) and admits nobody it does not confirm."""
+    replace_officers(live.world.db.owner_url, live.world.tenant, [P])  # the most powerful role
+    console = live.console(PERSON)
+    assert console.get("/v1/knowledge/leaver-reviews").status_code == 200
+    live.world.knowledge.people.not_current.add(P)  # a leaver, or someone Muistamo has no link for
+    for path in (
+        "/v1/knowledge/personal/entries",
+        "/v1/knowledge/leaver-reviews",
+        "/v1/knowledge/events",
+    ):
+        res = console.get(path)
+        assert res.status_code == 403 and NOT_CURRENT in res.json()["detail"], (path, res.text)
+    res = console.post(
+        "/v1/knowledge/privacy/erasures",
+        json={
+            "id": str(uuid.uuid4()),
+            "reason": "x",
+            "subject": {"identities": ["dev:x@example.invalid"]},
+        },
+    )
+    assert res.status_code == 403 and NOT_CURRENT in res.json()["detail"]
+    # Their assistant is not the console: it is limited by its agent's delegation instead.
+    assert live.person(PERSON).get("/v1/knowledge/personal/entries").status_code == 200
+
+
+def test_when_the_control_plane_cannot_answer_the_console_is_refused(live) -> None:
+    live.world.knowledge.people.unavailable.add(P)
+    res = live.console(PERSON).get("/v1/knowledge/personal/entries")
+    assert res.status_code == 503, res.text
+    live.world.knowledge.people = None  # no control plane configured at all
+    res = live.console(PERSON).get("/v1/knowledge/personal/entries")
+    assert res.status_code == 403 and NOT_CURRENT in res.json()["detail"]
+
+
+def test_only_console_callers_are_asked(live) -> None:
+    people = live.world.knowledge.people
+    assert live.person(PERSON).get("/v1/knowledge/personal/entries").status_code == 200
+    assert people.asked == []
+    assert live.console(PERSON).get("/v1/knowledge/personal/entries").status_code == 200
+    assert people.asked == [P]
+
+
+def test_a_leaving_decider_hands_their_reviews_to_the_privacy_officers(live) -> None:
+    """When the manager leaves, the reviews they were to decide do not get stuck and purge:
+    the privacy officers decide them, with evidence of the hand-over."""
+    officer = uuid.UUID("7a000000-0000-4000-8000-00000000000d")
+    replace_officers(live.world.db.owner_url, live.world.tenant, [f"entra:{officer}"])
+    assert live.open("leave-2:run", 2).status_code == 201  # P leaves; M decides
+    assert live.console(officer).get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 404
+    # M leaves (their own live review, at their generation).
+    opened = live.post(
+        "/v1/knowledge/internal/leaver-reviews",
+        {"id": "leave-m:run", "generation": 2, "person": {"user": M}, "deciders": []},
+    )
+    assert opened.status_code == 201, opened.text
+    got = live.console(officer).get("/v1/knowledge/leaver-reviews/leave-2:run")
+    assert got.status_code == 200 and got.json()["deciderKind"] == "privacy-officers"
+    assert live.console(MANAGER).get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 404
+    replaced = [
+        a for name, a in live.actions() if name == "knowledge.leaver-review.decider-replaced"
+    ]
+    assert replaced == [
+        {"deciderKind": "privacy-officers", "reason": "decider-left", "leaving": "leave-m:run"}
+    ]
+    decided = live.console(officer).post(
+        "/v1/knowledge/leaver-reviews/leave-2:run/decision",
+        json={"decision": "keep", "reason": "the manager left; keep it for the team"},
+    )
+    assert decided.status_code == 200, decided.text
+
+
+def test_a_superseded_leaving_hands_nothing_over(live) -> None:
+    assert live.open("leave-2:run", 2).status_code == 201
+    live.post("/v1/knowledge/internal/leaver-reviews/fence", {"user": M, "generation": 3})
+    late = live.post(
+        "/v1/knowledge/internal/leaver-reviews",
+        {"id": "leave-m:old", "generation": 2, "person": {"user": M}, "deciders": []},
+    )
+    assert late.status_code == 409
+    got = live.console(MANAGER).get("/v1/knowledge/leaver-reviews/leave-2:run")
+    assert got.status_code == 200 and got.json()["deciderKind"] == "manager"
+
+
+# Evidence names the client app (docs/console-entra-signin-plan.md) ------------------------------
+
+
+def test_evidence_records_the_client_app_and_its_kind(live) -> None:
+    assert (
+        live.console(PERSON)
+        .post("/v1/knowledge/personal/entries", json=NOTE | {"key": "k1"})
+        .status_code
+        == 201
+    )
+    assert (
+        live.person(PERSON)
+        .post("/v1/knowledge/personal/entries", json=NOTE | {"key": "k2"})
+        .status_code
+        == 201
+    )
+    captured = [a for name, a in live.actions() if name == "knowledge.entry.captured"]
+    assert captured[-2]["client"] == {"app": str(CONSOLE), "kind": "console"}
+    assert captured[-1]["client"] == {"app": str(ASSISTANT), "kind": "assistant"}
+    # The control plane's own calls, and development callers, name no client.
+    assert live.open("leave-2:run", 2).status_code == 201
+    opened = [a for name, a in live.actions() if name == "knowledge.leaver-review.opened"]
+    assert "client" not in opened[-1]
+
+
+def test_a_review_naming_a_decider_who_already_left_is_the_officers(live) -> None:
+    """The hand-over runs when the decider's own leaving opens; a review opened afterwards that
+    still names them (a race) is the officers' by the same record, read when it is used."""
+    officer = uuid.UUID("7a000000-0000-4000-8000-00000000000d")
+    replace_officers(live.world.db.owner_url, live.world.tenant, [f"entra:{officer}"])
+    gone = live.post(
+        "/v1/knowledge/internal/leaver-reviews",
+        {"id": "leave-m:run", "generation": 2, "person": {"user": M}, "deciders": []},
+    )
+    assert gone.status_code == 201, gone.text
+    assert live.open("leave-2:run", 2).status_code == 201  # still names M as decider
+    listed = live.console(officer).get("/v1/knowledge/leaver-reviews").json()["items"]
+    assert "leave-2:run" in [r["id"] for r in listed]
+    assert live.console(officer).get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 200
+
+
+def test_an_officer_never_decides_their_own_leaving(live) -> None:
+    replace_officers(live.world.db.owner_url, live.world.tenant, [P])
+    opened = live.open("leave-2:run", 2, deciders=[])  # no manager: the officers decide
+    assert opened.status_code == 201 and opened.json()["deciderKind"] == "privacy-officers"
+    console = live.console(PERSON)
+    assert console.get("/v1/knowledge/leaver-reviews").json()["items"] == []
+    assert console.get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 404
+    res = console.post(
+        "/v1/knowledge/leaver-reviews/leave-2:run/decision",
+        json={"decision": "purge", "reason": "my own layer"},
+    )
+    assert res.status_code == 404
+
+
+def test_a_closed_review_is_not_handed_over(live) -> None:
+    assert live.open("leave-2:run", 2).status_code == 201
+    decided = live.console(MANAGER).post(
+        "/v1/knowledge/leaver-reviews/leave-2:run/decision",
+        json={"decision": "purge", "reason": "not needed"},
+    )
+    assert decided.status_code == 200
+    live.post(
+        "/v1/knowledge/internal/leaver-reviews",
+        {"id": "leave-m:run", "generation": 2, "person": {"user": M}, "deciders": []},
+    )
+    replaced = [
+        a for name, a in live.actions() if name == "knowledge.leaver-review.decider-replaced"
+    ]
+    assert replaced == []
+
+
+def test_an_mcp_capture_names_the_assistant_client(live) -> None:
+    token = live.ew.directory.token(PERSON)
+    saved = live.ew.mcp(token, "remember", {"key": "mcp-note", "title": "t", "body": "b"})
+    assert not saved.is_error, saved
+    captured = [a for name, a in live.actions() if name == "knowledge.entry.captured"]
+    assert captured[-1]["client"] == {"app": str(ASSISTANT), "kind": "assistant"}
+
+
+def test_evidence_after_must_be_a_mapping_to_carry_the_client(live) -> None:
+    from muistamo_knowledge.service import Actor
+
+    who = Actor(
+        tenant=live.world.tenant,
+        name=P,
+        request_id="r",
+        client_kind="console",
+        client_app=CONSOLE,
+    )
+    with pytest.raises(TypeError):
+        with live.world.knowledge.db.in_tenant(live.world.tenant) as cur:
+            live.world.knowledge._evidence(cur, who, "x.y", "X", "x", after=["not", "a", "mapping"])

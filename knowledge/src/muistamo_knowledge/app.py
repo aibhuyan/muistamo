@@ -51,6 +51,7 @@ from muistamo_knowledge.service import (
     Knowledge,
     NotFound,
     Superseded,
+    Unavailable,
     to_jsonable,
 )
 
@@ -67,6 +68,7 @@ _STATUS: list[tuple[type[Exception], int, str]] = [
     (Invalid, 422, "Invalid request"),
     (evidence.EvidenceNotRecorded, 503, "Evidence could not be recorded; nothing was changed"),
     (ConnectorUnavailable, 503, "The source could not be reached; nothing was changed"),
+    (Unavailable, 503, "A required check could not be made; nothing was done"),
 ]
 
 
@@ -152,15 +154,46 @@ def create_app(knowledge: Knowledge | None, resolver: Resolver = deny_all) -> Fa
     def actor(request: Request) -> Actor:
         if knowledge is None:
             raise Unauthenticated("knowledge service not configured")
-        tenant, name, assistant, kind = auth.resolve_caller(resolver, request.headers)
-        return Actor(
-            tenant=tenant,
-            name=name,
+        caller = auth.resolve_caller(resolver, request.headers)
+        who = Actor(
+            tenant=caller.tenant,
+            name=caller.name,
             request_id=str(uuid.uuid4()),
-            bearer=auth.entra_bearer(name, request.headers),
-            assistant=assistant,
-            client_kind=kind,
+            bearer=auth.entra_bearer(caller.name, request.headers),
+            assistant=caller.assistant,
+            client_kind=caller.kind,
+            client_app=caller.client_app,
         )
+        if caller.kind == "console":
+            # Use-time HR status (invariant 1): in the console a person acts as themselves,
+            # reviewer, officer or administrator included, so only a current employee may, by
+            # the control plane's HR record and Entra link, whatever IT has done to the account.
+            people = knowledge.people
+            current = (
+                None
+                if people is None or who.bearer is None
+                else people.is_current(who.tenant, who.name, who.bearer)
+            )
+            if current is not True:
+                log.warning(
+                    "console caller refused: not confirmed as a current employee",
+                    extra={
+                        "tenant": str(who.tenant),
+                        "person": who.name,
+                        "request_id": who.request_id,
+                        "answer": "unavailable" if current is None else "not-current",
+                    },
+                )
+                if current is None and people is not None:
+                    raise Unavailable(
+                        "the control plane could not confirm that you are a current employee;"
+                        " try again shortly"
+                    )
+                raise Forbidden(
+                    "the console acts only for current employees, by Muistamo's HR record and"
+                    " your Entra account's link to it"
+                )
+        return who
 
     Who = Annotated[Actor, Depends(actor)]
 

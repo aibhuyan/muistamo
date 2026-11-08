@@ -41,6 +41,10 @@ class Forbidden(Exception):
     pass
 
 
+class Unavailable(Exception):
+    """A check that must succeed could not be made; nothing was done (fail closed)."""
+
+
 class Conflict(Exception):
     pass
 
@@ -69,6 +73,10 @@ class Actor:
     # The allowed client's kind: 'assistant' or 'console' (migration 0013); None for development
     # callers.
     client_kind: str | None = field(default=None, compare=False)
+    # The allowed client's Entra application id; None for development and service callers.
+    # Recorded in evidence with its kind, so a decision made through any client can be told
+    # apart (docs/console-entra-signin-plan.md).
+    client_app: UUID | None = field(default=None, compare=False)
 
     @property
     def through_assistant(self) -> bool:
@@ -121,6 +129,9 @@ class Knowledge:
         self.connectors = connectors or {}
         # Entra callers' delegations (PR D); None refuses every Entra caller's sources.
         self.delegations: DelegationClient | None = None
+        # Who the console admits: the control plane's person-current answers (CurrentPeople).
+        # None admits no console caller (fail closed).
+        self.people: Any = None
         # Called after a new pack version commits, with (actor, pack, version). Delivery targets
         # (Agent Skills destinations, FR-312) subscribe here; a failing hook never undoes a merge.
         self.on_publish: list[Callable[[Actor, str, str], None]] = []
@@ -138,6 +149,14 @@ class Knowledge:
         after: Any,
         before: Any = None,
     ) -> None:
+        if actor.client_app is not None:
+            # The event body names the client app and its kind; the chain format is unchanged.
+            client = {"app": str(actor.client_app), "kind": actor.client_kind}
+            # A document-valued after (pack.applied, erasure.completed) is the document plus
+            # client. Anything but a mapping or nothing is a programming error, never dropped.
+            if after is not None and not isinstance(after, dict):
+                raise TypeError("evidence after must be a mapping to carry the client")
+            after = {**(after or {}), "client": client}
         evidence.append(
             cur,
             self.signer,

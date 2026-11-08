@@ -15,6 +15,7 @@ import hmac
 import logging
 import time
 from collections.abc import Callable, Mapping
+from typing import NamedTuple
 from uuid import UUID
 
 
@@ -65,16 +66,24 @@ def entra_bearer(name: str, headers: Mapping[str, str]) -> str | None:
     return token if scheme.lower() == "bearer" and token else None
 
 
-def resolve_caller(
-    resolver: Resolver, headers: Mapping[str, str]
-) -> tuple[UUID, str, str | None, str | None]:
-    """The tenant, the caller and, for an Entra caller, the allowed client it came through (name
-    and kind), from one verification. Other resolvers name no client."""
+class Caller(NamedTuple):
+    """Who called: the tenant and the caller, and, for an Entra caller, the allowed client app
+    its token was obtained by (its name, kind and application id)."""
+
+    tenant: UUID
+    name: str
+    assistant: str | None = None
+    kind: str | None = None
+    client_app: UUID | None = None
+
+
+def resolve_caller(resolver: Resolver, headers: Mapping[str, str]) -> Caller:
+    """The caller, from one verification. Resolvers other than Entra's name no client."""
     resolve = getattr(resolver, "resolve_caller", None)
     if resolve is not None:
         return resolve(headers)
     tenant, name = resolver(headers)
-    return tenant, name, None, None
+    return Caller(tenant, name)
 
 
 def no_identity_map(_: str) -> str:

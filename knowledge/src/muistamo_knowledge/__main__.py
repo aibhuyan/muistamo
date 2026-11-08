@@ -89,7 +89,7 @@ def serve(_: argparse.Namespace) -> None:
     # flag (docs/d59-private-entries-plan.md); reads and the purge at leaving are always on.
     knowledge.private_entries = os.environ.get("MUISTAMO_KNOWLEDGE_PRIVATE_ENTRIES") == "true"
     if entra_callers:
-        from muistamo_knowledge.delegation import DelegationClient
+        from muistamo_knowledge.delegation import CurrentPeople, DelegationClient
         from muistamo_knowledge.leavers import Leavers
 
         url = os.environ.get("MUISTAMO_CONTROL_PLANE_URL", "")
@@ -102,10 +102,13 @@ def serve(_: argparse.Namespace) -> None:
                 logging.warning("INSECURE: delegations travel without TLS; development only")
             leavers = Leavers(knowledge, auth.no_identity_map)
             knowledge.delegations = DelegationClient(url, leavers.service_secret)
+            # The console admits only current employees, as the control plane says.
+            knowledge.people = CurrentPeople(knowledge.delegations)
         else:
             logging.warning(
                 "MUISTAMO_CONTROL_PLANE_URL is not set: Entra callers get no delegation, so only"
-                " their personal layer and mandatory packs are searched and no source is asked"
+                " their personal layer and mandatory packs are searched and no source is asked;"
+                " the console admits nobody, as no one can be confirmed a current employee"
             )
     uvicorn.run(create_app(knowledge, resolver), host=host, port=int(port))
 
