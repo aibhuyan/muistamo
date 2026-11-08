@@ -11,7 +11,7 @@ vi.mock("next/headers", async () => ({ cookies: (await import("@/test/next")).co
 const { resetEntraConfig } = await import("@/lib/entra/config");
 const { TXN_COOKIE } = await import("@/lib/entra/cookies");
 const { seal } = await import("@/lib/entra/seal");
-const { GET: start } = await import("./start/route");
+const { GET: start, POST: startPost } = await import("./start/route");
 const { GET: callback } = await import("./callback/route");
 const { register } = await import("@/instrumentation");
 const { NextRequest } = await import("next/server");
@@ -19,7 +19,7 @@ const { NextRequest } = await import("next/server");
 const TENANT = "11111111-2222-4333-8444-555555555555";
 const KEY = { id: "k1", key: new Uint8Array(32).fill(9) };
 
-function configure(over: Record<string, string> = {}) {
+function configure(over: Record<string, string> = {}, tenants = 1) {
   const dir = mkdtempSync(join(tmpdir(), "console-auth-"));
   writeFileSync(join(dir, "secret"), "obviously-fake-console-secret");
   writeFileSync(
@@ -35,6 +35,19 @@ function configure(over: Record<string, string> = {}) {
           scope: "api://b1b1b1b1-0000-4000-8000-00000000b1b1/Knowledge.Read",
           secretFile: join(dir, "secret"),
         },
+        ...(tenants > 1
+          ? [
+              {
+                tenant: "22222222-2222-4333-8444-555555555555",
+                name: "Globex",
+                directory: "dddddddd-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                clientId: "c0c0c0c0-0000-4000-8000-0000000c0502",
+                audience: "b1b1b1b1-0000-4000-8000-00000000b1b1",
+                scope: "api://b1b1b1b1-0000-4000-8000-00000000b1b1/Knowledge.Read",
+                secretFile: join(dir, "secret"),
+              },
+            ]
+          : []),
       ],
     }),
   );
@@ -56,14 +69,38 @@ describe("sign-in routes", () => {
   test("without Entra configured they do not exist", async () => {
     vi.stubEnv("MUISTAMO_CONSOLE_TENANTS", "");
     resetEntraConfig();
-    expect((await start(new NextRequest("https://console.example.invalid/auth/start"))).status).toBe(404);
+    expect((await start()).status).toBe(404);
     expect((await callback(new NextRequest("https://console.example.invalid/auth/callback"))).status).toBe(404);
   });
 
-  test("an unconfigured tenant is sent back to the sign-in page, never to an authority it names", async () => {
-    const res = await start(new NextRequest("https://console.example.invalid/auth/start?tenant=99999999-2222-4333-8444-555555555555"));
+  test("a GET (a link on another site) never starts a sign-in", async () => {
+    const res = await start();
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe("https://console.example.invalid/sign-in");
+    expect(cookieJar.has(TXN_COOKIE)).toBe(false);
+  });
+
+  const post = (headers: Record<string, string>, organisation?: string) => {
+    const body = new FormData();
+    if (organisation !== undefined) body.set("organisation", organisation);
+    return new NextRequest("https://console.example.invalid/auth/start", { method: "POST", headers, body });
+  };
+
+  test.each([
+    ["a cross-site post", { "sec-fetch-site": "cross-site" }],
+    ["another origin", { origin: "https://evil.example.invalid" }],
+    ["no origin at all", {}],
+  ])("%s is refused", async (_name, headers) => {
+    const res = await startPost(post(headers as Record<string, string>));
+    expect(res.status).toBe(403);
+    expect(cookieJar.has(TXN_COOKIE)).toBe(false);
+  });
+
+  test("an organisation that is not configured goes back to sign-in, never to an authority it names", async () => {
+    configure({}, 2);
+    const res = await startPost(post({ "sec-fetch-site": "same-origin" }, "https://login.microsoftonline.com/common"));
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("https://console.example.invalid/sign-in?unknown=1");
     expect(cookieJar.has(TXN_COOKIE)).toBe(false);
   });
 
@@ -77,7 +114,8 @@ describe("sign-in routes", () => {
     cookieJar.set(TXN_COOKIE, { value: await seal([KEY], "txn", { state: "s", nonce: "n", verifier: "v", tenant: "99999999-2222-4333-8444-555555555555", cid: "x" }, Date.now() + 60_000) });
     const res = await callback(new NextRequest("https://console.example.invalid/auth/callback?code=c&state=s"));
     expect(res.status).toBe(400); // its tenant is not configured
-    expect(cookieJar.has(TXN_COOKIE)).toBe(false);
+    // Removed with the attributes a __Host- cookie needs, or browsers would ignore the removal.
+    expect(cookieJar.get(TXN_COOKIE)).toMatchObject({ value: "", options: { secure: true, path: "/", maxAge: 0 } });
   });
 
   test("a session cookie presented as the transaction is refused", async () => {

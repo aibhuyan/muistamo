@@ -21,12 +21,18 @@ function renew(t: NonNullable<ReturnType<typeof tenantConfig>>, s: Session): Pro
   return p;
 }
 
+export const REQUEST_ID_HEADER = "x-muistamo-request-id";
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
-  if (mode() !== "entra") return NextResponse.next();
+  // Every page and Server Action gets a console request id, logged with every service call.
+  const requestId = crypto.randomUUID();
+  request.headers.set(REQUEST_ID_HEADER, requestId);
+  const pass = () => NextResponse.next({ request: { headers: request.headers } });
+  if (mode() !== "entra") return pass();
   const session = await readSession(request.cookies as unknown as CookieStore);
-  if (!session || session.atExp - Date.now() > REFRESH_BEFORE_MS) return NextResponse.next();
+  if (!session || session.atExp - Date.now() > REFRESH_BEFORE_MS) return pass();
   const t = tenantConfig(session.tenant);
-  if (!t) return NextResponse.next();
+  if (!t) return pass();
   let renewed: Session;
   try {
     renewed = await renew(t, session);
@@ -36,8 +42,15 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       clearSession(request.cookies as unknown as CookieStore);
       const response = NextResponse.next({ request: { headers: request.headers } });
       clearSession(response.cookies as unknown as CookieStore);
-      console.warn(JSON.stringify({ level: "WARN", msg: "session ended: grant refused", tenant: t.tenant, person: session.person }));
+      console.warn(
+        JSON.stringify({ level: "WARN", msg: "session ended: grant refused", tenant: t.tenant, person: session.person, requestId }),
+      );
       return response;
+    }
+    if (session.atExp - Date.now() > 30_000) {
+      // Still valid for a while: carry on, and renew at the next request.
+      console.warn(JSON.stringify({ level: "WARN", msg: "session renewal deferred", tenant: t.tenant, person: session.person, requestId }));
+      return NextResponse.next({ request: { headers: request.headers } });
     }
     console.error(
       JSON.stringify({
@@ -45,6 +58,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
         msg: "session renewal failed",
         tenant: t.tenant,
         person: session.person,
+        requestId,
         error: error instanceof Error ? error.name : "unknown",
       }),
     );

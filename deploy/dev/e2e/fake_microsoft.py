@@ -123,7 +123,9 @@ class Microsoft:
         self.refresh_tokens: dict[str, str] = {}  # refresh token -> user oid
         self.disabled: set[str] = set()  # users whose next refresh is refused (invalid_grant)
         self.guests: set[str] = set()  # users who sign in as guests (acct = 1)
-        self.short_lived: set[str] = set()  # users whose console tokens last 2 minutes
+        # Users whose first console token (from the code) has already expired, so the console
+        # must renew it before the first page: proves the renewed token reaches the render.
+        self.expired_at_sign_in: set[str] = set()
         self.lock = threading.Lock()
 
     def user_token(self, oid: uuid.UUID, lifetime: int = 1800, azp: uuid.UUID = ASSISTANT) -> str:
@@ -258,6 +260,8 @@ def serve(state: Microsoft, cert: str, key: str) -> ThreadingHTTPServer:
                 )
                 if (
                     code is None
+                    or code["client"] != form.get("client_id")
+                    or code["expires"] < time.time()
                     or form.get("redirect_uri") != code["redirect"]
                     or challenge != code["challenge"]
                 ):
@@ -273,7 +277,11 @@ def serve(state: Microsoft, cert: str, key: str) -> ThreadingHTTPServer:
             answer = {
                 "token_type": "Bearer",
                 "access_token": state.user_token(
-                    uuid.UUID(oid), 120 if oid in state.short_lived else 1800, azp=CONSOLE
+                    uuid.UUID(oid),
+                    -60
+                    if grant == "authorization_code" and oid in state.expired_at_sign_in
+                    else 1800,
+                    azp=CONSOLE,
                 ),
                 "expires_in": 1800,
                 "refresh_token": refresh,
@@ -334,6 +342,8 @@ def serve(state: Microsoft, cert: str, key: str) -> ThreadingHTTPServer:
                     "nonce": q["nonce"],
                     "challenge": q["code_challenge"],
                     "redirect": q["redirect_uri"],
+                    "client": q["client_id"],
+                    "expires": time.time() + 600,
                 }
                 return self._redirect(f"{q['redirect_uri']}?code={code}&state={q['state']}")
             if method == "GET" and url.path == f"{prefix}/oauth2/v2.0/logout":

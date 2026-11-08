@@ -28,7 +28,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               </nav>
               <form action={signOut} className="who">
                 <span>
-                  {session.person} · <code>{session.tenant}</code>
+                  {session.name ?? session.person} · <code>{session.tenant}</code>
                 </span>
                 <button type="submit">Sign out</button>
               </form>

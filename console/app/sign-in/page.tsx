@@ -6,10 +6,11 @@ import { devLoginEnabled, entraEnabled } from "@/lib/session";
 import { DecisionForm } from "../decision-form";
 import { signIn } from "./actions";
 
-export default async function SignInPage() {
+export default async function SignInPage(props?: { searchParams?: Promise<Record<string, string>> }) {
   await connection();
   if (entraEnabled()) {
     const { tenants } = entraConfig();
+    const unknown = (await props?.searchParams)?.unknown === "1";
     return (
       <>
         <h1>Sign in</h1>
@@ -17,21 +18,17 @@ export default async function SignInPage() {
           Sign in with your organisation&apos;s Microsoft account. The console acts only for current employees, as
           your organisation&apos;s HR record says.
         </p>
-        {tenants.length === 1 ? (
-          <p>
-            <a className="button" href="/auth/start">
-              Sign in with Microsoft
-            </a>
-          </p>
-        ) : (
-          <ul>
-            {tenants.map((t) => (
-              <li key={t.tenant}>
-                <a href={`/auth/start?tenant=${t.tenant}`}>{t.name}</a>
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* A POST from this page only; the customers this console serves are never listed. */}
+        <form method="post" action="/auth/start" className="decision">
+          {unknown ? <p role="alert">That organisation is not set up in this console.</p> : null}
+          {tenants.length === 1 ? null : (
+            <label>
+              Your organisation
+              <input type="text" name="organisation" required autoComplete="organization" />
+            </label>
+          )}
+          <button type="submit">Sign in with Microsoft</button>
+        </form>
       </>
     );
   }

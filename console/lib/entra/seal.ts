@@ -23,7 +23,7 @@ export async function seal(
 ): Promise<string> {
   const [current] = keys;
   if (!current) throw new Error("no session key");
-  for (const reserved of ["exp", "iat", "iss", "nbf", "pur"]) {
+  for (const reserved of ["exp", "iat", "iss", "nbf", "aud", "sub", "jti", "pur"]) {
     if (reserved in claims) throw new Error(`claim ${reserved} is reserved`);
   }
   return new EncryptJWT({ ...claims, pur: purpose })
@@ -80,10 +80,10 @@ export function joinChunks(base: string, get: (name: string) => string | undefin
   const parts: string[] = [];
   for (let i = 0; i < MAX_CHUNKS; i++) {
     const part = get(cookieName(base, i));
-    if (part === undefined) break;
+    if (!part) break;
     parts.push(part);
   }
   if (parts.length === 0) return undefined;
-  if (get(cookieName(base, MAX_CHUNKS)) !== undefined) return undefined;
+  if (get(cookieName(base, MAX_CHUNKS))) return undefined;
   return parts.join("");
 }

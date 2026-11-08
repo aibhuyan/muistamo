@@ -3,7 +3,18 @@ import "server-only";
 import type { components as Knowledge } from "@contracts/knowledge";
 import type { components as ControlPlane } from "@contracts/muistamo";
 
+import { headers as requestHeaders } from "next/headers";
+
 import { type Session, serviceHeaders } from "./session";
+
+// The console's own request id (set by proxy.ts), for every log line about a service call.
+async function consoleRequestId(): Promise<string | null> {
+  try {
+    return (await requestHeaders()).get("x-muistamo-request-id");
+  } catch {
+    return null;
+  }
+}
 
 // Server-side calls to the services as the signed-in person. The services make every
 // authorisation decision; the console only relays them, refusals included.
@@ -43,6 +54,7 @@ async function call<T>(
   const headers: Record<string, string> = { ...(await serviceHeaders(session)), Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const url = baseUrl(service) + path;
+  const requestId = await consoleRequestId();
   let response: Response;
   try {
     response = await fetch(url, {
@@ -63,6 +75,7 @@ async function call<T>(
         path,
         tenant: session.tenant,
         person: session.person,
+        requestId,
         error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
       }),
     );
@@ -82,6 +95,7 @@ async function call<T>(
       status: response.status,
       tenant: session.tenant,
       person: session.person,
+      requestId,
       serviceRequestId: response.headers.get("X-Request-Id"),
     }),
   );

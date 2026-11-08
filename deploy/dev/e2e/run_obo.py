@@ -581,20 +581,34 @@ def main() -> None:
         status, page = console_sign_in(console, fake, ca, OTHER, expect=403)
         assert "members of your organisation" in page, page[-500:]
         ms.guests.discard(str(OTHER))
-        # A token about to expire is renewed before the page; a disabled account is signed out
-        # at its next renewal.
-        ms.short_lived.add(str(MANAGER))
+        # An access token already expired is renewed before the page renders: the page shows
+        # the person's data only if the renewed token reached both the render and the service.
+        ms.expired_at_sign_in.add(str(MANAGER))
         jar = console_sign_in(console, fake, ca, MANAGER)
-        before = dict(jar)
-        status, _ = console_get(console, "/my-knowledge", jar)
-        assert status == 200 and jar != before, "the proxy did not renew the session"
+        status, page = console_get(console, "/my-knowledge", jar)
+        assert status == 200 and "My knowledge" in page, (status, page[-500:])
+        # A disabled account is signed out at its next renewal, its cookies removed in a way a
+        # browser honours (the jar applies the __Host- rules).
+        jar = console_sign_in(console, fake, ca, MANAGER)
         ms.disabled.add(str(MANAGER))
         status, _ = console_get(console, "/my-knowledge", jar)
         assert status in (303, 307) and not any(
             k.startswith("__Host-muistamo_session") for k in jar
         ), (status, sorted(jar))
         ms.disabled.discard(str(MANAGER))
-        ms.short_lived.discard(str(MANAGER))
+        ms.expired_at_sign_in.discard(str(MANAGER))
+        # Signing out (the page's own form, as a browser without JavaScript posts it) removes the
+        # session and ends the Entra session.
+        jar = console_sign_in(console, fake, ca, REVIEWER)
+        status, location = console_sign_out(console, jar)
+        assert status == 303 and location.startswith(
+            f"https://login.microsoftonline.com/{directory}/oauth2/v2.0/logout?"
+        ), (status, location)
+        assert f"client_id={fake_microsoft.CONSOLE}" in location, location
+        assert "post_logout_redirect_uri=" in location, location
+        assert not any(k.startswith("__Host-muistamo_session") for k in jar), sorted(jar)
+        status, _ = console_get(console, "/my-knowledge", jar)
+        assert status in (303, 307), status  # signed out
 
         step("2. MCP search as the person: their document, cited, and not another's")
         token = ms.user_token(PERSON)
@@ -944,13 +958,22 @@ def fake_get(address: str, ca: str, url: str) -> tuple[int, str, bytes]:
 
 
 def _merge_cookies(jar: dict[str, str], set_cookies: list[str]) -> None:
+    """A browser's rules: a __Host- cookie (set or removed) counts only if it is Secure with
+    Path=/ and no Domain; anything else is ignored, as Chrome and Firefox ignore it."""
     for header in set_cookies:
         pair, _, attributes = header.partition(";")
         name, _, value = pair.strip().partition("=")
+        attrs = [a.strip().lower() for a in attributes.split(";")]
+        if name.startswith("__Host-") and (
+            "secure" not in attrs
+            or "path=/" not in attrs
+            or any(a.startswith("domain=") for a in attrs)
+        ):
+            continue
         if (
             not value
-            or "max-age=0" in attributes.lower()
-            or "expires=thu, 01 jan 1970" in attributes.lower()
+            or "max-age=0" in attrs
+            or any(a.startswith("expires=thu, 01 jan 1970") for a in attrs)
         ):
             jar.pop(name, None)
         else:
@@ -967,13 +990,45 @@ def console_get(console: str, path: str, jar: dict[str, str]) -> tuple[int, str]
 
 def _authorize(console: str, fake: str, ca: str, user: uuid.UUID) -> tuple[dict[str, str], str]:
     jar: dict[str, str] = {}
-    res = httpx2.get(console + "/auth/start", follow_redirects=False, timeout=30)
+    # A link never starts it: only the sign-in page's own POST, from the console's origin.
+    assert (
+        httpx2.get(console + "/auth/start", follow_redirects=False, timeout=30).status_code == 303
+    )
+    cross = httpx2.post(
+        console + "/auth/start", headers={"Origin": "https://evil.example.invalid"}, timeout=30
+    )
+    assert cross.status_code == 403, cross.status_code
+    res = httpx2.post(
+        console + "/auth/start", headers={"Origin": console}, follow_redirects=False, timeout=30
+    )
     assert res.status_code == 303, (res.status_code, res.text[:300])
     _merge_cookies(jar, res.headers.get_list("set-cookie"))
     # The person picks their account at Entra (login_hint, in the fake).
     status, callback, _ = fake_get(fake, ca, res.headers["location"] + f"&login_hint={user}")
     assert status == 302 and callback.startswith(console + "/auth/callback?"), (status, callback)
     return jar, callback
+
+
+def console_sign_out(console: str, jar: dict[str, str]) -> tuple[int, str]:
+    """Post the layout's sign-out form exactly as a browser without JavaScript would."""
+    import re
+
+    status, page = console_get(console, "/my-knowledge", jar)
+    assert status == 200, status
+    form = re.search(r'<form[^>]*class="who"[^>]*>(.*?)</form>', page, re.S)
+    assert form, page[-800:]
+    fields = re.findall(r'<input type="hidden" name="([^"]+)"(?: value="([^"]*)")?', form.group(1))
+    assert fields, form.group(0)
+    cookie = "; ".join(f"{k}={v}" for k, v in jar.items())
+    res = httpx2.post(
+        console + "/my-knowledge",
+        files=[(name, (None, value)) for name, value in fields],
+        headers={"Cookie": cookie, "Origin": console},
+        follow_redirects=False,
+        timeout=30,
+    )
+    _merge_cookies(jar, res.headers.get_list("set-cookie"))
+    return res.status_code, res.headers.get("location", "")
 
 
 def console_sign_in(console: str, fake: str, ca: str, user: uuid.UUID, expect: int = 200):

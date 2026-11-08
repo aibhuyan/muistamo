@@ -67,15 +67,25 @@ export async function writeSession(store: CookieStore, session: Session): Promis
   const maxAge = Math.max(0, Math.floor((session.ends - Date.now()) / 1000));
   parts.forEach((part, i) => store.set(cookieName(SESSION_COOKIE, i), part, { ...base, sameSite: "strict", maxAge }));
   // Every write replaces every part: a browser may hold more parts of an older, larger session.
-  for (let i = parts.length; i <= MAX_CHUNKS; i++) store.delete(cookieName(SESSION_COOKIE, i));
+  for (let i = parts.length; i <= MAX_CHUNKS; i++) remove(store, cookieName(SESSION_COOKIE, i), "strict");
   return true;
+}
+
+// Browsers ignore a Set-Cookie for a __Host- name unless it is Secure with Path=/, a deletion
+// included: Next's delete() sends neither, so a removal is an expired set with the same attributes.
+function remove(store: CookieStore, name: string, sameSite: "strict" | "lax"): void {
+  store.set(name, "", { ...base, sameSite, maxAge: 0, expires: new Date(0) });
 }
 
 export function clearSession(store: CookieStore): void {
   // Unconditionally: on a response store nothing is known yet, but the browser holds the parts.
-  for (let i = 0; i <= MAX_CHUNKS; i++) store.delete(cookieName(SESSION_COOKIE, i));
+  for (let i = 0; i <= MAX_CHUNKS; i++) remove(store, cookieName(SESSION_COOKIE, i), "strict");
 }
 
 export function writeTransaction(store: CookieStore, sealed: string): void {
   store.set(TXN_COOKIE, sealed, { ...base, sameSite: "lax", maxAge: 600 });
+}
+
+export function clearTransaction(store: CookieStore): void {
+  remove(store, TXN_COOKIE, "lax");
 }

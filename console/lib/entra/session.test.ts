@@ -163,8 +163,6 @@ describe("the proxy", () => {
     const res = await proxy(req);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(res.headers.get("set-cookie")).toContain(`${SESSION_COOKIE}.0=`);
-    // The render sees the renewed cookie too.
-    expect(res.headers.get("x-middleware-request-cookie") ?? res.headers.get("x-middleware-override-headers")).toBeTruthy();
     const renewed = await readSession(req.cookies as never);
     expect(renewed?.at).toBe("obviously-fake-renewed-token");
     expect(renewed?.ends).toBe(ends);
@@ -179,9 +177,22 @@ describe("the proxy", () => {
     expect(res.headers.get("set-cookie")).toMatch(new RegExp(`${SESSION_COOKIE.replace("-", "\\-")}\\.0=;`));
   });
 
-  test("any other failure refuses the request", async () => {
+  test("any other failure refuses the request once the token is nearly gone", async () => {
     refresh.mockRejectedValue(new TypeError("fetch failed"));
+    expect((await proxy(await requestWith({ atExp: Date.now() + 10_000 }))).status).toBe(503);
+    // With time left it carries on and renews at the next request.
+    expect((await proxy(await requestWith({ atExp: Date.now() + 120_000 }))).status).toBe(200);
+  });
+
+  test("every __Host- cookie it sends, a removal included, is Secure with Path=/", async () => {
+    refresh.mockRejectedValue(Object.assign(new Error("refused"), { error: "invalid_grant" }));
     const res = await proxy(await requestWith({ atExp: Date.now() + 60_000 }));
-    expect(res.status).toBe(503);
+    const sent = res.headers.getSetCookie().filter((c) => c.startsWith("__Host-"));
+    expect(sent.length).toBe(4);
+    for (const cookie of sent) {
+      expect(cookie).toMatch(/; Secure/i);
+      expect(cookie).toMatch(/; Path=\/(;|$)/);
+      expect(cookie).not.toMatch(/; Domain=/i);
+    }
   });
 });
