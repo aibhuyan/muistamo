@@ -116,14 +116,15 @@ def sign(
     method: str | None = None,
     path: str | None = None,
 ) -> str:
-    """X-Muistamo-Signature for body: t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body">, and,
-    given the method and path, v2 (as the control plane signs its calls)."""
+    """X-Muistamo-Signature for body. Given the method and path: t=<unix seconds>,v2=<hex>,
+    exactly as the control plane signs its calls to this service (signature.SignRequest).
+    Without them: t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body">, the body-and-time scheme
+    of the HR webhook, which this service no longer accepts on its own routes."""
     ts = str(int(time.time() if at is None else at))
-    mac = hmac.new(secret, ts.encode() + b"." + body, hashlib.sha256).hexdigest()
-    value = f"t={ts},v1={mac}"
     if method is not None and path is not None:
-        value += f",v2={_mac_v2(secret, ts, method, path, body)}"
-    return value
+        return f"t={ts},v2={_mac_v2(secret, ts, method, path, body)}"
+    mac = hmac.new(secret, ts.encode() + b"." + body, hashlib.sha256).hexdigest()
+    return f"t={ts},v1={mac}"
 
 
 def service_tenant(headers: Mapping[str, str]) -> UUID:
