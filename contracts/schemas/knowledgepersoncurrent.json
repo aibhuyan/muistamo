@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/knowledgepersoncurrent.json",
+  "title": "KnowledgePersonCurrent",
+  "description": "Whether the person is a current employee at this moment, as the control plane's HR record and Entra user link say. Anything but current is not current.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["current"],
+  "properties": {
+    "current": { "type": "boolean" },
+    "reason": {
+      "description": "Why not current: the token did not validate, the user is not linked to a current joiner (a leaver, or a person Muistamo has no HR record or link for), or the tenant's identity binding is changing.",
+      "type": "string",
+      "enum": ["token-invalid", "user-unlinked", "identity-not-ready"]
+    }
+  }
+}

@@ -884,6 +884,42 @@ paths:
                 $ref: '#/components/schemas/EntraUserLink'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/internal/knowledge/people/current:
+    post:
+      operationId: knowledgePersonCurrent
+      summary: Whether the person behind an Entra token is a current employee (service
+        call)
+      description: 'Service call from the knowledge service only, signed exactly like
+        issueKnowledgeDelegation (the same key for this direction and tenant, the
+        same five-minute window, single-use nonces). The token is validated with the
+        tenant''s enrolled binding and the person''s Entra user link is checked at
+        this moment under the same locks and rules as a delegation: current only while
+        the link''s joiner is still the person''s latest accepted HR event. The knowledge
+        service admits a person to its console routes only while this says current.
+        Read-only: nothing is recorded. Without an Entra configuration the route answers
+        501, which the knowledge service treats as not current.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgePersonCurrentRequest'
+      responses:
+        '200':
+          description: The answer. Never cache it beyond the caller's own short window.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum:
+                - no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgePersonCurrent'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/internal/knowledge/delegations:
     post:
       operationId: issueKnowledgeDelegation
@@ -3198,6 +3234,49 @@ components:
         version:
           description: Version constraint, for example 3.x to follow minor updates.
           type: string
+    KnowledgePersonCurrent:
+      title: KnowledgePersonCurrent
+      description: Whether the person is a current employee at this moment, as the
+        control plane's HR record and Entra user link say. Anything but current is
+        not current.
+      type: object
+      additionalProperties: false
+      required:
+      - current
+      properties:
+        current:
+          type: boolean
+        reason:
+          description: 'Why not current: the token did not validate, the user is not
+            linked to a current joiner (a leaver, or a person Muistamo has no HR record
+            or link for), or the tenant''s identity binding is changing.'
+          type: string
+          enum:
+          - token-invalid
+          - user-unlinked
+          - identity-not-ready
+    KnowledgePersonCurrentRequest:
+      title: KnowledgePersonCurrentRequest
+      description: 'The knowledge service asks whether the person who sent userToken
+        is a current employee: their Entra user is linked to an HR person whose latest
+        accepted HR event is the joiner that made the link. A signed service call:
+        the signature, its time window and the single-use nonce together refuse replays.'
+      type: object
+      additionalProperties: false
+      required:
+      - userToken
+      - nonce
+      properties:
+        userToken:
+          description: The person's Entra access token for Muistamo, as the knowledge
+            service received it. Validated, never stored or recorded.
+          type: string
+          minLength: 1
+          maxLength: 16384
+        nonce:
+          description: 128 random bits, hex encoded. Each nonce is accepted once.
+          type: string
+          pattern: ^[0-9a-f]{32}$
     KnowledgeRead:
       title: KnowledgeRead
       description: 'One retrieval a person made: what they were shown, never the query

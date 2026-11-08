@@ -909,6 +909,41 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/internal/knowledge/people/current:
+    post:
+      operationId: knowledgePersonCurrent
+      summary: Whether the person behind an Entra token is a current employee (service call)
+      description: >-
+        Service call from the knowledge service only, signed exactly like
+        issueKnowledgeDelegation (the same key for this direction and tenant, the same five-minute
+        window, single-use nonces). The token is validated with the tenant's enrolled binding and
+        the person's Entra user link is checked at this moment under the same locks and rules as a
+        delegation: current only while the link's joiner is still the person's latest accepted HR
+        event. The knowledge service admits a person to its console routes only while this says
+        current. Read-only: nothing is recorded. Without an Entra configuration the route answers
+        501, which the knowledge service treats as not current.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/knowledgepersoncurrentrequest.json"
+      responses:
+        "200":
+          description: The answer. Never cache it beyond the caller's own short window.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/knowledgepersoncurrent.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/internal/knowledge/delegations:
     post:
       operationId: issueKnowledgeDelegation

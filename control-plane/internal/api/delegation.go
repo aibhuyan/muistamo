@@ -18,12 +18,17 @@ import (
 	"muistamo.dev/muistamo/control-plane/internal/signature"
 )
 
-const delegationsPath = "/v1/internal/knowledge/delegations"
+const (
+	delegationsPath   = "/v1/internal/knowledge/delegations"
+	peopleCurrentPath = "/v1/internal/knowledge/people/current"
+)
 
 // Delegator validates a user token and decides a delegation. entra.Delegator implements it.
-// A refusal is a *registry.DelegationRefused, already evidenced.
+// A refusal is a *registry.DelegationRefused, already evidenced. Current answers whether the
+// token's person is a current employee, by the delegation's own link-and-joiner rule.
 type Delegator interface {
 	Delegate(ctx context.Context, actor registry.Actor, req muistamov1.KnowledgeDelegationRequest) (muistamov1.KnowledgeDelegation, error)
+	Current(ctx context.Context, actor registry.Actor, req muistamov1.KnowledgePersonCurrentRequest) (muistamov1.KnowledgePersonCurrent, error)
 }
 
 // knowledgeSecret loads a tenant's knowledge-service secret; nil means none is set.
@@ -101,6 +106,53 @@ func (s *server) IssueKnowledgeDelegation(ctx context.Context, req muistamov1.Is
 		// Nothing about the failure leaves the server; it is logged with the request.
 		s.log.Error("delegation failed; nothing issued", "request_id", actor.RequestID, "tenant", actor.Tenant, "actor", actor.Name, "err", err)
 		return muistamov1.IssueKnowledgeDelegationdefaultApplicationProblemPlusJSONResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       muistamov1.Problem{Title: "Internal error", Status: http.StatusInternalServerError},
+		}, nil
+	}
+}
+
+// KnowledgePersonCurrent tells the knowledge service whether the person behind a token is a
+// current employee. The knowledge service admits a person to its console routes only while the
+// answer is current; anything else, a failure included, is not.
+func (s *server) KnowledgePersonCurrent(ctx context.Context, req muistamov1.KnowledgePersonCurrentRequestObject) (muistamov1.KnowledgePersonCurrentResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err == nil && actor.Name != "knowledge:"+actor.Tenant.String() {
+		// Only the knowledge service's signature reaches this route (auth.go).
+		err = errUnauthenticated
+	}
+	if err != nil {
+		return muistamov1.KnowledgePersonCurrentdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	if s.delegator == nil {
+		return muistamov1.KnowledgePersonCurrentdefaultApplicationProblemPlusJSONResponse{
+			StatusCode: http.StatusNotImplemented,
+			Body:       muistamov1.Problem{Title: "Delegation is not configured", Status: http.StatusNotImplemented},
+		}, nil
+	}
+	if err := s.svc.UseDelegationNonce(ctx, actor.Tenant, req.Body.Nonce); err != nil {
+		if errors.Is(err, registry.ErrConflict) {
+			s.log.Warn("person-current nonce replayed", "request_id", actor.RequestID, "tenant", actor.Tenant, "actor", actor.Name)
+			err = errUnauthenticated
+		}
+		return muistamov1.KnowledgePersonCurrentdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	answer, err := s.delegator.Current(ctx, actor, *req.Body)
+	switch {
+	case err == nil:
+		s.log.Info("person current answered", "request_id", actor.RequestID, "tenant", actor.Tenant, "actor", actor.Name, "current", answer.Current)
+		return muistamov1.KnowledgePersonCurrent200JSONResponse{
+			Body:    answer,
+			Headers: muistamov1.KnowledgePersonCurrent200ResponseHeaders{CacheControl: "no-store"},
+		}, nil
+	case errors.Is(err, registry.ErrDelegationNotConfigured):
+		return muistamov1.KnowledgePersonCurrentdefaultApplicationProblemPlusJSONResponse{
+			StatusCode: http.StatusNotImplemented,
+			Body:       muistamov1.Problem{Title: "Delegation is not configured", Status: http.StatusNotImplemented},
+		}, nil
+	default:
+		s.log.Error("person current failed", "request_id", actor.RequestID, "tenant", actor.Tenant, "actor", actor.Name, "err", err)
+		return muistamov1.KnowledgePersonCurrentdefaultApplicationProblemPlusJSONResponse{
 			StatusCode: http.StatusInternalServerError,
 			Body:       muistamov1.Problem{Title: "Internal error", Status: http.StatusInternalServerError},
 		}, nil

@@ -481,27 +481,25 @@ def test_after_a_rehire_the_person_finds_only_their_shared_entries(private_live)
     assert keys(live) == {"fiscal-year"}  # private notes went at leaving (D59)
 
 
-# A leaver's console (docs/console-entra-signin-plan.md, review blocker 1) ----------------------
+# The console admits only current employees (docs/console-entra-signin-plan.md, PR 0) --------
 
-LEFT = "has left the organisation"
+NOT_CURRENT = "only for current employees"
 
 
-def test_a_leaver_cannot_act_in_the_console(live) -> None:
-    """Knowledge knows from its own records that the person has left: their live review is at
-    their current fence. Every console call is refused at use time, whatever IT has done."""
+def test_only_a_current_employee_acts_in_the_console(live) -> None:
+    """The control plane, which owns HR status, decides at use time; knowledge asks it for every
+    console call (cached briefly) and admits nobody it does not confirm."""
     replace_officers(live.world.db.owner_url, live.world.tenant, [P])  # the most powerful role
     console = live.console(PERSON)
-    assert console.get("/v1/knowledge/personal/entries").status_code == 200
     assert console.get("/v1/knowledge/leaver-reviews").status_code == 200
-    assert live.open("leave-2:run", 2).status_code == 201
+    live.world.knowledge.people.not_current.add(P)  # a leaver, or someone Muistamo has no link for
     for path in (
         "/v1/knowledge/personal/entries",
         "/v1/knowledge/leaver-reviews",
         "/v1/knowledge/events",
     ):
         res = console.get(path)
-        assert res.status_code == 403 and LEFT in res.json()["detail"], (path, res.text)
-    # Not only reads: a decision is refused the same way.
+        assert res.status_code == 403 and NOT_CURRENT in res.json()["detail"], (path, res.text)
     res = console.post(
         "/v1/knowledge/privacy/erasures",
         json={
@@ -510,32 +508,67 @@ def test_a_leaver_cannot_act_in_the_console(live) -> None:
             "subject": {"identities": ["dev:x@example.invalid"]},
         },
     )
-    assert res.status_code == 403 and LEFT in res.json()["detail"]
-    # Their assistant is unchanged: its reads are already limited by the refused delegation.
+    assert res.status_code == 403 and NOT_CURRENT in res.json()["detail"]
+    # Their assistant is not the console: it is limited by its agent's delegation instead.
     assert live.person(PERSON).get("/v1/knowledge/personal/entries").status_code == 200
 
 
-def test_a_rehired_person_acts_again_and_a_second_leaving_stops_them_again(live) -> None:
-    console = live.console(PERSON)
+def test_when_the_control_plane_cannot_answer_the_console_is_refused(live) -> None:
+    live.world.knowledge.people.unavailable.add(P)
+    res = live.console(PERSON).get("/v1/knowledge/personal/entries")
+    assert res.status_code == 503, res.text
+    live.world.knowledge.people = None  # no control plane configured at all
+    res = live.console(PERSON).get("/v1/knowledge/personal/entries")
+    assert res.status_code == 403 and NOT_CURRENT in res.json()["detail"]
+
+
+def test_only_console_callers_are_asked(live) -> None:
+    people = live.world.knowledge.people
+    assert live.person(PERSON).get("/v1/knowledge/personal/entries").status_code == 200
+    assert people.asked == []
+    assert live.console(PERSON).get("/v1/knowledge/personal/entries").status_code == 200
+    assert people.asked == [P]
+
+
+def test_a_leaving_decider_hands_their_reviews_to_the_privacy_officers(live) -> None:
+    """When the manager leaves, the reviews they were to decide do not get stuck and purge:
+    the privacy officers decide them, with evidence of the hand-over."""
+    officer = uuid.UUID("7a000000-0000-4000-8000-00000000000d")
+    replace_officers(live.world.db.owner_url, live.world.tenant, [f"entra:{officer}"])
+    assert live.open("leave-2:run", 2).status_code == 201  # P leaves; M decides
+    assert live.console(officer).get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 404
+    # M leaves (their own live review, at their generation).
+    opened = live.post(
+        "/v1/knowledge/internal/leaver-reviews",
+        {"id": "leave-m:run", "generation": 2, "person": {"user": M}, "deciders": []},
+    )
+    assert opened.status_code == 201, opened.text
+    got = live.console(officer).get("/v1/knowledge/leaver-reviews/leave-2:run")
+    assert got.status_code == 200 and got.json()["deciderKind"] == "privacy-officers"
+    assert live.console(MANAGER).get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 404
+    replaced = [
+        a for name, a in live.actions() if name == "knowledge.leaver-review.decider-replaced"
+    ]
+    assert replaced == [
+        {"deciderKind": "privacy-officers", "reason": "decider-left", "leaving": "leave-m:run"}
+    ]
+    decided = live.console(officer).post(
+        "/v1/knowledge/leaver-reviews/leave-2:run/decision",
+        json={"decision": "keep", "reason": "the manager left; keep it for the team"},
+    )
+    assert decided.status_code == 200, decided.text
+
+
+def test_a_superseded_leaving_hands_nothing_over(live) -> None:
     assert live.open("leave-2:run", 2).status_code == 201
-    assert console.get("/v1/knowledge/personal/entries").status_code == 403
-    assert live.fence(3).status_code == 200  # rehired
-    assert console.get("/v1/knowledge/personal/entries").status_code == 200
-    assert live.open("leave-4:run", 4).status_code == 201  # left again
-    assert console.get("/v1/knowledge/personal/entries").status_code == 403
-
-
-def test_an_empty_leaving_still_counts(entra_world) -> None:
-    """A leaver with nothing in their layer gets a review closed as empty: still a leaver."""
-    live = Live(entra_world)
-    opened = live.open("leave-2:run", 2)
-    assert opened.status_code == 201 and opened.json()["outcome"] == "empty"
-    assert live.console(PERSON).get("/v1/knowledge/personal/entries").status_code == 403
-
-
-def test_other_people_are_unaffected_by_someone_elses_leaving(live) -> None:
-    assert live.open("leave-2:run", 2).status_code == 201
-    assert live.console(MANAGER).get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 200
+    live.post("/v1/knowledge/internal/leaver-reviews/fence", {"user": M, "generation": 3})
+    late = live.post(
+        "/v1/knowledge/internal/leaver-reviews",
+        {"id": "leave-m:old", "generation": 2, "person": {"user": M}, "deciders": []},
+    )
+    assert late.status_code == 409
+    got = live.console(MANAGER).get("/v1/knowledge/leaver-reviews/leave-2:run")
+    assert got.status_code == 200 and got.json()["deciderKind"] == "manager"
 
 
 # Evidence names the client app (docs/console-entra-signin-plan.md) ------------------------------

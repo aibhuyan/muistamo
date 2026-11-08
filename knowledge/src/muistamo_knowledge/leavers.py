@@ -307,6 +307,8 @@ class Leavers:
             ),
         )
         review = self._require(cur, review_id)
+        if generation is not None:
+            self._hand_over(cur, actor, person, review_id)
         self.k._evidence(
             cur,
             actor,
@@ -332,6 +334,34 @@ class Leavers:
                 after={"review": review_id, "purgedPrivateEntries": private_purged},
             )
         return review, True
+
+    def _hand_over(self, cur: Cursor, actor: Actor, person: str, leaving: str) -> None:
+        """The person is leaving: the open reviews they were to decide fall to the privacy
+        officers, as if no manager or sponsor existed, so a layer is never purged only because
+        its decider left (console sign-in plan, PR 0). Each hand-over is evidenced."""
+        cur.execute(
+            "SELECT id FROM knowledge.leaver_reviews WHERE decider = %s AND status = 'open'"
+            " ORDER BY id FOR UPDATE",
+            (person,),
+        )
+        for (review_id,) in cur.fetchall():
+            cur.execute(
+                "UPDATE knowledge.leaver_reviews SET decider = NULL,"
+                " decider_kind = 'privacy-officers' WHERE id = %s",
+                (review_id,),
+            )
+            self.k._evidence(
+                cur,
+                actor,
+                "knowledge.leaver-review.decider-replaced",
+                "LeaverReview",
+                review_id,
+                after={
+                    "deciderKind": "privacy-officers",
+                    "reason": "decider-left",
+                    "leaving": leaving,
+                },
+            )
 
     def _decide(
         self, cur: Cursor, actor: Actor, review: dict[str, Any], body: dict[str, Any]

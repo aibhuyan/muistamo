@@ -71,7 +71,7 @@ func authenticate(resolver TenantResolver, hr HRIntake, knowledge knowledgeSecre
 		case hrEventsPath:
 			tenant, err = verifyHR(r, hr, time.Now())
 			name = "hris:" + tenant.String()
-		case delegationsPath:
+		case delegationsPath, peopleCurrentPath:
 			tenant, err = verifyKnowledge(r, knowledge, time.Now())
 			name = "knowledge:" + tenant.String()
 		default:

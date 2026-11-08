@@ -245,6 +245,8 @@ def main() -> None:
             {"id": str(PERSON), "employeeId": "E-1001"},
             {"id": str(OTHER), "employeeId": "E-2002"},
             {"id": str(MANAGER), "employeeId": "E-3003"},
+            {"id": str(PLATFORM), "employeeId": "E-4004"},
+            {"id": str(REVIEWER), "employeeId": "E-5005"},
         ]
         ms.libraries["Documents"] = [
             {
@@ -417,6 +419,18 @@ def main() -> None:
             + ["--kind", "console"],
             kenv,
         )
+        # The console acts only for current employees (the control plane's HR record and the
+        # Entra link): the platform administrator and the reviewer join first.
+        hr_event(cp, tenant, hr_secret, "platform-join", "joiner", 1, PLATFORM_HR)
+        hr_event(cp, tenant, hr_secret, "reviewer-join", "joiner", 2, REVIEWER_HR)
+        for hr_id in ("E-4004", "E-5005"):
+            wait_for(
+                f"{hr_id} linked", lambda h=hr_id: _link(cpdb, tenant, h) == "matched", timeout=90
+            )
+        # Someone the directory knows but Muistamo has no HR record or link for: refused.
+        stranger = bearer(ms.user_token(uuid.uuid4(), azp=fake_microsoft.CONSOLE))
+        status, body = http("GET", f"{kn}/v1/knowledge/personal/entries", None, stranger)
+        assert status == 403 and "current employees" in body.get("detail", ""), (status, body)
         reviewer = {
             "Authorization": "Bearer " + ms.user_token(REVIEWER, azp=fake_microsoft.CONSOLE)
         }
@@ -643,7 +657,7 @@ def main() -> None:
         # In the console the leaver acts no more, though their Entra account still works.
         leaver_console = bearer(ms.user_token(PERSON, azp=fake_microsoft.CONSOLE))
         status, body = http("GET", f"{kn}/v1/knowledge/personal/entries", None, leaver_console)
-        assert status == 403 and "has left" in body.get("detail", ""), (status, body)
+        assert status == 403 and "current employees" in body.get("detail", ""), (status, body)
 
         step("7. Rehire: the review is fenced; replayed calls from the old leaving change nothing")
         hr_event(cp, tenant, hr_secret, "join-2", "joiner", 90)
@@ -653,9 +667,14 @@ def main() -> None:
         fenced = wait_for(
             "the review cancelled", lambda: _review(kn, manager, status="closed"), timeout=60
         )
+        # Rehired: once the rehire's joiner has linked them again, the console acts for them
+        # (allow for the 30-second cache of the earlier answer).
         rehired = bearer(ms.user_token(PERSON, azp=fake_microsoft.CONSOLE))
-        status, _ = http("GET", f"{kn}/v1/knowledge/personal/entries", None, rehired)
-        assert status == 200, status  # rehired: the console acts for them again
+        wait_for(
+            "the rehired person admitted to the console",
+            lambda: http("GET", f"{kn}/v1/knowledge/personal/entries", None, rehired)[0] == 200,
+            timeout=90,
+        )
         assert fenced["id"] == review["id"] and fenced["outcome"] == "cancelled", fenced
         assert not _frozen(kn, bearer(token)), "the rehired person's layer is still frozen"
         old = {
@@ -781,6 +800,8 @@ PERSON_HR = {
 }
 COLLEAGUE_HR = {"id": "E-2002", "email": "colleague@example.invalid", "jobCode": "ANALYST"}
 MANAGER_HR = {"id": "E-3003", "email": "manager@example.invalid", "jobCode": "MANAGER"}
+PLATFORM_HR = {"id": "E-4004", "email": "platform@example.invalid", "jobCode": "PLATFORM"}
+REVIEWER_HR = {"id": "E-5005", "email": "reviewer@example.invalid", "jobCode": "CONTROLLER"}
 SUPERSEDED = "https://muistamo.dev/problems/superseded"
 
 

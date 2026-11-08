@@ -747,6 +747,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/internal/knowledge/people/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Whether the person behind an Entra token is a current employee (service call)
+         * @description Service call from the knowledge service only, signed exactly like issueKnowledgeDelegation (the same key for this direction and tenant, the same five-minute window, single-use nonces). The token is validated with the tenant's enrolled binding and the person's Entra user link is checked at this moment under the same locks and rules as a delegation: current only while the link's joiner is still the person's latest accepted HR event. The knowledge service admits a person to its console routes only while this says current. Read-only: nothing is recorded. Without an Entra configuration the route answers 501, which the knowledge service treats as not current.
+         */
+        post: operations["knowledgePersonCurrent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/internal/knowledge/delegations": {
         parameters: {
             query?: never;
@@ -1849,6 +1869,28 @@ export interface components {
             name: string;
             /** @description Version constraint, for example 3.x to follow minor updates. */
             version?: string;
+        };
+        /**
+         * KnowledgePersonCurrent
+         * @description Whether the person is a current employee at this moment, as the control plane's HR record and Entra user link say. Anything but current is not current.
+         */
+        KnowledgePersonCurrent: {
+            current: boolean;
+            /**
+             * @description Why not current: the token did not validate, the user is not linked to a current joiner (a leaver, or a person Muistamo has no HR record or link for), or the tenant's identity binding is changing.
+             * @enum {string}
+             */
+            reason?: "token-invalid" | "user-unlinked" | "identity-not-ready";
+        };
+        /**
+         * KnowledgePersonCurrentRequest
+         * @description The knowledge service asks whether the person who sent userToken is a current employee: their Entra user is linked to an HR person whose latest accepted HR event is the joiner that made the link. A signed service call: the signature, its time window and the single-use nonce together refuse replays.
+         */
+        KnowledgePersonCurrentRequest: {
+            /** @description The person's Entra access token for Muistamo, as the knowledge service received it. Validated, never stored or recorded. */
+            userToken: string;
+            /** @description 128 random bits, hex encoded. Each nonce is accepted once. */
+            nonce: string;
         };
         /**
          * KnowledgeRead
@@ -3953,6 +3995,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntraUserLink"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    knowledgePersonCurrent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgePersonCurrentRequest"];
+            };
+        };
+        responses: {
+            /** @description The answer. Never cache it beyond the caller's own short window. */
+            200: {
+                headers: {
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePersonCurrent"];
                 };
             };
             default: components["responses"]["Problem"];

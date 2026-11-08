@@ -293,6 +293,23 @@ class EntraWorld:
                         return await session.call_tool(tool, args)
 
 
+class FakePeople:
+    """The control plane's person-current answer, as the console check asks it. Everyone is
+    current unless named in not_current; people in unavailable cannot be answered."""
+
+    def __init__(self) -> None:
+        self.not_current: set[str] = set()
+        self.unavailable: set[str] = set()
+        self.asked: list[str] = []
+
+    def is_current(self, tenant: uuid.UUID, person: str, user_token: str) -> bool | None:
+        assert user_token, "the person's own token is what the control plane validates"
+        self.asked.append(person)
+        if person in self.unavailable:
+            return None
+        return person not in self.not_current
+
+
 @pytest.fixture
 def entra_world(world: World) -> EntraWorld:
     from muistamo_knowledge import entra
@@ -305,6 +322,7 @@ def entra_world(world: World) -> EntraWorld:
         entra.assistants(world.knowledge.db),
         fetch=directory.fetch,
     )
+    world.knowledge.people = FakePeople()
     return EntraWorld(world=world, directory=directory, resolver=resolver)
 
 

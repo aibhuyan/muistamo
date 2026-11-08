@@ -473,3 +473,94 @@ def test_a_slow_control_plane_is_no_delegation(entra_world, monkeypatch) -> None
     body = retrieve(entra_world, token, "finance")
     assert documents(body) == set() and body["coverage"]["delegation"]["reason"] == "unavailable"
     assert connectors["finance"].calls == []
+
+
+# Person-current: who the console admits (docs/console-entra-signin-plan.md, PR 0) -------------
+
+
+def current_client(status: int, body, secret: bytes | None = SECRET, sent: list | None = None):
+    def transport(url, data, headers, timeout):
+        if sent is not None:
+            sent.append((url, data, headers))
+        if isinstance(body, Exception):
+            raise body
+        return status, body if isinstance(body, bytes) else json.dumps(body).encode()
+
+    return DelegationClient("https://control-plane.example.invalid/", lambda _: secret, transport)
+
+
+def test_person_current_is_a_signed_call_with_the_persons_token() -> None:
+    sent: list = []
+    assert (
+        current_client(200, {"current": True}, sent=sent).current(
+            TENANT, "obviously-fake-user-token"
+        )
+        is True
+    )
+    url, data, headers = sent[0]
+    assert url == "https://control-plane.example.invalid/v1/internal/knowledge/people/current"
+    body = json.loads(data)
+    assert body["userToken"] == "obviously-fake-user-token" and len(body["nonce"]) == 32
+    ts = headers["X-Muistamo-Signature"].split(",")[0].removeprefix("t=")
+    assert headers["X-Muistamo-Signature"] == sign(direction_key(SECRET, TENANT), data, float(ts))
+    assert headers["X-Muistamo-Tenant"] == str(TENANT)
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "secret", "expected"),
+    [
+        (200, {"current": False, "reason": "user-unlinked"}, SECRET, False),
+        (501, {"title": "not configured"}, SECRET, False),  # no Entra: nobody is vouched for
+        (200, {"current": True}, None, False),  # the tenant has no secret
+        (200, {"current": "yes"}, SECRET, None),
+        (200, b"not json", SECRET, None),
+        (200, [True], SECRET, None),
+        (500, {"current": True}, SECRET, None),  # an error is never an answer
+        (403, {"current": True}, SECRET, None),
+        (200, OSError("unreachable"), SECRET, None),
+        (200, b"{" + b" " * (64 * 1024) + b"}", SECRET, None),  # oversized
+    ],
+    ids=[
+        "not-current",
+        "not-configured",
+        "no-secret",
+        "not-a-boolean",
+        "not-json",
+        "not-an-object",
+        "server-error",
+        "refused",
+        "unreachable",
+        "oversized",
+    ],
+)
+def test_anything_but_a_clear_current_is_not_current(status, body, secret, expected) -> None:
+    assert (
+        current_client(status, body, secret).current(TENANT, "obviously-fake-user-token")
+        is expected
+    )
+
+
+def test_answers_are_reused_for_thirty_seconds_and_failures_never() -> None:
+    from muistamo_knowledge.delegation import CurrentPeople
+
+    class Client:
+        def __init__(self) -> None:
+            self.answers = [True, None, False]
+            self.calls = 0
+
+        def current(self, tenant, token):
+            self.calls += 1
+            return self.answers.pop(0)
+
+    now = [1000.0]
+    client = Client()
+    people = CurrentPeople(client, clock=lambda: now[0])  # type: ignore[arg-type]
+    assert people.is_current(TENANT, "entra:a", "t") is True
+    now[0] += 29
+    assert people.is_current(TENANT, "entra:a", "t") is True and client.calls == 1
+    now[0] += 2  # past 30 s: asked again, and a failure is not kept
+    assert people.is_current(TENANT, "entra:a", "t") is None
+    assert people.is_current(TENANT, "entra:a", "t") is False and client.calls == 3
+    # Per person and tenant: another person is asked on their own.
+    client.answers = [True]
+    assert people.is_current(TENANT, "entra:b", "t") is True and client.calls == 4

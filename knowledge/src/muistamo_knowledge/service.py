@@ -41,6 +41,10 @@ class Forbidden(Exception):
     pass
 
 
+class Unavailable(Exception):
+    """A check that must succeed could not be made; nothing was done (fail closed)."""
+
+
 class Conflict(Exception):
     pass
 
@@ -125,6 +129,9 @@ class Knowledge:
         self.connectors = connectors or {}
         # Entra callers' delegations (PR D); None refuses every Entra caller's sources.
         self.delegations: DelegationClient | None = None
+        # Who the console admits: the control plane's person-current answers (CurrentPeople).
+        # None admits no console caller (fail closed).
+        self.people: Any = None
         # Called after a new pack version commits, with (actor, pack, version). Delivery targets
         # (Agent Skills destinations, FR-312) subscribe here; a failing hook never undoes a merge.
         self.on_publish: list[Callable[[Actor, str, str], None]] = []
@@ -145,7 +152,11 @@ class Knowledge:
         if actor.client_app is not None:
             # The event body names the client app and its kind; the chain format is unchanged.
             client = {"app": str(actor.client_app), "kind": actor.client_kind}
-            after = {**(after if isinstance(after, dict) else {}), "client": client}
+            # A document-valued after (pack.applied, erasure.completed) is the document plus
+            # client. Anything but a mapping or nothing is a programming error, never dropped.
+            if after is not None and not isinstance(after, dict):
+                raise TypeError("evidence after must be a mapping to carry the client")
+            after = {**(after or {}), "client": client}
         evidence.append(
             cur,
             self.signer,
@@ -1259,22 +1270,6 @@ class Knowledge:
         return removed
 
     # Evidence -------------------------------------------------------------------------------
-
-    def has_left(self, actor: Actor) -> bool:
-        """Whether the person has left, by knowledge's own records: their latest live leaver
-        review (opened by the control plane at the leaving's HR generation) is at their current
-        fence, which a rehire would have raised past it. Fails closed: an error is raised, never
-        read as 'still here'."""
-        with self.db.in_tenant(actor.tenant) as cur:
-            cur.execute(
-                "SELECT EXISTS (SELECT 1 FROM knowledge.leaver_review_fences f"
-                " JOIN knowledge.leaver_reviews r"
-                " ON r.tenant_id = f.tenant_id AND r.person = f.person AND r.generation = f.generation"
-                " WHERE f.person = %s)",
-                (actor.name,),
-            )
-            row = cur.fetchone()
-            return bool(row and row[0])
 
     def events(self, actor: Actor, after_seq: int, limit: int) -> list[evidence.Event]:
         """The evidence export, for privacy officers only: the chain names every pack, reviewer

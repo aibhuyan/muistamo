@@ -1068,6 +1068,27 @@ func (e KnowledgePackSpecMergePolicyRequires) Valid() bool {
 	}
 }
 
+// Defines values for KnowledgePersonCurrentReason.
+const (
+	KnowledgePersonCurrentReasonIdentityNotReady KnowledgePersonCurrentReason = "identity-not-ready"
+	KnowledgePersonCurrentReasonTokenInvalid     KnowledgePersonCurrentReason = "token-invalid"
+	KnowledgePersonCurrentReasonUserUnlinked     KnowledgePersonCurrentReason = "user-unlinked"
+)
+
+// Valid indicates whether the value is a known member of the KnowledgePersonCurrentReason enum.
+func (e KnowledgePersonCurrentReason) Valid() bool {
+	switch e {
+	case KnowledgePersonCurrentReasonIdentityNotReady:
+		return true
+	case KnowledgePersonCurrentReasonTokenInvalid:
+		return true
+	case KnowledgePersonCurrentReasonUserUnlinked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for KnowledgeReadCitationsType.
 const (
 	KnowledgeReadCitationsTypeDocument KnowledgeReadCitationsType = "document"
@@ -2903,6 +2924,26 @@ type KnowledgePackRef struct {
 	Version *string `json:"version,omitempty"`
 }
 
+// KnowledgePersonCurrent Whether the person is a current employee at this moment, as the control plane's HR record and Entra user link say. Anything but current is not current.
+type KnowledgePersonCurrent struct {
+	Current bool `json:"current"`
+
+	// Reason Why not current: the token did not validate, the user is not linked to a current joiner (a leaver, or a person Muistamo has no HR record or link for), or the tenant's identity binding is changing.
+	Reason *KnowledgePersonCurrentReason `json:"reason,omitempty"`
+}
+
+// KnowledgePersonCurrentReason Why not current: the token did not validate, the user is not linked to a current joiner (a leaver, or a person Muistamo has no HR record or link for), or the tenant's identity binding is changing.
+type KnowledgePersonCurrentReason string
+
+// KnowledgePersonCurrentRequest The knowledge service asks whether the person who sent userToken is a current employee: their Entra user is linked to an HR person whose latest accepted HR event is the joiner that made the link. A signed service call: the signature, its time window and the single-use nonce together refuse replays.
+type KnowledgePersonCurrentRequest struct {
+	// Nonce 128 random bits, hex encoded. Each nonce is accepted once.
+	Nonce string `json:"nonce"`
+
+	// UserToken The person's Entra access token for Muistamo, as the knowledge service received it. Validated, never stored or recorded.
+	UserToken string `json:"userToken"`
+}
+
 // KnowledgeRead One retrieval a person made: what they were shown, never the query text (invariant 5).
 type KnowledgeRead struct {
 	// Agent The agent instance the read was made through, for a person who signed in with Entra (the delegation's agent).
@@ -3932,6 +3973,9 @@ type TransitionInstanceJSONRequestBody = InstanceTransition
 // IssueKnowledgeDelegationJSONRequestBody defines body for IssueKnowledgeDelegation for application/json ContentType.
 type IssueKnowledgeDelegationJSONRequestBody = KnowledgeDelegationRequest
 
+// KnowledgePersonCurrentJSONRequestBody defines body for KnowledgePersonCurrent for application/json ContentType.
+type KnowledgePersonCurrentJSONRequestBody = KnowledgePersonCurrentRequest
+
 // ApplyLinkJSONRequestBody defines body for ApplyLink for application/json ContentType.
 type ApplyLinkJSONRequestBody = AgentLink
 
@@ -4224,6 +4268,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
 	IssueKnowledgeDelegation(ctx context.Context, body IssueKnowledgeDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// KnowledgePersonCurrentWithBody Whether the person behind an Entra token is a current employee (service call)
+	//
+	// Service call from the knowledge service only, signed exactly like issueKnowledgeDelegation (the same key for this direction and tenant, the same five-minute window, single-use nonces). The token is validated with the tenant's enrolled binding and the person's Entra user link is checked at this moment under the same locks and rules as a delegation: current only while the link's joiner is still the person's latest accepted HR event. The knowledge service admits a person to its console routes only while this says current. Read-only: nothing is recorded. Without an Entra configuration the route answers 501, which the knowledge service treats as not current.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/internal/knowledge/people/current (the `KnowledgePersonCurrent` operationId).
+	KnowledgePersonCurrentWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// KnowledgePersonCurrent Whether the person behind an Entra token is a current employee (service call)
+	//
+	// Service call from the knowledge service only, signed exactly like issueKnowledgeDelegation (the same key for this direction and tenant, the same five-minute window, single-use nonces). The token is validated with the tenant's enrolled binding and the person's Entra user link is checked at this moment under the same locks and rules as a delegation: current only while the link's joiner is still the person's latest accepted HR event. The knowledge service admits a person to its console routes only while this says current. Read-only: nothing is recorded. Without an Entra configuration the route answers 501, which the knowledge service treats as not current.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/internal/knowledge/people/current (the `KnowledgePersonCurrent` operationId).
+	KnowledgePersonCurrent(ctx context.Context, body KnowledgePersonCurrentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListLinks List every agent link
 	//
@@ -4952,6 +5014,44 @@ func (c *Client) IssueKnowledgeDelegationWithBody(ctx context.Context, contentTy
 // Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
 func (c *Client) IssueKnowledgeDelegation(ctx context.Context, body IssueKnowledgeDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewIssueKnowledgeDelegationRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// KnowledgePersonCurrentWithBody Whether the person behind an Entra token is a current employee (service call)
+//
+// Service call from the knowledge service only, signed exactly like issueKnowledgeDelegation (the same key for this direction and tenant, the same five-minute window, single-use nonces). The token is validated with the tenant's enrolled binding and the person's Entra user link is checked at this moment under the same locks and rules as a delegation: current only while the link's joiner is still the person's latest accepted HR event. The knowledge service admits a person to its console routes only while this says current. Read-only: nothing is recorded. Without an Entra configuration the route answers 501, which the knowledge service treats as not current.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/internal/knowledge/people/current (the `KnowledgePersonCurrent` operationId).
+func (c *Client) KnowledgePersonCurrentWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewKnowledgePersonCurrentRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// KnowledgePersonCurrent Whether the person behind an Entra token is a current employee (service call)
+//
+// Service call from the knowledge service only, signed exactly like issueKnowledgeDelegation (the same key for this direction and tenant, the same five-minute window, single-use nonces). The token is validated with the tenant's enrolled binding and the person's Entra user link is checked at this moment under the same locks and rules as a delegation: current only while the link's joiner is still the person's latest accepted HR event. The knowledge service admits a person to its console routes only while this says current. Read-only: nothing is recorded. Without an Entra configuration the route answers 501, which the knowledge service treats as not current.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/internal/knowledge/people/current (the `KnowledgePersonCurrent` operationId).
+func (c *Client) KnowledgePersonCurrent(ctx context.Context, body KnowledgePersonCurrentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewKnowledgePersonCurrentRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6556,6 +6656,46 @@ func NewIssueKnowledgeDelegationRequestWithBody(server string, contentType strin
 	}
 
 	operationPath := fmt.Sprintf("/v1/internal/knowledge/delegations")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewKnowledgePersonCurrentRequest calls the generic KnowledgePersonCurrent builder with application/json body
+func NewKnowledgePersonCurrentRequest(server string, body KnowledgePersonCurrentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewKnowledgePersonCurrentRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewKnowledgePersonCurrentRequestWithBody constructs an http.Request for the KnowledgePersonCurrent method, with any body, and a specified content type
+func NewKnowledgePersonCurrentRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/internal/knowledge/people/current")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -8206,6 +8346,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/internal/knowledge/delegations (the `IssueKnowledgeDelegation` operationId).
 	IssueKnowledgeDelegationWithResponse(ctx context.Context, body IssueKnowledgeDelegationJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueKnowledgeDelegationResponse, error)
 
+	// KnowledgePersonCurrentWithBodyWithResponse Whether the person behind an Entra token is a current employee (service call)
+	//
+	// Service call from the knowledge service only, signed exactly like issueKnowledgeDelegation (the same key for this direction and tenant, the same five-minute window, single-use nonces). The token is validated with the tenant's enrolled binding and the person's Entra user link is checked at this moment under the same locks and rules as a delegation: current only while the link's joiner is still the person's latest accepted HR event. The knowledge service admits a person to its console routes only while this says current. Read-only: nothing is recorded. Without an Entra configuration the route answers 501, which the knowledge service treats as not current.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/internal/knowledge/people/current (the `KnowledgePersonCurrent` operationId).
+	KnowledgePersonCurrentWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*KnowledgePersonCurrentResponse, error)
+
+	// KnowledgePersonCurrentWithResponse Whether the person behind an Entra token is a current employee (service call)
+	//
+	// Service call from the knowledge service only, signed exactly like issueKnowledgeDelegation (the same key for this direction and tenant, the same five-minute window, single-use nonces). The token is validated with the tenant's enrolled binding and the person's Entra user link is checked at this moment under the same locks and rules as a delegation: current only while the link's joiner is still the person's latest accepted HR event. The knowledge service admits a person to its console routes only while this says current. Read-only: nothing is recorded. Without an Entra configuration the route answers 501, which the knowledge service treats as not current.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/internal/knowledge/people/current (the `KnowledgePersonCurrent` operationId).
+	KnowledgePersonCurrentWithResponse(ctx context.Context, body KnowledgePersonCurrentJSONRequestBody, reqEditors ...RequestEditorFn) (*KnowledgePersonCurrentResponse, error)
+
 	// ListLinksWithResponse List every agent link
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -9630,6 +9788,61 @@ func (r IssueKnowledgeDelegationResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r IssueKnowledgeDelegationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// KnowledgePersonCurrentResponse200Headers the declared response headers of an HTTP 200 response for KnowledgePersonCurrent
+type KnowledgePersonCurrentResponse200Headers struct {
+	CacheControl string
+}
+
+type KnowledgePersonCurrentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *KnowledgePersonCurrent
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *KnowledgePersonCurrentResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r KnowledgePersonCurrentResponse) GetJSON200() *KnowledgePersonCurrent {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r KnowledgePersonCurrentResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r KnowledgePersonCurrentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r KnowledgePersonCurrentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r KnowledgePersonCurrentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r KnowledgePersonCurrentResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11680,6 +11893,36 @@ func (c *ClientWithResponses) IssueKnowledgeDelegationWithResponse(ctx context.C
 	return ParseIssueKnowledgeDelegationResponse(rsp)
 }
 
+// KnowledgePersonCurrentWithBodyWithResponse Whether the person behind an Entra token is a current employee (service call)
+//
+// Service call from the knowledge service only, signed exactly like issueKnowledgeDelegation (the same key for this direction and tenant, the same five-minute window, single-use nonces). The token is validated with the tenant's enrolled binding and the person's Entra user link is checked at this moment under the same locks and rules as a delegation: current only while the link's joiner is still the person's latest accepted HR event. The knowledge service admits a person to its console routes only while this says current. Read-only: nothing is recorded. Without an Entra configuration the route answers 501, which the knowledge service treats as not current.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/internal/knowledge/people/current (the `KnowledgePersonCurrent` operationId).
+func (c *ClientWithResponses) KnowledgePersonCurrentWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*KnowledgePersonCurrentResponse, error) {
+	rsp, err := c.KnowledgePersonCurrentWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseKnowledgePersonCurrentResponse(rsp)
+}
+
+// KnowledgePersonCurrentWithResponse Whether the person behind an Entra token is a current employee (service call)
+//
+// Service call from the knowledge service only, signed exactly like issueKnowledgeDelegation (the same key for this direction and tenant, the same five-minute window, single-use nonces). The token is validated with the tenant's enrolled binding and the person's Entra user link is checked at this moment under the same locks and rules as a delegation: current only while the link's joiner is still the person's latest accepted HR event. The knowledge service admits a person to its console routes only while this says current. Read-only: nothing is recorded. Without an Entra configuration the route answers 501, which the knowledge service treats as not current.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/internal/knowledge/people/current (the `KnowledgePersonCurrent` operationId).
+func (c *ClientWithResponses) KnowledgePersonCurrentWithResponse(ctx context.Context, body KnowledgePersonCurrentJSONRequestBody, reqEditors ...RequestEditorFn) (*KnowledgePersonCurrentResponse, error) {
+	rsp, err := c.KnowledgePersonCurrent(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseKnowledgePersonCurrentResponse(rsp)
+}
+
 // ListLinksWithResponse List every agent link
 //
 // Returns a wrapper object for the known response body format(s).
@@ -13139,6 +13382,52 @@ func ParseIssueKnowledgeDelegationResponse(rsp *http.Response) (*IssueKnowledgeD
 	return response, nil
 }
 
+// ParseKnowledgePersonCurrentResponse parses an HTTP response from a KnowledgePersonCurrentWithResponse call
+func ParseKnowledgePersonCurrentResponse(rsp *http.Response) (*KnowledgePersonCurrentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &KnowledgePersonCurrentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest KnowledgePersonCurrent
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers KnowledgePersonCurrentResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListLinksResponse parses an HTTP response from a ListLinksWithResponse call
 func ParseListLinksResponse(rsp *http.Response) (*ListLinksResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14422,6 +14711,9 @@ type ServerInterface interface {
 	// IssueKnowledgeDelegation Act for the person behind an Entra token, through their own agent (service call)
 	// (POST /v1/internal/knowledge/delegations)
 	IssueKnowledgeDelegation(w http.ResponseWriter, r *http.Request)
+	// KnowledgePersonCurrent Whether the person behind an Entra token is a current employee (service call)
+	// (POST /v1/internal/knowledge/people/current)
+	KnowledgePersonCurrent(w http.ResponseWriter, r *http.Request)
 	// ListLinks List every agent link
 	// (GET /v1/links)
 	ListLinks(w http.ResponseWriter, r *http.Request)
@@ -15092,6 +15384,20 @@ func (siw *ServerInterfaceWrapper) IssueKnowledgeDelegation(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.IssueKnowledgeDelegation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// KnowledgePersonCurrent operation middleware
+func (siw *ServerInterfaceWrapper) KnowledgePersonCurrent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.KnowledgePersonCurrent(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16139,6 +16445,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/privacy/erasures", wrapper.ErasePersonalData)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/privacy/erasures/{id}", wrapper.GetErasure)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/people/{personId}/entra-link", wrapper.GetEntraUserLink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/internal/knowledge/people/current", wrapper.KnowledgePersonCurrent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/internal/knowledge/delegations", wrapper.IssueKnowledgeDelegation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/privacy/access", wrapper.ExportPersonalData)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events", wrapper.ListEvents)
@@ -17124,6 +17431,53 @@ type IssueKnowledgeDelegationdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response IssueKnowledgeDelegationdefaultApplicationProblemPlusJSONResponse) VisitIssueKnowledgeDelegationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type KnowledgePersonCurrentRequestObject struct {
+	Body *KnowledgePersonCurrentJSONRequestBody
+}
+
+type KnowledgePersonCurrentResponseObject interface {
+	VisitKnowledgePersonCurrentResponse(w http.ResponseWriter) error
+}
+
+type KnowledgePersonCurrent200ResponseHeaders struct {
+	CacheControl string
+}
+
+type KnowledgePersonCurrent200JSONResponse struct {
+	Body    KnowledgePersonCurrent
+	Headers KnowledgePersonCurrent200ResponseHeaders
+}
+
+func (response KnowledgePersonCurrent200JSONResponse) VisitKnowledgePersonCurrentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type KnowledgePersonCurrentdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response KnowledgePersonCurrentdefaultApplicationProblemPlusJSONResponse) VisitKnowledgePersonCurrentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -18599,6 +18953,9 @@ type StrictServerInterface interface {
 	// IssueKnowledgeDelegation Act for the person behind an Entra token, through their own agent (service call)
 	// (POST /v1/internal/knowledge/delegations)
 	IssueKnowledgeDelegation(ctx context.Context, request IssueKnowledgeDelegationRequestObject) (IssueKnowledgeDelegationResponseObject, error)
+	// KnowledgePersonCurrent Whether the person behind an Entra token is a current employee (service call)
+	// (POST /v1/internal/knowledge/people/current)
+	KnowledgePersonCurrent(ctx context.Context, request KnowledgePersonCurrentRequestObject) (KnowledgePersonCurrentResponseObject, error)
 	// ListLinks List every agent link
 	// (GET /v1/links)
 	ListLinks(ctx context.Context, request ListLinksRequestObject) (ListLinksResponseObject, error)
@@ -19317,6 +19674,37 @@ func (sh *strictHandler) IssueKnowledgeDelegation(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(IssueKnowledgeDelegationResponseObject); ok {
 		if err := validResponse.VisitIssueKnowledgeDelegationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// KnowledgePersonCurrent operation middleware
+func (sh *strictHandler) KnowledgePersonCurrent(w http.ResponseWriter, r *http.Request) {
+	var request KnowledgePersonCurrentRequestObject
+
+	var body KnowledgePersonCurrentJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.KnowledgePersonCurrent(ctx, request.(KnowledgePersonCurrentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "KnowledgePersonCurrent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(KnowledgePersonCurrentResponseObject); ok {
+		if err := validResponse.VisitKnowledgePersonCurrentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

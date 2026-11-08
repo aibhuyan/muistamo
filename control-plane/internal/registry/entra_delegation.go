@@ -204,53 +204,12 @@ func decideDelegation(ctx context.Context, tx pgx.Tx, actor Actor, req Delegatio
 	refuse := func(reason muistamov1.KnowledgeDelegationRefusalReason) (delegationDecision, error) {
 		return delegationDecision{trusted: trusted, reason: reason}, nil
 	}
-	// Lock order as in the gateway and the live lifecycle: HR privacy, the person, the instance.
-	if err := store.LockHRPrivacy(ctx, tx, actor.Tenant, false); err != nil {
-		return delegationDecision{}, err
-	}
-	// The token was validated with the binding the tenant is enrolled with now, for its directory.
-	version, err := store.IdentityEnrollmentVersion(ctx, tx)
+	person, reason, err := currentLink(ctx, tx, actor, req)
 	if err != nil {
 		return delegationDecision{}, err
 	}
-	if version == nil {
-		return refuse("user-unlinked")
-	}
-	if *version != req.BindingVersion {
-		return refuse("identity-not-ready")
-	}
-	var enrolled uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT entra_tenant_id FROM entra_bindings WHERE binding_version = $1`, *version).Scan(&enrolled); err != nil {
-		return delegationDecision{}, fmt.Errorf("read enrolled binding: %w", err)
-	}
-	if enrolled != req.EntraTenant {
-		return refuse("user-unlinked")
-	}
-	var person string
-	err = tx.QueryRow(ctx, `SELECT person_id FROM person_entra_links
-		WHERE entra_tenant_id = $1 AND entra_user_object_id = $2 AND status = 'matched'`, req.EntraTenant, req.User).Scan(&person)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return refuse("user-unlinked")
-	}
-	if err != nil {
-		return delegationDecision{}, fmt.Errorf("read Entra user link: %w", err)
-	}
-	if err := lockIdentityHRPerson(ctx, tx, actor.Tenant, person); err != nil {
-		return delegationDecision{}, err
-	}
-	// Read again under the person lock, which every link write holds: the link stands only if
-	// its joiner receipt is still the person's latest accepted HR event.
-	var current bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM person_entra_links l
-		JOIN LATERAL (SELECT receipt_id, type FROM hr_events h WHERE h.person_id = l.person_id AND h.decision IN ('accepted','legacy')
-			ORDER BY generation DESC, occurred_at DESC, (type='leaver') DESC, event_id DESC LIMIT 1) latest ON true
-		WHERE l.person_id = $1 AND l.status = 'matched' AND l.entra_tenant_id = $2 AND l.entra_user_object_id = $3
-		  AND latest.type = 'joiner' AND latest.receipt_id = l.receipt_id)`, person, req.EntraTenant, req.User).Scan(&current)
-	if err != nil {
-		return delegationDecision{}, fmt.Errorf("check Entra user link: %w", err)
-	}
-	if !current {
-		return refuse("user-unlinked")
+	if reason != "" {
+		return refuse(reason)
 	}
 	trusted["person"] = person
 	// The person's live agents: those whose identity was assigned by one of the person's HR
@@ -315,7 +274,7 @@ func decideDelegation(ctx context.Context, tx pgx.Tx, actor Actor, req Delegatio
 	}
 	// The agent identity must belong to the enrolled blueprint: only that blueprint can mint the
 	// agent's assertion, with the credential the control plane was started with.
-	if owned.ProviderId == nil || owned.BindingVersion == nil || *owned.BindingVersion != *version || owned.EntraTenantId == nil || *owned.EntraTenantId != req.EntraTenant {
+	if owned.ProviderId == nil || owned.BindingVersion == nil || *owned.BindingVersion != req.BindingVersion || owned.EntraTenantId == nil || *owned.EntraTenantId != req.EntraTenant {
 		return refuse("identity-not-ready")
 	}
 	agent := *owned.ProviderId
@@ -332,4 +291,77 @@ func decideDelegation(ctx context.Context, tx pgx.Tx, actor Actor, req Delegatio
 		packs = *eff.Spec.KnowledgePacks
 	}
 	return delegationDecision{target: delegationTarget{instance: name, person: person, agent: agent, packs: packs}, trusted: trusted}, nil
+}
+
+// currentLink decides whether the Entra user is a current employee: the tenant is enrolled with
+// the binding the token was validated with, for that directory, and the user is linked to an HR
+// person whose latest accepted HR event is still the joiner that made the link. It takes the HR
+// privacy lock, then the person's lock, as every delegation does. A refusal is a reason; an empty
+// reason returns the person.
+func currentLink(ctx context.Context, tx pgx.Tx, actor Actor, req DelegationRequest) (string, muistamov1.KnowledgeDelegationRefusalReason, error) {
+	// Lock order as in the gateway and the live lifecycle: HR privacy, the person, the instance.
+	if err := store.LockHRPrivacy(ctx, tx, actor.Tenant, false); err != nil {
+		return "", "", err
+	}
+	// The token was validated with the binding the tenant is enrolled with now, for its directory.
+	version, err := store.IdentityEnrollmentVersion(ctx, tx)
+	if err != nil {
+		return "", "", err
+	}
+	if version == nil {
+		return "", "user-unlinked", nil
+	}
+	if *version != req.BindingVersion {
+		return "", "identity-not-ready", nil
+	}
+	var enrolled uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT entra_tenant_id FROM entra_bindings WHERE binding_version = $1`, *version).Scan(&enrolled); err != nil {
+		return "", "", fmt.Errorf("read enrolled binding: %w", err)
+	}
+	if enrolled != req.EntraTenant {
+		return "", "user-unlinked", nil
+	}
+	var person string
+	err = tx.QueryRow(ctx, `SELECT person_id FROM person_entra_links
+		WHERE entra_tenant_id = $1 AND entra_user_object_id = $2 AND status = 'matched'`, req.EntraTenant, req.User).Scan(&person)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "user-unlinked", nil
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("read Entra user link: %w", err)
+	}
+	if err := lockIdentityHRPerson(ctx, tx, actor.Tenant, person); err != nil {
+		return "", "", err
+	}
+	// Read again under the person lock, which every link write holds: the link stands only if
+	// its joiner receipt is still the person's latest accepted HR event.
+	var current bool
+	err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM person_entra_links l
+		JOIN LATERAL (SELECT receipt_id, type FROM hr_events h WHERE h.person_id = l.person_id AND h.decision IN ('accepted','legacy')
+			ORDER BY generation DESC, occurred_at DESC, (type='leaver') DESC, event_id DESC LIMIT 1) latest ON true
+		WHERE l.person_id = $1 AND l.status = 'matched' AND l.entra_tenant_id = $2 AND l.entra_user_object_id = $3
+		  AND latest.type = 'joiner' AND latest.receipt_id = l.receipt_id)`, person, req.EntraTenant, req.User).Scan(&current)
+	if err != nil {
+		return "", "", fmt.Errorf("check Entra user link: %w", err)
+	}
+	if !current {
+		return "", "user-unlinked", nil
+	}
+	return person, "", nil
+}
+
+// PersonCurrent answers the knowledge service: whether the user is a current employee at this
+// moment, by exactly the delegation's link-and-joiner rule (currentLink). Read-only: a status
+// answer changes nothing, so nothing is recorded; the caller logs it.
+func (s *Service) PersonCurrent(ctx context.Context, actor Actor, req DelegationRequest) (muistamov1.KnowledgeDelegationRefusalReason, error) {
+	var reason muistamov1.KnowledgeDelegationRefusalReason
+	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		_, r, err := currentLink(ctx, tx, actor, req)
+		reason = r
+		return err
+	})
+	if err != nil {
+		return "", fmt.Errorf("decide whether the person is current: %w", err)
+	}
+	return reason, nil
 }

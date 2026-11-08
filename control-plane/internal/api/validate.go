@@ -55,6 +55,14 @@ func validateDocuments(next http.Handler) http.Handler {
 				}
 				return nil
 			}
+		case r.Method == http.MethodPost && r.URL.Path == peopleCurrentPath:
+			// The body carries a user token: the validation error never echoes it.
+			validate = func(b []byte) error {
+				if contracts.ValidateAgainst("knowledgepersoncurrentrequest.json", b) != nil {
+					return errors.New("invalid person-current request")
+				}
+				return nil
+			}
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/transitions"):
 			validate = func(b []byte) error { return contracts.ValidateAgainst("instancetransition.json", b) }
 		case r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch:

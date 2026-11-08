@@ -16,6 +16,7 @@ import hmac
 import json
 import logging
 import secrets
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -29,6 +30,9 @@ log = logging.getLogger(__name__)
 
 DIRECTION = "muistamo/v1 knowledge→control-plane"
 PATH = "/v1/internal/knowledge/delegations"
+CURRENT_PATH = "/v1/internal/knowledge/people/current"
+CURRENT_TTL = 30.0  # seconds a person-current answer is reused (console sign-in plan)
+CURRENT_CACHE_SIZE = 10_000
 TIMEOUT = 4.0  # within the retrieval budget
 MAX_RESPONSE = 64 * 1024
 REFUSALS = {
@@ -107,8 +111,51 @@ class DelegationClient:
         if not base_url.startswith(("https://", "http://")):
             raise ValueError("the control plane URL must be http(s)")
         self.url = base_url.rstrip("/") + PATH
+        self.current_url = base_url.rstrip("/") + CURRENT_PATH
         self._secret_for = secret_for
         self._transport = transport
+
+    def current(self, tenant: uuid.UUID, user_token: str) -> bool | None:
+        """Whether the person who sent user_token is a current employee, as the control plane
+        decides it right now: True or False, or None when it cannot be asked or answered
+        properly. Callers treat anything but True as not admitted (fail closed)."""
+        try:
+            secret = self._secret_for(tenant)
+        except Exception:  # noqa: BLE001 - no secret, no answer
+            log.warning("knowledge service secret unavailable", extra={"tenant": str(tenant)})
+            return None
+        if not secret:
+            return False  # the tenant has no control plane to vouch for anyone
+        body = json.dumps(
+            {"userToken": user_token, "nonce": secrets.token_hex(16)}, separators=(",", ":")
+        ).encode()
+        headers = {
+            "Content-Type": "application/json",
+            "X-Muistamo-Tenant": str(tenant),
+            "X-Muistamo-Signature": sign(direction_key(secret, tenant), body),
+        }
+        try:
+            status, raw = self._transport(self.current_url, body, headers, TIMEOUT)
+        except Exception as exc:  # noqa: BLE001 - an unreachable control plane answers nothing
+            log.warning(
+                "person-current request failed",
+                extra={"tenant": str(tenant), "error": type(exc).__name__},
+            )
+            return None
+        if status == 501:
+            return False  # no Entra configuration: nobody is vouched for
+        if status != 200 or len(raw) > MAX_RESPONSE:
+            log.warning(
+                "person-current answer refused", extra={"tenant": str(tenant), "status": status}
+            )
+            return None
+        try:
+            answer = json.loads(raw)
+        except ValueError:
+            return None
+        if not isinstance(answer, dict) or not isinstance(answer.get("current"), bool):
+            return None
+        return answer["current"]
 
     def request(self, tenant: uuid.UUID, user_token: str, instance: str | None = None) -> Outcome:
         """Ask for a delegation. Any failure is no delegation: fail closed, with its reason."""
@@ -171,6 +218,38 @@ class DelegationClient:
             log.warning("delegation answer is not a person's token", extra={"tenant": str(tenant)})
             return Outcome(None, "unavailable")
         return Outcome(delegation)
+
+
+class CurrentPeople:
+    """The control plane's person-current answers, each reused for at most CURRENT_TTL seconds
+    per (tenant, person). Only definite answers are kept; a failure is asked again next time."""
+
+    def __init__(
+        self,
+        client: DelegationClient,
+        clock: Callable[[], float] = time.monotonic,
+        ttl: float = CURRENT_TTL,
+    ) -> None:
+        self._client = client
+        self._clock = clock
+        self._ttl = ttl
+        self._lock = threading.Lock()
+        self._answers: dict[tuple[uuid.UUID, str], tuple[float, bool]] = {}
+
+    def is_current(self, tenant: uuid.UUID, person: str, user_token: str) -> bool | None:
+        key = (tenant, person)
+        now = self._clock()
+        with self._lock:
+            hit = self._answers.get(key)
+            if hit is not None and now - hit[0] < self._ttl:
+                return hit[1]
+        answer = self._client.current(tenant, user_token)
+        if answer is not None:
+            with self._lock:
+                if len(self._answers) >= CURRENT_CACHE_SIZE:
+                    self._answers.clear()  # bounded: start again rather than grow
+                self._answers[key] = (now, answer)
+        return answer
 
 
 def delegated_person_token(token: str) -> bool:
