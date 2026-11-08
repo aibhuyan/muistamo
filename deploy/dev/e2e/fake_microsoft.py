@@ -115,6 +115,15 @@ class Microsoft:
         self.checks: list[tuple[str, str, int]] = []
         # Graph tokens this fake issued: token -> (agent identity, person oid, expiry).
         self.issued: dict[str, tuple[str, str, int]] = {}
+        # The console's web sign-in (OpenID Connect code flow with PKCE): its confidential
+        # client, the one redirect URI registered for it, single-use codes and refresh tokens.
+        self.console_secret = "obviously-fake-console-secret"
+        self.console_redirect = ""  # set by the run once the console's port is known
+        self.codes: dict[str, dict[str, Any]] = {}
+        self.refresh_tokens: dict[str, str] = {}  # refresh token -> user oid
+        self.disabled: set[str] = set()  # users whose next refresh is refused (invalid_grant)
+        self.guests: set[str] = set()  # users who sign in as guests (acct = 1)
+        self.short_lived: set[str] = set()  # users whose console tokens last 2 minutes
         self.lock = threading.Lock()
 
     def user_token(self, oid: uuid.UUID, lifetime: int = 1800, azp: uuid.UUID = ASSISTANT) -> str:
@@ -132,6 +141,28 @@ class Microsoft:
                 "iat": now,
                 "nbf": now - 30,
                 "exp": now + lifetime,
+            },
+            self.key,
+            algorithm="RS256",
+            headers={"kid": self.kid},
+        )
+
+    def id_token(self, oid: str, nonce: str) -> str:
+        now = int(time.time())
+        return jwt.encode(
+            {
+                "iss": f"https://login.microsoftonline.com/{self.directory}/v2.0",
+                "aud": str(CONSOLE),
+                "tid": str(self.directory),
+                "oid": oid,
+                "sub": f"e2e-console-{oid}",
+                "ver": "2.0",
+                "nonce": nonce,
+                "name": f"E2E person {oid[:8]}",
+                "acct": 1 if oid in self.guests else 0,
+                "iat": now,
+                "nbf": now - 30,
+                "exp": now + 3600,
             },
             self.key,
             algorithm="RS256",
@@ -210,10 +241,103 @@ def serve(state: Microsoft, cert: str, key: str) -> ThreadingHTTPServer:
                 return self._graph(method, url, body)
             return self._send(421)
 
+        def _console_grant(self, grant: str, form: dict[str, str]) -> None:
+            import base64
+            import hashlib
+
+            if form.get("client_secret") != state.console_secret:
+                return self._send(401, {"error": "invalid_client"})
+            if grant == "authorization_code":
+                # Single use, bound to its redirect and its PKCE verifier.
+                code = state.codes.pop(form.get("code", ""), None)
+                verifier = form.get("code_verifier", "")
+                challenge = (
+                    base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+                    .rstrip(b"=")
+                    .decode()
+                )
+                if (
+                    code is None
+                    or form.get("redirect_uri") != code["redirect"]
+                    or challenge != code["challenge"]
+                ):
+                    return self._send(400, {"error": "invalid_grant"})
+                oid, id_token = code["oid"], state.id_token(code["oid"], code["nonce"])
+            else:
+                oid = state.refresh_tokens.get(form.get("refresh_token", ""), "")
+                if not oid or oid in state.disabled:
+                    return self._send(400, {"error": "invalid_grant"})
+                id_token = None
+            refresh = f"e2e-refresh-{uuid.uuid4().hex}"
+            state.refresh_tokens[refresh] = oid
+            answer = {
+                "token_type": "Bearer",
+                "access_token": state.user_token(
+                    uuid.UUID(oid), 120 if oid in state.short_lived else 1800, azp=CONSOLE
+                ),
+                "expires_in": 1800,
+                "refresh_token": refresh,
+                "scope": f"api://{state.blueprint}/Knowledge.Read",
+            }
+            if id_token:
+                answer["id_token"] = id_token
+            return self._send(200, answer)
+
+        def _redirect(self, location: str) -> None:
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         def _login(self, method: str, url, body: bytes) -> None:
             prefix = f"/{state.directory}"
+            authority = f"https://login.microsoftonline.com/{state.directory}"
             if method == "GET" and url.path == f"{prefix}/discovery/v2.0/keys":
                 return self._send(200, state.jwks())
+            if method == "GET" and url.path == f"{prefix}/v2.0/.well-known/openid-configuration":
+                return self._send(
+                    200,
+                    {
+                        "issuer": f"{authority}/v2.0",
+                        "authorization_endpoint": f"{authority}/oauth2/v2.0/authorize",
+                        "token_endpoint": f"{authority}/oauth2/v2.0/token",
+                        "jwks_uri": f"{authority}/discovery/v2.0/keys",
+                        "end_session_endpoint": f"{authority}/oauth2/v2.0/logout",
+                        "response_types_supported": ["code"],
+                        "subject_types_supported": ["pairwise"],
+                        "id_token_signing_alg_values_supported": ["RS256"],
+                        "code_challenge_methods_supported": ["S256"],
+                        "token_endpoint_auth_methods_supported": ["client_secret_post"],
+                    },
+                )
+            if method == "GET" and url.path == f"{prefix}/oauth2/v2.0/authorize":
+                # The person "signs in" as login_hint (the run picks who). Everything Entra would
+                # check is checked: the client, its one registered redirect, code + S256, scope.
+                q = {k: v[0] for k, v in parse_qs(url.query).items()}
+                scope = q.get("scope", "").split()
+                if (
+                    q.get("client_id") != str(CONSOLE)
+                    or q.get("redirect_uri") != state.console_redirect
+                    or q.get("response_type") != "code"
+                    or q.get("code_challenge_method") != "S256"
+                    or len(q.get("code_challenge", "")) < 43
+                    or "openid" not in scope
+                    or f"api://{state.blueprint}/Knowledge.Read" not in scope
+                    or not q.get("state")
+                    or not q.get("nonce")
+                    or not q.get("login_hint")
+                ):
+                    return self._send(400, {"error": "invalid_request"})
+                code = f"e2e-code-{uuid.uuid4().hex}"
+                state.codes[code] = {
+                    "oid": q["login_hint"],
+                    "nonce": q["nonce"],
+                    "challenge": q["code_challenge"],
+                    "redirect": q["redirect_uri"],
+                }
+                return self._redirect(f"{q['redirect_uri']}?code={code}&state={q['state']}")
+            if method == "GET" and url.path == f"{prefix}/oauth2/v2.0/logout":
+                return self._send(200, {"signedOut": True})
             if method != "POST" or url.path != f"{prefix}/oauth2/v2.0/token":
                 return self._send(404)
             form = {k: v[0] for k, v in parse_qs(body.decode()).items()}
@@ -222,6 +346,8 @@ def serve(state: Microsoft, cert: str, key: str) -> ThreadingHTTPServer:
             def bearer(token: str) -> None:
                 self._send(200, {"access_token": token, "token_type": "Bearer", "expires_in": 3600})
 
+            if client == str(CONSOLE) and grant in ("authorization_code", "refresh_token"):
+                return self._console_grant(grant, form)
             if grant == "client_credentials" and client == str(state.indexer):
                 if form.get("client_secret") != state.indexer_secret:
                     return self._send(401, {"error": "invalid_client"})

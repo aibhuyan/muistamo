@@ -40,7 +40,7 @@ async function call<T>(
   path: string,
   body?: unknown,
 ): Promise<Result<T>> {
-  const headers: Record<string, string> = { ...serviceHeaders(session), Accept: "application/json" };
+  const headers: Record<string, string> = { ...(await serviceHeaders(session)), Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const url = baseUrl(service) + path;
   let response: Response;
@@ -71,6 +71,20 @@ async function call<T>(
   // 204 No Content (a delete) has no body to read.
   if (response.status === 204) return { ok: true, data: undefined as T };
   if (response.ok) return { ok: true, data: (await response.json()) as T };
+  // The service's own request id ties this refusal to its log line; never a token or a body.
+  console.warn(
+    JSON.stringify({
+      level: "WARN",
+      msg: "service refused",
+      service,
+      method,
+      path,
+      status: response.status,
+      tenant: session.tenant,
+      person: session.person,
+      serviceRequestId: response.headers.get("X-Request-Id"),
+    }),
+  );
   return { ok: false, problem: await readProblem(response) };
 }
 

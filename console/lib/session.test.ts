@@ -68,8 +68,8 @@ describe("without the development sign-in flag", () => {
     expect(cookieJar.size).toBe(0);
   });
 
-  test("no service headers are produced", () => {
-    expect(() => serviceHeaders({ tenant: TENANT, person: "r@example.invalid" })).toThrow();
+  test("no service headers are produced", async () => {
+    await expect(serviceHeaders({ tenant: TENANT, person: "r@example.invalid" })).rejects.toThrow();
   });
 });
 
@@ -90,8 +90,8 @@ describe("with the development sign-in flag", () => {
     expect(cookieJar.get(SESSION_COOKIE)?.options).toMatchObject({ httpOnly: true, sameSite: "lax", path: "/" });
   });
 
-  test("service headers carry exactly the session's tenant and person", () => {
-    expect(serviceHeaders({ tenant: TENANT, person: "r@example.invalid" })).toEqual({
+  test("service headers carry exactly the session's tenant and person", async () => {
+    expect(await serviceHeaders({ tenant: TENANT, person: "r@example.invalid" })).toEqual({
       "X-Muistamo-Tenant": TENANT,
       "X-Muistamo-Actor": "r@example.invalid",
     });

@@ -38,12 +38,14 @@ import os
 import secrets
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
 import uuid
+from http.client import HTTPConnection
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -187,7 +189,9 @@ def wait_for(what: str, check, timeout: float = 60) -> object:
     raise SystemExit(f"timed out waiting for {what}")
 
 
-def start(args: list[str], env: dict[str, str], log: Path, stdin: str | None = None) -> None:
+def start(
+    args: list[str], env: dict[str, str], log: Path, stdin: str | None = None, cwd: Path = ROOT
+) -> None:
     with log.open("w") as out:
         child = subprocess.Popen(
             args,
@@ -196,7 +200,7 @@ def start(args: list[str], env: dict[str, str], log: Path, stdin: str | None = N
             stdout=out,
             stderr=subprocess.STDOUT,
             text=True,
-            cwd=ROOT,
+            cwd=cwd,
         )
     if stdin is not None:
         child.stdin.write(stdin)
@@ -508,6 +512,89 @@ def main() -> None:
             lambda: _state(cp, operator, "analyst-e-2002") == "active",
             timeout=90,
         )
+
+        step("1b. The console: Entra sign-in, renewal, and a disabled account signed out")
+        console_dir = ROOT / "console"
+        npm = shutil.which("npm") or "npm"
+        built = subprocess.run(
+            [npm, "run", "build"], cwd=console_dir, capture_output=True, text=True, timeout=600
+        )
+        assert built.returncode == 0, built.stdout[-2000:] + built.stderr[-2000:]
+        c_port = free_port()
+        console = f"http://127.0.0.1:{c_port}"
+        ms.console_redirect = f"{console}/auth/callback"
+        (work / "console-secret").write_text(ms.console_secret)
+        (work / "console-tenants.json").write_text(
+            json.dumps(
+                {
+                    "tenants": [
+                        {
+                            "tenant": tenant,
+                            "name": "E2E",
+                            "directory": str(directory),
+                            "clientId": str(fake_microsoft.CONSOLE),
+                            "audience": str(blueprint),
+                            "scope": f"api://{blueprint}/Knowledge.Read",
+                            "secretFile": str(work / "console-secret"),
+                        }
+                    ]
+                }
+            )
+        )
+        cenv = {
+            **os.environ,
+            "MUISTAMO_CONSOLE_TENANTS": str(work / "console-tenants.json"),
+            "MUISTAMO_CONSOLE_SESSION_KEY": "e2e:" + secrets.token_urlsafe(32)[:43],
+            "MUISTAMO_CONSOLE_PUBLIC_URL": console,
+            "MUISTAMO_CONSOLE_INSECURE_E2E_MICROSOFT_ADDR": e2e["MUISTAMO_E2E_MICROSOFT_ADDR"],
+            "MUISTAMO_CONSOLE_INSECURE_E2E_MICROSOFT_CA": ca,
+            "MUISTAMO_KNOWLEDGE_URL": kn,
+            "MUISTAMO_CONTROL_PLANE_URL": cp,
+        }
+        cenv.pop("MUISTAMO_CONSOLE_INSECURE_DEV_LOGIN", None)
+        npx = shutil.which("npx") or "npx"
+        start(
+            [npx, "next", "start", "--port", str(c_port)],
+            cenv,
+            work / "console.log",
+            cwd=console_dir,
+        )
+        wait_for("the console", lambda: _up(console + "/api/healthz"), timeout=90)
+        fake = e2e["MUISTAMO_E2E_MICROSOFT_ADDR"]
+        # The reviewer signs in through Entra and acts as themselves, as the console.
+        jar = console_sign_in(console, fake, ca, REVIEWER)
+        status, page = console_get(console, "/proposals", jar)
+        assert status == 200 and "Proposals" in page and "Forbidden" not in page, (
+            status,
+            page[-500:],
+        )
+        status, page = console_get(console, "/my-knowledge", jar)
+        assert status == 200 and "My knowledge" in page, (status, page[-500:])
+        assert "Bearer" not in page and "eyJ" not in page, "a token reached the page"
+        # A callback is used once: the browser's transaction cookie is deleted, and a saved copy
+        # replayed with the same code is refused because Entra redeems a code once.
+        replay, replay_jar = console_callback_replay(console, fake, ca, PLATFORM)
+        assert replay in (400, 403), replay
+        assert not any(k.startswith("__Host-muistamo_session") for k in replay_jar), replay_jar
+        # Guests of the directory are refused.
+        ms.guests.add(str(OTHER))
+        status, page = console_sign_in(console, fake, ca, OTHER, expect=403)
+        assert "members of your organisation" in page, page[-500:]
+        ms.guests.discard(str(OTHER))
+        # A token about to expire is renewed before the page; a disabled account is signed out
+        # at its next renewal.
+        ms.short_lived.add(str(MANAGER))
+        jar = console_sign_in(console, fake, ca, MANAGER)
+        before = dict(jar)
+        status, _ = console_get(console, "/my-knowledge", jar)
+        assert status == 200 and jar != before, "the proxy did not renew the session"
+        ms.disabled.add(str(MANAGER))
+        status, _ = console_get(console, "/my-knowledge", jar)
+        assert status in (303, 307) and not any(
+            k.startswith("__Host-muistamo_session") for k in jar
+        ), (status, sorted(jar))
+        ms.disabled.discard(str(MANAGER))
+        ms.short_lived.discard(str(MANAGER))
 
         step("2. MCP search as the person: their document, cited, and not another's")
         token = ms.user_token(PERSON)
@@ -839,6 +926,79 @@ def _state(cp: str, operator: dict, name: str) -> str | None:
 def documents(found: dict) -> list[dict]:
     """The SharePoint results of a search: what per-person source authorisation decides."""
     return [r for r in found["results"] if r["citation"]["type"] == "document"]
+
+
+def fake_get(address: str, ca: str, url: str) -> tuple[int, str, bytes]:
+    """GET from the fake Microsoft on its real hostname, verified against its CA."""
+    parts = urlsplit(url)
+    host, port = address.rsplit(":", 1)
+    context = ssl.create_default_context(cafile=ca)
+    sock = context.wrap_socket(
+        socket.create_connection((host, int(port)), 10), server_hostname=parts.hostname
+    )
+    conn = HTTPConnection(parts.hostname)
+    conn.sock = sock
+    conn.request("GET", parts.path + ("?" + parts.query if parts.query else ""))
+    res = conn.getresponse()
+    return res.status, res.getheader("Location") or "", res.read()
+
+
+def _merge_cookies(jar: dict[str, str], set_cookies: list[str]) -> None:
+    for header in set_cookies:
+        pair, _, attributes = header.partition(";")
+        name, _, value = pair.strip().partition("=")
+        if (
+            not value
+            or "max-age=0" in attributes.lower()
+            or "expires=thu, 01 jan 1970" in attributes.lower()
+        ):
+            jar.pop(name, None)
+        else:
+            jar[name] = value
+
+
+def console_get(console: str, path: str, jar: dict[str, str]) -> tuple[int, str]:
+    """A page as a browser without JavaScript would get it, keeping the console's cookies."""
+    cookie = "; ".join(f"{k}={v}" for k, v in jar.items())
+    res = httpx2.get(console + path, headers={"Cookie": cookie}, follow_redirects=False, timeout=30)
+    _merge_cookies(jar, res.headers.get_list("set-cookie"))
+    return res.status_code, res.text
+
+
+def _authorize(console: str, fake: str, ca: str, user: uuid.UUID) -> tuple[dict[str, str], str]:
+    jar: dict[str, str] = {}
+    res = httpx2.get(console + "/auth/start", follow_redirects=False, timeout=30)
+    assert res.status_code == 303, (res.status_code, res.text[:300])
+    _merge_cookies(jar, res.headers.get_list("set-cookie"))
+    # The person picks their account at Entra (login_hint, in the fake).
+    status, callback, _ = fake_get(fake, ca, res.headers["location"] + f"&login_hint={user}")
+    assert status == 302 and callback.startswith(console + "/auth/callback?"), (status, callback)
+    return jar, callback
+
+
+def console_sign_in(console: str, fake: str, ca: str, user: uuid.UUID, expect: int = 200):
+    jar, callback = _authorize(console, fake, ca, user)
+    status, page = console_get(console, callback.removeprefix(console), jar)
+    if expect != 200:
+        assert status == expect, (status, page[-500:])
+        return status, page
+    assert status == 200 and "Signed in" in page, (status, page[-500:])
+    assert any(k.startswith("__Host-muistamo_session") for k in jar), sorted(jar)
+    return jar
+
+
+def console_callback_replay(
+    console: str, fake: str, ca: str, user: uuid.UUID
+) -> tuple[int, dict[str, str]]:
+    jar, callback = _authorize(console, fake, ca, user)
+    txn = dict(jar)
+    status, _ = console_get(console, callback.removeprefix(console), jar)
+    assert status == 200, status
+    # The browser's transaction cookie is gone after the callback.
+    assert not any(k.startswith("__Host-muistamo_oidc") for k in jar), sorted(jar)
+    # The same callback again, with a saved copy of the transaction cookie.
+    status, _ = console_get(console, callback.removeprefix(console), txn)
+    return status, txn
 
 
 def bearer(token: str) -> dict:
