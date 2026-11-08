@@ -594,3 +594,73 @@ def test_evidence_records_the_client_app_and_its_kind(live) -> None:
     assert live.open("leave-2:run", 2).status_code == 201
     opened = [a for name, a in live.actions() if name == "knowledge.leaver-review.opened"]
     assert "client" not in opened[-1]
+
+
+def test_a_review_naming_a_decider_who_already_left_is_the_officers(live) -> None:
+    """The hand-over runs when the decider's own leaving opens; a review opened afterwards that
+    still names them (a race) is the officers' by the same record, read when it is used."""
+    officer = uuid.UUID("7a000000-0000-4000-8000-00000000000d")
+    replace_officers(live.world.db.owner_url, live.world.tenant, [f"entra:{officer}"])
+    gone = live.post(
+        "/v1/knowledge/internal/leaver-reviews",
+        {"id": "leave-m:run", "generation": 2, "person": {"user": M}, "deciders": []},
+    )
+    assert gone.status_code == 201, gone.text
+    assert live.open("leave-2:run", 2).status_code == 201  # still names M as decider
+    listed = live.console(officer).get("/v1/knowledge/leaver-reviews").json()["items"]
+    assert "leave-2:run" in [r["id"] for r in listed]
+    assert live.console(officer).get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 200
+
+
+def test_an_officer_never_decides_their_own_leaving(live) -> None:
+    replace_officers(live.world.db.owner_url, live.world.tenant, [P])
+    opened = live.open("leave-2:run", 2, deciders=[])  # no manager: the officers decide
+    assert opened.status_code == 201 and opened.json()["deciderKind"] == "privacy-officers"
+    console = live.console(PERSON)
+    assert console.get("/v1/knowledge/leaver-reviews").json()["items"] == []
+    assert console.get("/v1/knowledge/leaver-reviews/leave-2:run").status_code == 404
+    res = console.post(
+        "/v1/knowledge/leaver-reviews/leave-2:run/decision",
+        json={"decision": "purge", "reason": "my own layer"},
+    )
+    assert res.status_code == 404
+
+
+def test_a_closed_review_is_not_handed_over(live) -> None:
+    assert live.open("leave-2:run", 2).status_code == 201
+    decided = live.console(MANAGER).post(
+        "/v1/knowledge/leaver-reviews/leave-2:run/decision",
+        json={"decision": "purge", "reason": "not needed"},
+    )
+    assert decided.status_code == 200
+    live.post(
+        "/v1/knowledge/internal/leaver-reviews",
+        {"id": "leave-m:run", "generation": 2, "person": {"user": M}, "deciders": []},
+    )
+    replaced = [
+        a for name, a in live.actions() if name == "knowledge.leaver-review.decider-replaced"
+    ]
+    assert replaced == []
+
+
+def test_an_mcp_capture_names_the_assistant_client(live) -> None:
+    token = live.ew.directory.token(PERSON)
+    saved = live.ew.mcp(token, "remember", {"key": "mcp-note", "title": "t", "body": "b"})
+    assert not saved.is_error, saved
+    captured = [a for name, a in live.actions() if name == "knowledge.entry.captured"]
+    assert captured[-1]["client"] == {"app": str(ASSISTANT), "kind": "assistant"}
+
+
+def test_evidence_after_must_be_a_mapping_to_carry_the_client(live) -> None:
+    from muistamo_knowledge.service import Actor
+
+    who = Actor(
+        tenant=live.world.tenant,
+        name=P,
+        request_id="r",
+        client_kind="console",
+        client_app=CONSOLE,
+    )
+    with pytest.raises(TypeError):
+        with live.world.knowledge.db.in_tenant(live.world.tenant) as cur:
+            live.world.knowledge._evidence(cur, who, "x.y", "X", "x", after=["not", "a", "mapping"])

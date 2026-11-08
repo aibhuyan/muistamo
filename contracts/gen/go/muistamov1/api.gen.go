@@ -2940,6 +2940,9 @@ type KnowledgePersonCurrentRequest struct {
 	// Nonce 128 random bits, hex encoded. Each nonce is accepted once.
 	Nonce string `json:"nonce"`
 
+	// Purpose Always person-current. The knowledge-to-control-plane signature covers the body, not the route: this constant makes the body valid for this route only, so a captured status request can never be replayed as a delegation request, nor the reverse.
+	Purpose interface{} `json:"purpose"`
+
 	// UserToken The person's Entra access token for Muistamo, as the knowledge service received it. Validated, never stored or recorded.
 	UserToken string `json:"userToken"`
 }

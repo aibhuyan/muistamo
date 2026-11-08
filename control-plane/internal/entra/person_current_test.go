@@ -6,6 +6,7 @@ package entra
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -44,7 +45,8 @@ func TestAPersonIsCurrentWhileTheirLinkStandsAndNotAfterLeaving(t *testing.T) {
 
 	seedAdapterHR(t, f.conn, f.key, f.actor, "leave", "leaver", 2)
 	notCurrent(t, f.current(t, f.dir.token(userClaims(userA))), "user-unlinked")
-	// A rehire counts once its joiner has linked the user again, as for a delegation.
+	// A rehire whose joiner has not (yet) linked the user is not current either, as for a
+	// delegation: the link's joiner must be the person's latest accepted HR event.
 	seedAdapterHR(t, f.conn, f.key, f.actor, "rehire", "joiner", 3)
 	notCurrent(t, f.current(t, f.dir.token(userClaims(userA))), "user-unlinked")
 
@@ -118,5 +120,19 @@ func TestCurrentRefusesTokensThatAreNotAPersonsTokenForMuistamo(t *testing.T) {
 	other.Tenant = uuid.New()
 	if _, err := f.delegator.Current(context.Background(), other, muistamov1.KnowledgePersonCurrentRequest{UserToken: f.dir.token(userClaims(userA))}); !errors.Is(err, registry.ErrDelegationNotConfigured) {
 		t.Fatalf("another tenant = %v", err)
+	}
+}
+
+func TestATokenThatCannotBeCheckedIsNoAnswer(t *testing.T) {
+	f := setupDelegation(t)
+	// The directory's signing keys cannot be fetched: an error, never "not current", so the
+	// knowledge service answers "try again" and keeps nothing.
+	f.client.http = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("keys unreachable")
+	})}
+	f.actor.RequestID = uuid.NewString()
+	_, err := f.delegator.Current(context.Background(), f.actor, muistamov1.KnowledgePersonCurrentRequest{UserToken: f.dir.token(userClaims(userA))})
+	if err == nil || errors.Is(err, registry.ErrDelegationNotConfigured) {
+		t.Fatalf("unreachable keys = %v, want an error", err)
 	}
 }

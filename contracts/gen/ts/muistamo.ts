@@ -1887,6 +1887,11 @@ export interface components {
          * @description The knowledge service asks whether the person who sent userToken is a current employee: their Entra user is linked to an HR person whose latest accepted HR event is the joiner that made the link. A signed service call: the signature, its time window and the single-use nonce together refuse replays.
          */
         KnowledgePersonCurrentRequest: {
+            /**
+             * @description Always person-current. The knowledge-to-control-plane signature covers the body, not the route: this constant makes the body valid for this route only, so a captured status request can never be replayed as a delegation request, nor the reverse.
+             * @constant
+             */
+            purpose: "person-current";
             /** @description The person's Entra access token for Muistamo, as the knowledge service received it. Validated, never stored or recorded. */
             userToken: string;
             /** @description 128 random bits, hex encoded. Each nonce is accepted once. */

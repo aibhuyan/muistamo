@@ -2,7 +2,7 @@
 #   filename:  knowledgepersoncurrentrequest.json
 
 from __future__ import annotations
-from typing import Annotated
+from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -10,6 +10,12 @@ class KnowledgePersonCurrentRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    purpose: Annotated[
+        Literal["person-current"],
+        Field(
+            description="Always person-current. The knowledge-to-control-plane signature covers the body, not the route: this constant makes the body valid for this route only, so a captured status request can never be replayed as a delegation request, nor the reverse."
+        ),
+    ]
     userToken: Annotated[
         str,
         Field(

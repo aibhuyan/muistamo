@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"time"
@@ -219,7 +220,9 @@ func (d *Delegator) Current(ctx context.Context, actor registry.Actor, req muist
 	user, err := client.ValidateUserToken(ctx, req.UserToken, time.Now())
 	if err != nil {
 		if !errors.Is(err, ErrUserToken) {
-			d.log.Warn("user token could not be validated", "request_id", actor.RequestID, "tenant", actor.Tenant, "err", err)
+			// The token could not be checked (signing keys unreachable): no answer, so the
+			// knowledge service refuses with "try again" rather than "not an employee".
+			return muistamov1.KnowledgePersonCurrent{}, fmt.Errorf("validate user token: %w", err)
 		}
 		reason := muistamov1.KnowledgePersonCurrentReasonTokenInvalid
 		return muistamov1.KnowledgePersonCurrent{Current: false, Reason: &reason}, nil

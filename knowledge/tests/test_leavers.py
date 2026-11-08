@@ -94,6 +94,19 @@ def personal(world, person: str) -> list:
     return world.client(person).get("/v1/knowledge/personal/entries").json()["items"]
 
 
+def test_a_legacy_leaving_hands_nothing_over(world, svc) -> None:
+    """Hand-overs are for live (generation-ordered) reviews only."""
+    capture(world, A, "fiscal-year")
+    assert svc.open("leaver-1:run-1").status_code == 201  # A leaves; M decides
+    capture(world, M, "manager-note")
+    assert (
+        svc.open("leaver-m:run-1", person=M, deciders=[{"email": X, "kind": "manager"}]).status_code
+        == 201
+    )
+    review = world.client(M).get("/v1/knowledge/leaver-reviews/leaver-1:run-1")
+    assert review.status_code == 200 and review.json()["deciderKind"] == "manager"
+
+
 def test_open_freezes_the_layer_and_only_the_decider_sees_it(world, svc) -> None:
     fiscal = capture(world, A, "fiscal-year")
     capture(world, A, "private-note")

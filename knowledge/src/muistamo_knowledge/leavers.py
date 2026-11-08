@@ -32,6 +32,14 @@ from muistamo_knowledge.service import Actor, Conflict, Invalid, Knowledge, NotF
 REVIEW_PERIOD = timedelta(days=30)  # the control plane's leaver grace period
 SERVICE_ACTOR = "service:control-plane"
 
+# The review's decider (alias r) has left, by knowledge's own records: a live review of
+# theirs at their current fence. Their pending decisions then fall to the privacy officers.
+_DECIDER_LEFT = (
+    "EXISTS (SELECT 1 FROM knowledge.leaver_review_fences f"
+    " JOIN knowledge.leaver_reviews own ON own.tenant_id = f.tenant_id AND own.person = f.person"
+    " AND own.generation = f.generation WHERE f.person = r.decider)"
+)
+
 _COLUMNS = (
     "id, person, decider_kind, decider, status, outcome, deadline, kept, entry_count,"
     " proposal_id, opened_at, closed_at, generation"
@@ -192,10 +200,11 @@ class Leavers:
         with self.k.db.in_tenant(actor.tenant) as cur:
             officer = is_officer(cur, actor.name)
             cur.execute(
-                f"SELECT {_COLUMNS} FROM knowledge.leaver_reviews"  # noqa: S608 - constant columns
-                " WHERE decider = %s OR (decider IS NULL AND %s)"
-                " ORDER BY status DESC, opened_at DESC",
-                (actor.name, officer),
+                f"SELECT {_COLUMNS} FROM knowledge.leaver_reviews r"  # noqa: S608 - constants
+                " WHERE r.person <> %s AND (r.decider = %s OR (%s AND (r.decider IS NULL OR "
+                + _DECIDER_LEFT
+                + "))) ORDER BY r.status DESC, r.opened_at DESC",
+                (actor.name, actor.name, officer),
             )
             return [_review(r) for r in cur.fetchall()]
 
@@ -361,6 +370,7 @@ class Leavers:
                     "reason": "decider-left",
                     "leaving": leaving,
                 },
+                before={"decider": person},
             )
 
     def _decide(
@@ -515,10 +525,28 @@ class Leavers:
         review = self._get(cur, review_id, lock=lock)
         if review is None:
             raise NotFound(f"leaver review {review_id}")
+        if review["person"] == actor.name:
+            raise NotFound(f"leaver review {review_id}")  # never one's own layer, as officer either
         decider = review.get("decider")
-        if decider == actor.name or (decider is None and is_officer(cur, actor.name)):
+        if decider == actor.name:
+            return review
+        if is_officer(cur, actor.name) and (decider is None or self._has_left(cur, decider)):
+            # No decider, or one who has left (whether or not the hand-over ran): the officers'.
             return review
         raise NotFound(f"leaver review {review_id}")
+
+    @staticmethod
+    def _has_left(cur: Cursor, person: str) -> bool:
+        """Whether knowledge's own records say the person has left: a live review of theirs at
+        their current fence. Used only to hand their pending decisions to the officers."""
+        cur.execute(
+            "SELECT EXISTS (SELECT 1 FROM knowledge.leaver_review_fences f"
+            " JOIN knowledge.leaver_reviews own ON own.tenant_id = f.tenant_id"
+            " AND own.person = f.person AND own.generation = f.generation WHERE f.person = %s)",
+            (person,),
+        )
+        row = cur.fetchone()
+        return bool(row and row[0])
 
     def _close(
         self, cur: Cursor, review_id: str, outcome: str, proposal: UUID | None = None

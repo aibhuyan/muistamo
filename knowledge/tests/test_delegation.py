@@ -501,6 +501,7 @@ def test_person_current_is_a_signed_call_with_the_persons_token() -> None:
     assert url == "https://control-plane.example.invalid/v1/internal/knowledge/people/current"
     body = json.loads(data)
     assert body["userToken"] == "obviously-fake-user-token" and len(body["nonce"]) == 32
+    assert body["purpose"] == "person-current"  # binds the body to this route
     ts = headers["X-Muistamo-Signature"].split(",")[0].removeprefix("t=")
     assert headers["X-Muistamo-Signature"] == sign(direction_key(SECRET, TENANT), data, float(ts))
     assert headers["X-Muistamo-Tenant"] == str(TENANT)
@@ -510,6 +511,7 @@ def test_person_current_is_a_signed_call_with_the_persons_token() -> None:
     ("status", "body", "secret", "expected"),
     [
         (200, {"current": False, "reason": "user-unlinked"}, SECRET, False),
+        (200, {"current": False, "reason": "identity-not-ready"}, SECRET, None),
         (501, {"title": "not configured"}, SECRET, False),  # no Entra: nobody is vouched for
         (200, {"current": True}, None, False),  # the tenant has no secret
         (200, {"current": "yes"}, SECRET, None),
@@ -522,6 +524,7 @@ def test_person_current_is_a_signed_call_with_the_persons_token() -> None:
     ],
     ids=[
         "not-current",
+        "binding-changing",
         "not-configured",
         "no-secret",
         "not-a-boolean",
@@ -564,3 +567,32 @@ def test_answers_are_reused_for_thirty_seconds_and_failures_never() -> None:
     # Per person and tenant: another person is asked on their own.
     client.answers = [True]
     assert people.is_current(TENANT, "entra:b", "t") is True and client.calls == 4
+
+
+def test_only_current_is_kept_per_tenant_and_person_and_only_for_thirty_seconds() -> None:
+    from muistamo_knowledge.delegation import CurrentPeople
+
+    other_tenant = uuid.UUID("22222222-2222-4222-8222-222222222222")
+
+    class Client:
+        def __init__(self) -> None:
+            self.calls: list[uuid.UUID] = []
+            self.answer: bool | None = True
+
+        def current(self, tenant, token):
+            self.calls.append(tenant)
+            return self.answer
+
+    now = [1000.0]
+    client = Client()
+    people = CurrentPeople(client, clock=lambda: now[0])  # type: ignore[arg-type]
+    assert people.is_current(TENANT, "entra:a", "t") is True
+    client.answer = False
+    # The same person name in another tenant is asked on its own, never served from the cache.
+    assert people.is_current(other_tenant, "entra:a", "t") is False
+    assert client.calls == [TENANT, other_tenant]
+    # "Not current" is never kept: asked again each time.
+    assert people.is_current(other_tenant, "entra:a", "t") is False and len(client.calls) == 3
+    # Exactly 30 s later the kept answer is stale.
+    now[0] += 30
+    assert people.is_current(TENANT, "entra:a", "t") is False and len(client.calls) == 4

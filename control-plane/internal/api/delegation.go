@@ -140,7 +140,11 @@ func (s *server) KnowledgePersonCurrent(ctx context.Context, req muistamov1.Know
 	answer, err := s.delegator.Current(ctx, actor, *req.Body)
 	switch {
 	case err == nil:
-		s.log.Info("person current answered", "request_id", actor.RequestID, "tenant", actor.Tenant, "actor", actor.Name, "current", answer.Current)
+		reason := ""
+		if answer.Reason != nil {
+			reason = string(*answer.Reason)
+		}
+		s.log.Info("person current answered", "request_id", actor.RequestID, "tenant", actor.Tenant, "actor", actor.Name, "current", answer.Current, "reason", reason)
 		return muistamov1.KnowledgePersonCurrent200JSONResponse{
 			Body:    answer,
 			Headers: muistamov1.KnowledgePersonCurrent200ResponseHeaders{CacheControl: "no-store"},

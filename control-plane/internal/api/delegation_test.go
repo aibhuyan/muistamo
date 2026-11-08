@@ -220,6 +220,10 @@ func TestDelegationNoncesArePrunedOnlyAfterTheSignatureWindow(t *testing.T) {
 	}
 }
 
+func currentBody(nonce string) string {
+	return `{"purpose":"person-current","userToken":"` + fakeUserToken + `","nonce":"` + nonce + `"}`
+}
+
 func (h harness) postCurrent(t *testing.T, tenant uuid.UUID, key []byte, at time.Time, body string) response {
 	t.Helper()
 	return h.call(t, tenant, http.MethodPost, "/v1/internal/knowledge/people/current", body, "X-Muistamo-Signature", signature.Sign(key, []byte(body), at))
@@ -232,16 +236,16 @@ func TestPersonCurrentIsASignedSingleUseKnowledgeCall(t *testing.T) {
 	tenant := h.tenant(t, "acme")
 	secret := knowledgeSecret(t, h, tenant)
 	key := signature.DirectionKey(secret, signature.KnowledgeToControlPlane, tenant.String())
-	body := delegationBody(newNonce())
+	body := currentBody(newNonce())
 	ok := h.postCurrent(t, tenant, key, time.Now(), body)
 	if ok.status != http.StatusOK || ok.body["current"] != true || ok.cacheControl != "no-store" {
 		t.Fatalf("signed request = %d %s", ok.status, ok.raw)
 	}
 	for name, res := range map[string]response{
-		"the other direction's key": h.postCurrent(t, tenant, secret, time.Now(), delegationBody(newNonce())),
-		"stale":                     h.postCurrent(t, tenant, key, time.Now().Add(-6*time.Minute), delegationBody(newNonce())),
+		"the other direction's key": h.postCurrent(t, tenant, secret, time.Now(), currentBody(newNonce())),
+		"stale":                     h.postCurrent(t, tenant, key, time.Now().Add(-6*time.Minute), currentBody(newNonce())),
 		"replayed nonce":            h.postCurrent(t, tenant, key, time.Now(), body),
-		"dev headers only":          h.call(t, tenant, http.MethodPost, "/v1/internal/knowledge/people/current", delegationBody(newNonce())),
+		"dev headers only":          h.call(t, tenant, http.MethodPost, "/v1/internal/knowledge/people/current", currentBody(newNonce())),
 	} {
 		if res.status != http.StatusUnauthorized {
 			t.Errorf("%s: %d %s", name, res.status, res.raw)
@@ -250,9 +254,29 @@ func TestPersonCurrentIsASignedSingleUseKnowledgeCall(t *testing.T) {
 	if len(d.asked) != 1 {
 		t.Fatalf("an unauthenticated request reached the delegator: %d", len(d.asked))
 	}
-	// A delegation nonce and a status nonce share one space: neither replays as the other.
-	if res := h.postDelegation(t, tenant, key, time.Now(), body); res.status != http.StatusUnauthorized {
-		t.Fatalf("a status nonce replayed as a delegation: %d", res.status)
+	// A signed status request replayed at the delegation route is refused even while its nonce
+	// is unused (the signature covers the body, not the route; the purpose binds the route).
+	fresh := currentBody(newNonce())
+	if res := h.postDelegation(t, tenant, key, time.Now(), fresh); res.status < 400 || res.status >= 500 || res.status == http.StatusUnauthorized {
+		t.Fatalf("a status request at the delegation route = %d %s", res.status, res.raw)
+	}
+	// And the reverse: a delegation request is never a status request.
+	if res := h.postCurrent(t, tenant, key, time.Now(), delegationBody(newNonce())); res.status < 400 || res.status >= 500 || res.status == http.StatusUnauthorized {
+		t.Fatalf("a delegation request at the status route = %d %s", res.status, res.raw)
+	}
+	if len(d.asked) != 1 {
+		t.Fatalf("a request for the other route reached the delegator: %d", len(d.asked))
+	}
+	// Neither validation answer echoes the token.
+	for _, b := range []string{fresh, delegationBody(newNonce())} {
+		res := h.postCurrent(t, tenant, key, time.Now(), strings.Replace(b, `"nonce"`, `"extra":1,"nonce"`, 1))
+		if strings.Contains(res.raw, fakeUserToken) {
+			t.Fatalf("a refused request echoed the token: %s", res.raw)
+		}
+	}
+	// The fresh status request still works at its own route: the nonce was never used.
+	if res := h.postCurrent(t, tenant, key, time.Now(), fresh); res.status != http.StatusOK {
+		t.Fatalf("the status request after a refused replay = %d", res.status)
 	}
 	if strings.Contains(logs.String(), fakeUserToken) {
 		t.Fatal("the user token reached the logs")
@@ -264,7 +288,7 @@ func TestPersonCurrentWithoutEntraIsNotConfigured(t *testing.T) {
 	h := newDelegationHarness(t, nil, &logs)
 	tenant := h.tenant(t, "acme")
 	key := signature.DirectionKey(knowledgeSecret(t, h, tenant), signature.KnowledgeToControlPlane, tenant.String())
-	if res := h.postCurrent(t, tenant, key, time.Now(), delegationBody(newNonce())); res.status != http.StatusNotImplemented {
+	if res := h.postCurrent(t, tenant, key, time.Now(), currentBody(newNonce())); res.status != http.StatusNotImplemented {
 		t.Fatalf("without a delegator = %d %s", res.status, res.raw)
 	}
 }

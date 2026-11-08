@@ -127,7 +127,8 @@ class DelegationClient:
         if not secret:
             return False  # the tenant has no control plane to vouch for anyone
         body = json.dumps(
-            {"userToken": user_token, "nonce": secrets.token_hex(16)}, separators=(",", ":")
+            {"purpose": "person-current", "userToken": user_token, "nonce": secrets.token_hex(16)},
+            separators=(",", ":"),
         ).encode()
         headers = {
             "Content-Type": "application/json",
@@ -155,6 +156,8 @@ class DelegationClient:
             return None
         if not isinstance(answer, dict) or not isinstance(answer.get("current"), bool):
             return None
+        if not answer["current"] and answer.get("reason") == "identity-not-ready":
+            return None  # the tenant's binding is changing: no answer yet, never "not current"
         return answer["current"]
 
     def request(self, tenant: uuid.UUID, user_token: str, instance: str | None = None) -> Outcome:
@@ -221,8 +224,9 @@ class DelegationClient:
 
 
 class CurrentPeople:
-    """The control plane's person-current answers, each reused for at most CURRENT_TTL seconds
-    per (tenant, person). Only definite answers are kept; a failure is asked again next time."""
+    """The control plane's person-current answers. A "current" answer is reused for at most
+    CURRENT_TTL seconds per (tenant, person); "not current" and failures are never kept, so a
+    transient refusal never sticks and a leaver is asked every time."""
 
     def __init__(
         self,
@@ -244,7 +248,7 @@ class CurrentPeople:
             if hit is not None and now - hit[0] < self._ttl:
                 return hit[1]
         answer = self._client.current(tenant, user_token)
-        if answer is not None:
+        if answer is True:
             with self._lock:
                 if len(self._answers) >= CURRENT_CACHE_SIZE:
                     self._answers.clear()  # bounded: start again rather than grow

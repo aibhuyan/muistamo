@@ -107,7 +107,8 @@ def serve(_: argparse.Namespace) -> None:
         else:
             logging.warning(
                 "MUISTAMO_CONTROL_PLANE_URL is not set: Entra callers get no delegation, so only"
-                " their personal layer and mandatory packs are searched and no source is asked"
+                " their personal layer and mandatory packs are searched and no source is asked;"
+                " the console admits nobody, as no one can be confirmed a current employee"
             )
     uvicorn.run(create_app(knowledge, resolver), host=host, port=int(port))
 
