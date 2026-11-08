@@ -15,7 +15,8 @@ func TestSignRequestBindsMethodAndPath(t *testing.T) {
 	path := "/v1/knowledge/internal/leaver-reviews/entra-leaver:r/expire"
 	at := time.Unix(1700000000, 0)
 	got := SignRequest(secret, "POST", path, nil, at)
-	if !strings.HasPrefix(got, "t=1700000000,v1=") || !strings.HasSuffix(got, ",v2="+v2Vector) {
+	// v2 only: the v1 overlap is over (docs/signature-retirement-plan.md).
+	if got != "t=1700000000,v2="+v2Vector {
 		t.Fatalf("SignRequest = %s", got)
 	}
 	for name, other := range map[string]string{

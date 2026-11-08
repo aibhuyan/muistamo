@@ -58,9 +58,10 @@ func MACv2(secret []byte, ts, method, path string, body []byte) []byte {
 }
 
 // SignRequest returns the X-Muistamo-Signature value for a control-plane call to the knowledge
-// service: t=<unix seconds>,v1=<as Sign>,v2=<hex MACv2>. v1 is sent only for the overlap with
-// knowledge services that predate v2; a current one checks v2 and ignores v1.
+// service: t=<unix seconds>,v2=<hex MACv2>. The v1 overlap is over
+// (docs/signature-retirement-plan.md): v1 (Sign) remains only for the HR webhook and the
+// knowledge-to-control-plane direction.
 func SignRequest(secret []byte, method, path string, body []byte, t time.Time) string {
 	ts := strconv.FormatInt(t.Unix(), 10)
-	return "t=" + ts + ",v1=" + hex.EncodeToString(MAC(secret, ts, body)) + ",v2=" + hex.EncodeToString(MACv2(secret, ts, method, path, body))
+	return "t=" + ts + ",v2=" + hex.EncodeToString(MACv2(secret, ts, method, path, body))
 }

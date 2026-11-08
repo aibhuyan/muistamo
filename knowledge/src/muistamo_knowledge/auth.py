@@ -147,12 +147,11 @@ def verify_service(
     method: str,
     path: str,
     now: float | None = None,
-    accept_v1: bool = False,
     tenant: UUID | None = None,
 ) -> None:
     """Refuse unless headers carry a fresh v2 signature of this method, path and body under
-    secret. A v1-only signature (body and time only) is accepted only with accept_v1, for a
-    rollout where the control plane predates v2 (MUISTAMO_KNOWLEDGE_ACCEPT_V1_SIGNATURES).
+    secret. A v1 (body and time only) is never enough: the overlap is over
+    (docs/signature-retirement-plan.md). A v1 next to a valid v2 is ignored.
 
     path must be the request's own decoded path as the router matched it (ASGI scope["path"]),
     the same bytes the control plane signs (its req.URL.Path)."""
@@ -170,17 +169,8 @@ def verify_service(
         raise Unauthenticated("the request path cannot be signed")
     if abs((time.time() if now is None else now) - int(ts)) > SIGNATURE_TOLERANCE:
         raise Unauthenticated("service signature is stale")
-    if "v2" in parts:
-        # v1 is ignored once v2 is present: stripping v2 is the only way to fall back.
-        if not hmac.compare_digest(_mac_v2(secret, ts, method, path, body), parts["v2"]):
-            raise Unauthenticated("service signature does not match")
-        return
-    if not accept_v1:
+    if "v2" not in parts:
         raise Unauthenticated("service signature has no v2 (method and path); refused")
-    want = hmac.new(secret, ts.encode() + b"." + body, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(want, parts["v1"]):
+    # A v1 beside it (control planes from #47 until v1 sending ended) is ignored.
+    if not hmac.compare_digest(_mac_v2(secret, ts, method, path, body), parts["v2"]):
         raise Unauthenticated("service signature does not match")
-    log.warning(
-        "accepted a v1-only service signature during the overlap",
-        extra={"path": path, "tenant": str(tenant) if tenant else None},
-    )

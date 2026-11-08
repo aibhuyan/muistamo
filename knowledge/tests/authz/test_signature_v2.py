@@ -45,15 +45,26 @@ def test_a_signature_verifies_only_for_its_own_method_and_path(method, path) -> 
         auth.verify_service(signed, b"", SECRET, method, path)
 
 
-def test_a_v1_only_signature_is_refused_unless_the_overlap_is_on() -> None:
+def test_a_v1_only_signature_is_always_refused() -> None:
+    """The overlap is over (docs/signature-retirement-plan.md): v2 is required."""
     v1_only = auth.sign(SECRET, b"", method="POST", path=EXPIRE).rsplit(",v2=", 1)[0]
     with pytest.raises(Unauthenticated):
         auth.verify_service(headers(v1_only), b"", SECRET, "POST", EXPIRE)
-    auth.verify_service(headers(v1_only), b"", SECRET, "POST", EXPIRE, accept_v1=True)
-    # Even with the overlap on, a present v2 must match: v1 is never a fallback for a bad v2.
+    # A present v2 must match: v1 is never a fallback for a bad v2.
     bad_v2 = v1_only + ",v2=" + "0" * 64
     with pytest.raises(Unauthenticated):
-        auth.verify_service(headers(bad_v2), b"", SECRET, "POST", EXPIRE, accept_v1=True)
+        auth.verify_service(headers(bad_v2), b"", SECRET, "POST", EXPIRE)
+
+
+def test_a_v1_next_to_a_valid_v2_is_ignored() -> None:
+    """A control plane from #47 until this release still sends v1 beside v2: v2 decides."""
+    both = auth.sign(SECRET, b"", method="POST", path=EXPIRE)
+    assert ",v1=" in both and ",v2=" in both
+    auth.verify_service(headers(both), b"", SECRET, "POST", EXPIRE)
+    wrong_v1 = (
+        "t=" + both.split(",")[0][2:] + ",v1=" + "0" * 64 + ",v2=" + both.rsplit(",v2=", 1)[1]
+    )
+    auth.verify_service(headers(wrong_v1), b"", SECRET, "POST", EXPIRE)
 
 
 def test_a_signed_expiry_cannot_be_moved_to_another_review(world) -> None:
@@ -204,13 +215,14 @@ def test_the_overlap_flag_is_read_when_the_app_starts(world, monkeypatch, caplog
         create_app(world.knowledge, auth.insecure_dev_headers), raise_server_exceptions=False
     )
     assert _post(strict, world, path, v1_only).status_code == 401
+    # The old overlap setting no longer re-opens v1: it is ignored, with a warning.
     monkeypatch.setenv("MUISTAMO_KNOWLEDGE_ACCEPT_V1_SIGNATURES", "true")
-    overlap = TestClient(
-        create_app(world.knowledge, auth.insecure_dev_headers), raise_server_exceptions=False
-    )
     with caplog.at_level(logging.WARNING, logger="muistamo.knowledge"):
-        assert _post(overlap, world, path, v1_only).status_code == 200
-    assert any("v1-only" in r.getMessage() for r in caplog.records)
+        stale = TestClient(
+            create_app(world.knowledge, auth.insecure_dev_headers), raise_server_exceptions=False
+        )
+    assert any("no longer has an effect" in r.getMessage() for r in caplog.records)
+    assert _post(stale, world, path, v1_only).status_code == 401
 
 
 def test_no_signed_route_reads_a_query() -> None:
