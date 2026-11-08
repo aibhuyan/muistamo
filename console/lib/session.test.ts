@@ -69,7 +69,7 @@ describe("without the development sign-in flag", () => {
   });
 
   test("no service headers are produced", async () => {
-    await expect(serviceHeaders({ tenant: TENANT, person: "r@example.invalid" })).rejects.toThrow();
+    await expect(serviceHeaders({ tenant: TENANT, person: "r@example.invalid" }, "knowledge")).rejects.toThrow();
   });
 });
 
@@ -91,7 +91,7 @@ describe("with the development sign-in flag", () => {
   });
 
   test("service headers carry exactly the session's tenant and person", async () => {
-    expect(await serviceHeaders({ tenant: TENANT, person: "r@example.invalid" })).toEqual({
+    expect(await serviceHeaders({ tenant: TENANT, person: "r@example.invalid" }, "knowledge")).toEqual({
       "X-Muistamo-Tenant": TENANT,
       "X-Muistamo-Actor": "r@example.invalid",
     });

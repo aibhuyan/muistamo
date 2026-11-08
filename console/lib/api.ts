@@ -59,6 +59,20 @@ async function call<T>(
       // Honest coverage: say it is not set up, rather than fail as if the service were down.
       return { ok: false, problem: { title: `The ${service} service is not available with this sign-in`, status: 501, detail: error.message } };
     }
+    if (service === "control-plane") {
+      // Entra could not give a control-plane token now: never a token or its claims in the log.
+      console.error(
+        JSON.stringify({
+          level: "ERROR",
+          msg: "control-plane token unavailable",
+          tenant: session.tenant,
+          person: session.person,
+          requestId: await consoleRequestId(),
+          error: error instanceof Error ? error.name : "unknown",
+        }),
+      );
+      return { ok: false, problem: { title: "The control plane could not be reached with your sign-in", status: 503, detail: "Try again shortly." } };
+    }
     throw error;
   }
   const headers: Record<string, string> = { ...credentials, Accept: "application/json" };

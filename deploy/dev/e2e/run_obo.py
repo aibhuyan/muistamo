@@ -616,6 +616,11 @@ def main() -> None:
         reviewer_cp = bearer(ms.control_plane_token(str(REVIEWER)))
         assert http("GET", cp + "/v1/instances", None, reviewer_cp)[0] == 401
         assert http("GET", cp + "/v1/catalogue/requests", None, reviewer_cp)[0] == 200
+        # A current employee who is not an approver sees only their own requests (none).
+        status, theirs = http(
+            "GET", cp + "/v1/catalogue/requests", None, bearer(ms.control_plane_token(str(OTHER)))
+        )
+        assert status == 200 and theirs["items"] == [], (status, theirs)
         # A callback is used once: the browser's transaction cookie is deleted, and a saved copy
         # replayed with the same code is refused because Entra redeems a code once.
         replay, replay_jar = console_callback_replay(console, fake, ca, PLATFORM)

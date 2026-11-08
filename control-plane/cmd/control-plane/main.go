@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -95,12 +96,8 @@ func serveCmd(log *slog.Logger) *cobra.Command {
 				delegator = d
 				// People signed in to the console, for the tenants with a binding (and a console
 				// client row); on the explicit console routes only.
-				console, err := entra.NewConsoleResolver(d)
-				if err != nil {
-					return fmt.Errorf("console callers: %w", err)
-				}
-				resolver = api.WithConsole{Console: console, Fallback: resolver}
-				log.Info("console callers accepted on the console routes", "binding_count", len(configs))
+				resolver = api.WithConsole{Console: entra.NewConsoleResolver(d), Fallback: resolver}
+				log.Info("console callers are checked on the console routes; a tenant accepts them once it has a console client (tenant console set)", "binding_count", len(configs))
 				log.Info("knowledge delegations served", "binding_count", len(configs))
 				log.Warn("knowledge delegation responses carry bearer tokens: serve the API only over TLS outside development")
 			} else {
@@ -393,6 +390,14 @@ func catalogueCmd() *cobra.Command {
 			id, err := uuid.Parse(tenant)
 			if err != nil {
 				return fmt.Errorf("tenant id: %w", err)
+			}
+			for _, a := range args {
+				// An Entra approver is named as the console names them: entra:<lower-case object id>.
+				if oid, found := strings.CutPrefix(a, "entra:"); found {
+					if u, err := uuid.Parse(oid); err != nil || u.String() != oid {
+						return fmt.Errorf("approver %q: an Entra approver is entra:<lower-case object id>", a)
+					}
+				}
 			}
 			if err := store.SetCatalogueApprovers(cmd.Context(), requireEnv("MUISTAMO_MIGRATE_DATABASE_URL"), id, args); err != nil {
 				return err

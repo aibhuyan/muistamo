@@ -116,10 +116,10 @@ describe("the Entra session", () => {
 
   test("only the bearer token is sent, never development headers", async () => {
     await writeSession(store, session());
-    const headers = await serviceHeaders({ tenant: TENANT, person: session().person });
+    const headers = await serviceHeaders({ tenant: TENANT, person: session().person }, "knowledge");
     expect(headers).toEqual({ Authorization: `Bearer ${AT}` });
     // Another person's page session never gets this cookie's token.
-    await expect(serviceHeaders({ tenant: TENANT, person: "entra:someone-else" })).rejects.toThrow();
+    await expect(serviceHeaders({ tenant: TENANT, person: "entra:someone-else" }, "knowledge")).rejects.toThrow();
   });
 
   test("each service gets only its own token", async () => {
@@ -145,6 +145,17 @@ describe("the Entra session", () => {
     expect(res).toMatchObject({ ok: false, problem: { status: 501 } });
     expect(fetch).not.toHaveBeenCalled();
     expect(cpToken).not.toHaveBeenCalled();
+  });
+
+  test("a control-plane token that cannot be had is a try-again problem, logged without a token", async () => {
+    await writeSession(store, session());
+    cpToken.mockRejectedValue(Object.assign(new Error("refused"), { error: "invalid_grant" }));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await api.pendingCatalogueRequests({ tenant: TENANT, person: session().person });
+    expect(res).toMatchObject({ ok: false, problem: { status: 503 } });
+    expect(String(error.mock.calls[0][0])).not.toContain(AT);
+    expect(String(error.mock.calls[0][0])).not.toContain(RT);
+    error.mockRestore();
   });
 
   test("no token ever reaches the rendered page", async () => {

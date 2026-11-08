@@ -15,7 +15,7 @@ import { REFRESH_BEFORE_MS, type Session, oidcConfig } from "./flow";
 
 export const CONTROL_PLANE_SCOPE = "Registry.Console";
 
-const tokens = new Map<string, { at: string; exp: number }>();
+const tokens = new Map<string, { at: string; exp: number; person: string; tenant: string }>();
 const inFlight = new Map<string, Promise<string>>();
 const MAX_TOKENS = 10_000;
 
@@ -54,7 +54,10 @@ export function checkControlPlaneToken(t: TenantConfig, oid: string, token: stri
 // expire. One request per session at a time.
 export async function controlPlaneToken(t: TenantConfig, session: Session): Promise<string> {
   const kept = tokens.get(session.sid);
-  if (kept && kept.exp - Date.now() > REFRESH_BEFORE_MS) return kept.at;
+  // Kept per session id, and only ever for the same person and tenant (defence in depth).
+  if (kept && kept.person === session.person && kept.tenant === session.tenant && kept.exp - Date.now() > REFRESH_BEFORE_MS) {
+    return kept.at;
+  }
   let pending = inFlight.get(session.sid);
   if (!pending) {
     pending = (async () => {
@@ -63,7 +66,7 @@ export async function controlPlaneToken(t: TenantConfig, session: Session): Prom
       const answer = await oidc.refreshTokenGrant(config, session.rt, { scope: t.controlPlaneScope });
       const exp = checkControlPlaneToken(t, session.person.slice("entra:".length), answer.access_token);
       if (tokens.size >= MAX_TOKENS) tokens.clear(); // bounded: start again rather than grow
-      tokens.set(session.sid, { at: answer.access_token, exp });
+      tokens.set(session.sid, { at: answer.access_token, exp, person: session.person, tenant: session.tenant });
       return answer.access_token;
     })().finally(() => inFlight.delete(session.sid));
     inFlight.set(session.sid, pending);
@@ -71,7 +74,8 @@ export async function controlPlaneToken(t: TenantConfig, session: Session): Prom
   return pending;
 }
 
-// Signed out: the session's control-plane token is forgotten in this process.
+// Signed out: the session's control-plane token is forgotten in this process. Other replicas keep
+// theirs until it expires; it is unusable without the session cookie that names its session id.
 export function forgetControlPlaneToken(sid: string): void {
   tokens.delete(sid);
 }

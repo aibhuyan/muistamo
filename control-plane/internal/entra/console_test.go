@@ -5,7 +5,7 @@ package entra
 
 import (
 	"context"
-	"log/slog"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,7 +14,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"muistamo.dev/muistamo/control-plane/internal/registry"
 	"muistamo.dev/muistamo/control-plane/internal/store"
+	"muistamo.dev/muistamo/control-plane/internal/testdb"
 )
 
 var (
@@ -43,12 +45,7 @@ func setupConsole(t *testing.T) consoleFixture {
 	if err := store.SetConsoleClient(context.Background(), f.db.OwnerURL, testTenant, consoleApp, apiApp); err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewConsoleResolver(f.delegator)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.log = slog.New(slog.DiscardHandler)
-	return consoleFixture{delegationFixture: f, resolver: r}
+	return consoleFixture{delegationFixture: f, resolver: NewConsoleResolver(f.delegator)}
 }
 
 func (f consoleFixture) resolve(token string) (uuid.UUID, string, error) {
@@ -115,11 +112,7 @@ func TestAConsoleCallerMustBeACurrentEmployeeNow(t *testing.T) {
 
 func TestATenantWithoutAConsoleClientAcceptsNoConsoleCaller(t *testing.T) {
 	f := setupDelegation(t)
-	r, err := NewConsoleResolver(f.delegator)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.log = slog.New(slog.DiscardHandler)
+	r := NewConsoleResolver(f.delegator)
 	req := httptest.NewRequest(http.MethodGet, "/v1/catalogue/requests", nil)
 	req.Header.Set("Authorization", "Bearer "+f.dir.token(consoleClaims(userA)))
 	if _, _, err := r.Resolve(req); err == nil {
@@ -135,5 +128,69 @@ func TestTheConsoleClientIsTheTenantsOwn(t *testing.T) {
 	}
 	if _, _, err := f.resolve(f.dir.token(consoleClaims(userA))); err == nil {
 		t.Fatal("accepted for apps the tenant no longer names")
+	}
+}
+
+func TestTheSharedValidationCoreRefusesWhatEveryPersonTokenMust(t *testing.T) {
+	f := setupConsole(t)
+	with := func(change func(map[string]any)) string {
+		c := consoleClaims(userA)
+		change(c)
+		return f.dir.token(c)
+	}
+	for name, token := range map[string]string{
+		"no expiry":                  with(func(c map[string]any) { delete(c, "exp") }),
+		"no not-before":              with(func(c map[string]any) { delete(c, "nbf") }),
+		"not yet valid":              with(func(c map[string]any) { c["nbf"] = time.Now().Add(5 * time.Minute).Unix() }),
+		"no user":                    with(func(c map[string]any) { delete(c, "oid") }),
+		"a user id not canonical":    with(func(c map[string]any) { c["oid"] = strings.ToUpper(userA.String()) }),
+		"another directory's issuer": with(func(c map[string]any) { c["iss"] = "https://login.microsoftonline.com/" + uuid.NewString() + "/v2.0" }),
+		"an unknown key":             sign(t, f.dir.key, "unknown-key", consoleClaims(userA)),
+		"unsigned":                   strings.Join(strings.Split(f.dir.token(consoleClaims(userA)), ".")[:2], ".") + ".",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := f.resolve(token); err == nil {
+				t.Fatal("accepted")
+			}
+		})
+	}
+}
+
+func TestADirectoryBoundToTwoTenantsRefusesOnlyItsConsoleCallers(t *testing.T) {
+	f := setupConsole(t)
+	// A second tenant whose binding names the same directory.
+	f.delegator.clients[uuid.New()] = f.client
+	r := NewConsoleResolver(f.delegator) // starts: the rest of the server keeps working
+	if _, kept := r.clients[f.client.Directory()]; kept {
+		t.Fatal("an ambiguous directory was kept for console callers")
+	}
+	req := httptest.NewRequest(http.MethodGet, "/v1/catalogue/requests", nil)
+	req.Header.Set("Authorization", "Bearer "+f.dir.token(consoleClaims(userA)))
+	if _, _, err := r.Resolve(req); err == nil {
+		t.Fatal("an ambiguous directory's console caller was accepted")
+	}
+}
+
+func TestAKeyOutageIsTryAgainNotRefused(t *testing.T) {
+	f := setupConsole(t)
+	f.client.http = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("keys unreachable")
+	})}
+	_, _, err := f.resolve(f.dir.token(consoleClaims(userA)))
+	if !errors.Is(err, registry.ErrUnavailable) {
+		t.Fatalf("a key outage = %v, want ErrUnavailable", err)
+	}
+}
+
+func TestTheServerRoleCannotChangeTheConsoleClient(t *testing.T) {
+	f := setupConsole(t)
+	for _, sql := range []string{
+		`INSERT INTO console_clients (tenant_id, client_app, api_app) VALUES ('` + testTenant.String() + `', gen_random_uuid(), gen_random_uuid())`,
+		`UPDATE console_clients SET client_app = gen_random_uuid()`,
+		`DELETE FROM console_clients`,
+	} {
+		if err := testdb.ExecErr(f.db.AppURL, testTenant, sql); err == nil {
+			t.Fatalf("the server role could run %s", sql)
+		}
 	}
 }

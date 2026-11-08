@@ -23,6 +23,11 @@ func (f *fixedResolver) Resolve(*http.Request) (uuid.UUID, string, error) {
 	return uuid.MustParse("11111111-1111-4111-8111-111111111111"), f.name, nil
 }
 
+func (f *fixedResolver) ResolveConsole(r *http.Request) (uuid.UUID, string, uuid.UUID, error) {
+	tenant, name, err := f.Resolve(r)
+	return tenant, name, uuid.MustParse("c0c0c0c0-0000-4000-8000-0000000c0501"), err
+}
+
 func request(method, path string, headers map[string]string) *http.Request {
 	r := httptest.NewRequest(method, path, nil)
 	for k, v := range headers {
@@ -51,6 +56,8 @@ func TestConsoleCallersReachOnlyTheListedRoutes(t *testing.T) {
 		request(http.MethodGet, "/v1/catalogue/requests/"+uuid.NewString(), bearer),
 		request(http.MethodPost, "/v1/catalogue/requests/x/y/decision", bearer),
 		request(http.MethodPost, "/v1/privacy/erasures", bearer),
+		// Percent-encoded: decoded it looks like a listed route, but no route matches by decoding.
+		request(http.MethodPost, "/v1/catalogue/requests/%63"+uuid.NewString()[1:]+"/decision", bearer),
 	} {
 		console, dev := &fixedResolver{name: "entra:x"}, &fixedResolver{name: "dev:x"}
 		if _, _, err := (api.WithConsole{Console: console, Fallback: dev}).Resolve(r); err == nil || console.calls != 0 || dev.calls != 0 {
@@ -77,8 +84,8 @@ func TestATokenIsNeverCombinedWithDevelopmentHeaders(t *testing.T) {
 
 type failing struct{}
 
-func (failing) Resolve(*http.Request) (uuid.UUID, string, error) {
-	return uuid.Nil, "", errors.New("refused")
+func (failing) ResolveConsole(*http.Request) (uuid.UUID, string, uuid.UUID, error) {
+	return uuid.Nil, "", uuid.Nil, errors.New("refused")
 }
 
 func TestARefusedConsoleTokenNeverFallsBack(t *testing.T) {

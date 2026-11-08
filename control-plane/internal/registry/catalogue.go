@@ -211,11 +211,18 @@ func (s *Service) ListCatalogue(ctx context.Context, actor Actor) ([]muistamov1.
 	return entries, err
 }
 
-// ListCatalogueRequests returns requests, newest first, optionally in one state.
+// ListCatalogueRequests returns requests, newest first, optionally in one state. Catalogue
+// approvers see every request; anyone else only the requests they filed (maintainer decision,
+// 2026-11-08): requesters, approvers and reasons are not everyone's to read.
 func (s *Service) ListCatalogueRequests(ctx context.Context, actor Actor, state string) ([]muistamov1.CatalogueRequest, error) {
 	out := []muistamov1.CatalogueRequest{}
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT id FROM catalogue_requests WHERE $1 = '' OR state = $1 ORDER BY created_at DESC`, state)
+		approver, err := isApprover(ctx, tx, actor.Name)
+		if err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `SELECT id FROM catalogue_requests WHERE ($1 = '' OR state = $1)
+			AND ($2 OR requested_by = $3) ORDER BY created_at DESC`, state, approver, actor.Name)
 		if err != nil {
 			return fmt.Errorf("list catalogue requests: %w", err)
 		}

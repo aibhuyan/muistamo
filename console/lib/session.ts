@@ -116,7 +116,7 @@ export class NotAvailable extends Error {}
 // (docs/control-plane-console-plan.md).
 export async function serviceHeaders(
   session: Session,
-  service: "knowledge" | "control-plane" = "knowledge",
+  service: "knowledge" | "control-plane",
 ): Promise<Record<string, string>> {
   if (entraEnabled()) {
     const s = await readSession(await cookies());

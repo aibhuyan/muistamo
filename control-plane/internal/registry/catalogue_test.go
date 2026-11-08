@@ -13,6 +13,7 @@ import (
 	"muistamo.dev/muistamo/control-plane/evidencechain"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
 	"muistamo.dev/muistamo/control-plane/internal/store"
+	"muistamo.dev/muistamo/control-plane/internal/testdb"
 )
 
 func TestNeededApprovalsFailClosed(t *testing.T) {
@@ -222,5 +223,52 @@ func TestUnknownRequestIsNotFound(t *testing.T) {
 	c := setupCatalogue(t)
 	if _, err := c.svc.DecideCatalogueRequest(context.Background(), c.approver1, uuid.New(), "approve", "x"); !errors.Is(err, registry.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+// Who reads the catalogue inbox (maintainer decision, 2026-11-08): approvers every request, anyone
+// else only the requests they filed.
+func TestTheCatalogueInboxIsForApproversAndEachRequesterOwn(t *testing.T) {
+	ctx := context.Background()
+	c := setupCatalogue(t)
+	v := c.apply(t, "medium", "purpose")
+	if _, err := c.svc.RequestPublication(ctx, c.requester, "analyst-intern", v); err != nil {
+		t.Fatal(err)
+	}
+	// The requester is no longer an approver: they still see their own request.
+	if err := store.SetCatalogueApprovers(ctx, c.db.OwnerURL, c.actor.Tenant, []string{c.approver1.Name}); err != nil {
+		t.Fatal(err)
+	}
+	for who, want := range map[registry.Actor]int{c.approver1: 1, c.requester: 1, c.outsider: 0, c.approver2: 0} {
+		got, err := c.svc.ListCatalogueRequests(ctx, who, "")
+		if err != nil || len(got) != want {
+			t.Errorf("%s sees %d requests (%v), want %d", who.Name, len(got), err, want)
+		}
+	}
+}
+
+// A console caller's decision is evidenced with the console app (the event body only).
+func TestAConsoleDecisionNamesTheConsoleApp(t *testing.T) {
+	ctx := context.Background()
+	c := setupCatalogue(t)
+	v := c.apply(t, "medium", "purpose")
+	req, err := c.svc.RequestPublication(ctx, c.requester, "analyst-intern", v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	console := c.approver1
+	console.ClientApp = uuid.MustParse("c0c0c0c0-0000-4000-8000-0000000c0501")
+	if _, err := c.svc.DecideCatalogueRequest(ctx, console, req.Id, "approve", "fit"); err != nil {
+		t.Fatal(err)
+	}
+	app := testdb.Scalar(t, c.db.OwnerURL, `SELECT after->'client'->>'app' FROM evidence_events WHERE action = 'catalogue.request.approved'`)
+	kind := testdb.Scalar(t, c.db.OwnerURL, `SELECT after->'client'->>'kind' FROM evidence_events WHERE action = 'catalogue.request.approved'`)
+	if app != "c0c0c0c0-0000-4000-8000-0000000c0501" || kind != "console" {
+		t.Fatalf("evidence client = %q %q", app, kind)
+	}
+	// Only the console caller's events name it (its decision, and the publication it caused);
+	// the development requester's never do.
+	if n := testdb.Scalar(t, c.db.OwnerURL, `SELECT count(*) FROM evidence_events WHERE actor <> $1 AND after ? 'client'`, console.Name); n != "0" {
+		t.Fatalf("a request without a client named one: %s", n)
 	}
 }

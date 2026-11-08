@@ -72,6 +72,14 @@ describe("the control-plane token", () => {
     expect(refreshTokenGrant).toHaveBeenCalledTimes(2);
   });
 
+  test("a kept token is never served to another person or tenant on the same session id", async () => {
+    refreshTokenGrant.mockResolvedValue({ access_token: token() });
+    await controlPlaneToken(t, session);
+    refreshTokenGrant.mockResolvedValue({ access_token: token({ oid: "0d0d0d0d-0000-4000-8000-00000000000b" }) });
+    await controlPlaneToken(t, { ...session, person: "entra:0d0d0d0d-0000-4000-8000-00000000000b" });
+    expect(refreshTokenGrant).toHaveBeenCalledTimes(2);
+  });
+
   test("one close to expiry is asked for again; a wrong one is never kept", async () => {
     refreshTokenGrant.mockResolvedValueOnce({ access_token: token({ exp: Math.floor(Date.now() / 1000) + 60 }) });
     await controlPlaneToken(t, session);

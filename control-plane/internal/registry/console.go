@@ -12,6 +12,23 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// ErrUnavailable is a check that could not be made (a directory's keys or the database could not
+// be reached): the request is refused as "try again", never as "not allowed".
+var ErrUnavailable = errors.New("a required check could not be made")
+
+type requestIDKey struct{}
+
+// WithRequestID carries the server's request id to code that runs before the actor exists.
+func WithRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDKey{}, id)
+}
+
+// RequestIDFrom returns the request id WithRequestID set, or "".
+func RequestIDFrom(ctx context.Context) string {
+	id, _ := ctx.Value(requestIDKey{}).(string)
+	return id
+}
+
 // ConsoleClient is the tenant's console app (a token's azp) and its control-plane API app (aud).
 type ConsoleClient struct {
 	ClientApp uuid.UUID
