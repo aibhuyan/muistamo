@@ -25,9 +25,11 @@ def headers(value: str) -> dict[str, str]:
 
 
 def test_v2_matches_the_control_planes_vector() -> None:
-    assert auth.sign(SECRET, b"", 1700000000, method="POST", path=EXPIRE).endswith(
-        ",v2=" + V2_VECTOR
-    )
+    # Exactly what the control plane sends (signature/v2_test.go asserts the same string), and
+    # that string is accepted on its own.
+    exact = f"t=1700000000,v2={V2_VECTOR}"
+    assert auth.sign(SECRET, b"", 1700000000, method="POST", path=EXPIRE) == exact
+    auth.verify_service(headers(exact), b"", SECRET, "POST", EXPIRE, now=1700000000)
 
 
 @pytest.mark.parametrize(
@@ -45,15 +47,27 @@ def test_a_signature_verifies_only_for_its_own_method_and_path(method, path) -> 
         auth.verify_service(signed, b"", SECRET, method, path)
 
 
-def test_a_v1_only_signature_is_refused_unless_the_overlap_is_on() -> None:
-    v1_only = auth.sign(SECRET, b"", method="POST", path=EXPIRE).rsplit(",v2=", 1)[0]
+def test_a_v1_only_signature_is_always_refused() -> None:
+    """The overlap is over (docs/signature-retirement-plan.md): v2 is required."""
+    v1_only = auth.sign(SECRET, b"")  # body and time only
+    assert ",v2=" not in v1_only
     with pytest.raises(Unauthenticated):
         auth.verify_service(headers(v1_only), b"", SECRET, "POST", EXPIRE)
-    auth.verify_service(headers(v1_only), b"", SECRET, "POST", EXPIRE, accept_v1=True)
-    # Even with the overlap on, a present v2 must match: v1 is never a fallback for a bad v2.
+    # A present v2 must match: v1 is never a fallback for a bad v2.
     bad_v2 = v1_only + ",v2=" + "0" * 64
     with pytest.raises(Unauthenticated):
-        auth.verify_service(headers(bad_v2), b"", SECRET, "POST", EXPIRE, accept_v1=True)
+        auth.verify_service(headers(bad_v2), b"", SECRET, "POST", EXPIRE)
+
+
+def test_a_v1_next_to_a_valid_v2_is_ignored() -> None:
+    """A control plane from #47 until this release still sends v1 beside v2: v2 decides."""
+    ts = "1700000000"
+    v1 = auth.sign(SECRET, b"", 1700000000).split(",v1=")[1]
+    v2 = auth._mac_v2(SECRET, ts, "POST", EXPIRE, b"")
+    both = f"t={ts},v1={v1},v2={v2}"
+    auth.verify_service(headers(both), b"", SECRET, "POST", EXPIRE, now=1700000000)
+    wrong_v1 = f"t={ts},v1={'0' * 64},v2={v2}"
+    auth.verify_service(headers(wrong_v1), b"", SECRET, "POST", EXPIRE, now=1700000000)
 
 
 def test_a_signed_expiry_cannot_be_moved_to_another_review(world) -> None:
@@ -199,18 +213,19 @@ def test_the_overlap_flag_is_read_when_the_app_starts(world, monkeypatch, caplog
 
     _two_reviews(world)
     path = "/v1/knowledge/internal/leaver-reviews/leave:a/cancel"
-    v1_only = auth.sign(SECRET, b"", method="POST", path=path).rsplit(",v2=", 1)[0]
+    v1_only = auth.sign(SECRET, b"")  # body and time only, as before v2
     strict = TestClient(
         create_app(world.knowledge, auth.insecure_dev_headers), raise_server_exceptions=False
     )
     assert _post(strict, world, path, v1_only).status_code == 401
-    monkeypatch.setenv("MUISTAMO_KNOWLEDGE_ACCEPT_V1_SIGNATURES", "true")
-    overlap = TestClient(
-        create_app(world.knowledge, auth.insecure_dev_headers), raise_server_exceptions=False
-    )
+    # The old overlap setting no longer re-opens v1: it is ignored, with a warning.
+    monkeypatch.setenv("MUISTAMO_KNOWLEDGE_ACCEPT_V1_SIGNATURES", "1")  # any value: ignored
     with caplog.at_level(logging.WARNING, logger="muistamo.knowledge"):
-        assert _post(overlap, world, path, v1_only).status_code == 200
-    assert any("v1-only" in r.getMessage() for r in caplog.records)
+        stale = TestClient(
+            create_app(world.knowledge, auth.insecure_dev_headers), raise_server_exceptions=False
+        )
+    assert any("no longer has an effect" in r.getMessage() for r in caplog.records)
+    assert _post(stale, world, path, v1_only).status_code == 401
 
 
 def test_no_signed_route_reads_a_query() -> None:
