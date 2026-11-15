@@ -370,7 +370,7 @@ func TestDelegationNeedsTheTenantsEnrolledDirectory(t *testing.T) {
 		reason muistamov1.KnowledgeDelegationRefusalReason
 	}{
 		// The token's binding is no longer the enrolled one.
-		"enrolled with another directory": {`UPDATE identity_enrollments SET binding_version=$1`, "identity-not-ready"},
+		"enrolled with another directory": {`UPDATE identity_enrollments SET (binding_version, entra_tenant_id) = (SELECT binding_version, entra_tenant_id FROM entra_bindings WHERE binding_version=$1)`, "identity-not-ready"},
 		"not enrolled":                    {`DELETE FROM identity_enrollments WHERE binding_version<>$1`, "user-unlinked"},
 	} {
 		t.Run(name, func(t *testing.T) {

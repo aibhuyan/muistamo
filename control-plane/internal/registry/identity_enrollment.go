@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 	"muistamo.dev/muistamo/control-plane/internal/store"
@@ -46,7 +47,8 @@ func (s *Service) EnrollIdentityTenant(ctx context.Context, actor Actor, version
 		if !errors.Is(err, ErrNotFound) {
 			return err
 		}
-		if _, err := identityBindingRow(ctx, tx, version); err != nil {
+		binding, err := identityBindingRow(ctx, tx, version)
+		if err != nil {
 			return err
 		}
 		var used bool
@@ -56,7 +58,14 @@ func (s *Service) EnrollIdentityTenant(ctx context.Context, actor Actor, version
 		if used {
 			return fmt.Errorf("live enrollment requires a fresh tenant: %w", ErrConflict)
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO identity_enrollments(tenant_id,binding_version) VALUES($1,$2)`, actor.Tenant, version); err != nil {
+		// One directory is enrolled by one tenant only (migration 00021): a person's Entra token
+		// names its directory, which must never name two tenants. The database decides, because
+		// row-level security hides another tenant's enrollment from this transaction.
+		if _, err := tx.Exec(ctx, `INSERT INTO identity_enrollments(tenant_id,binding_version,entra_tenant_id) VALUES($1,$2,$3)`, actor.Tenant, version, binding.EntraTenantId); err != nil {
+			var pg *pgconn.PgError
+			if errors.As(err, &pg) && pg.Code == "23505" && pg.ConstraintName == "identity_enrollment_one_tenant_per_directory" {
+				return fmt.Errorf("this Entra directory is enrolled by another tenant: %w", ErrConflict)
+			}
 			return fmt.Errorf("enroll tenant identity mode: %w", err)
 		}
 		out, err = enrollmentRow(ctx, tx)
