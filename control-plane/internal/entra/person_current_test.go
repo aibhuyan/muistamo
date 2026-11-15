@@ -75,7 +75,7 @@ func TestCurrentAnswersExactlyAsTheDelegationDecides(t *testing.T) {
 	t.Run("enrolled with another directory", func(t *testing.T) {
 		f := setupDelegation(t)
 		testdb.Exec(t, f.db.OwnerURL, `ALTER TABLE hr_events DROP CONSTRAINT hr_identity_enrollment`)
-		testdb.Exec(t, f.db.OwnerURL, `UPDATE identity_enrollments SET binding_version=$1`, otherDirectory(t, f))
+		testdb.Exec(t, f.db.OwnerURL, `UPDATE identity_enrollments SET (binding_version, entra_tenant_id) = (SELECT binding_version, entra_tenant_id FROM entra_bindings WHERE binding_version=$1)`, otherDirectory(t, f))
 		notCurrent(t, f.current(t, f.dir.token(userClaims(userA))), "identity-not-ready")
 	})
 	t.Run("not enrolled", func(t *testing.T) {

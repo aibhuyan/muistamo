@@ -41,6 +41,8 @@ type consoleTenant struct {
 
 // NewConsoleResolver serves the delegator's tenants. A directory bound to more than one tenant is
 // ambiguous: its console callers are refused (and logged), and everything else keeps working.
+// Since migration 00021 two tenants cannot enrol one directory, so this is defence in depth
+// against a misconfigured deployment, not a supported arrangement.
 func NewConsoleResolver(d *Delegator) *ConsoleResolver {
 	byDirectory := map[string]consoleTenant{}
 	ambiguous := map[string]bool{}

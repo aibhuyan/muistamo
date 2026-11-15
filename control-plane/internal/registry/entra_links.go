@@ -123,6 +123,8 @@ func (s *Service) recordEntraUserOutcome(ctx context.Context, actor Actor, recei
 		// where this tenant cannot see it (another tenant bound to the same directory): the unique
 		// index refuses, and that is a conflict. A holder in this tenant is visible to a new
 		// statement now, so it is demoted as above; another tenant's link cannot be reached here.
+		// Since migration 00021 two tenants cannot enrol one directory, so the cross-tenant case is
+		// unreachable through enrolment; the refusal stays as defence in depth.
 		savepoint, err := tx.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("record Entra user link: %w", err)

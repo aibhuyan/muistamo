@@ -19,7 +19,7 @@ var noPersonalData = map[string]string{
 	"catalogue_published":       "template, version and request id; the requester is in catalogue_requests",
 	"evidence_heads":            "the chain's sequence number and hash",
 	"hr_webhook_secrets":        "the tenant's HMAC secret",
-	"identity_enrollments":      "the tenant's Entra binding version",
+	"identity_enrollments":      "the tenant's Entra binding version and directory id",
 	"knowledge_service_secrets": "the tenant's service-call secret",
 	"usage_records":             "token counts and cost per request id; the person is in gateway_calls",
 	"calls_without_usage":       "request id and time of calls that reported no usage; the person is in gateway_calls",
