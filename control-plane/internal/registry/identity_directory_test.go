@@ -42,6 +42,14 @@ func enrolledDirectory(t *testing.T, f fixture) (first muistamov1.EntraIdentityB
 	return first, second, same
 }
 
+func sqlState(err error) string {
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) {
+		return pg.Code
+	}
+	return ""
+}
+
 func constraintOf(err error) string {
 	var pg *pgconn.PgError
 	if errors.As(err, &pg) {

@@ -16,7 +16,8 @@ ALTER TABLE identity_enrollments ADD COLUMN entra_tenant_id uuid;
 
 -- Both tables force row-level security, so a table owner that is neither superuser nor BYPASSRLS
 -- (as on managed PostgreSQL) would backfill nothing and count no duplicates. Lift FORCE for these
--- statements only, inside this migration's transaction; a failure rolls the lift back.
+-- statements and the constraint validation below, inside this migration's transaction; a failure
+-- rolls the lift back.
 ALTER TABLE identity_enrollments NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE entra_bindings NO FORCE ROW LEVEL SECURITY;
 UPDATE identity_enrollments e SET entra_tenant_id = b.entra_tenant_id
@@ -35,8 +36,6 @@ BEGIN
   END IF;
 END $$;
 -- +goose StatementEnd
-ALTER TABLE identity_enrollments FORCE ROW LEVEL SECURITY;
-ALTER TABLE entra_bindings FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE identity_enrollments ALTER COLUMN entra_tenant_id SET NOT NULL;
 ALTER TABLE identity_enrollments ADD CONSTRAINT identity_enrollment_directory
@@ -44,3 +43,6 @@ ALTER TABLE identity_enrollments ADD CONSTRAINT identity_enrollment_directory
   REFERENCES entra_bindings (tenant_id, binding_version, entra_tenant_id);
 ALTER TABLE identity_enrollments ADD CONSTRAINT identity_enrollment_one_tenant_per_directory
   UNIQUE (entra_tenant_id);
+-- FORCE returns only now, so the constraints above were validated against every tenant's rows.
+ALTER TABLE identity_enrollments FORCE ROW LEVEL SECURITY;
+ALTER TABLE entra_bindings FORCE ROW LEVEL SECURITY;

@@ -184,7 +184,8 @@ func TestIdentityEnrollmentDatabaseBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	insert = fmt.Sprintf("INSERT INTO identity_enrollments(tenant_id,binding_version,entra_tenant_id) VALUES('%s','%s','%s')", other, b2.BindingVersion, b2.EntraTenantId)
-	if err := testdb.ExecErr(f.db.AppURL, f.actor.Tenant, insert); err == nil {
-		t.Fatal("application role enrolled another tenant")
+	// Row-level security refuses the row itself (insufficient_privilege), not a later constraint.
+	if err := testdb.ExecErr(f.db.AppURL, f.actor.Tenant, insert); sqlState(err) != "42501" {
+		t.Fatalf("application role enrolled another tenant, or was refused for another reason: %v", err)
 	}
 }

@@ -148,4 +148,7 @@ func seedEnrollment(t *testing.T, db testdb.DB, tenant uuid.UUID, name string, d
 	testdb.ExecIn(t, db.OwnerURL, tenant, `INSERT INTO entra_bindings (tenant_id, binding_version, config_digest, entra_tenant_id, blueprint_app_id)
 		VALUES ($1, $2, repeat('0', 64), $3, $4)`, tenant, version, directory, uuid.New())
 	testdb.ExecIn(t, db.OwnerURL, tenant, `INSERT INTO identity_enrollments (tenant_id, binding_version) VALUES ($1, $2)`, tenant, version)
+	// A live receipt references the enrollment, as in any tenant that has taken an HR event.
+	testdb.ExecIn(t, db.OwnerURL, tenant, `INSERT INTO hr_events (tenant_id, event_id, type, person_id, workflow_id, payload, occurred_at, generation, decision, dispatch_state, identity_mode, identity_binding_version)
+		VALUES ($1, 'join', 'joiner', 'P-1', '', '{}', now(), 1, 'accepted', 'pending', 'entra', $2)`, tenant, version)
 }
