@@ -91,7 +91,7 @@
   --surface: #ffffff;
   --line: #d9dfdc;
   --line-soft: #e7ece9;
-  --line-strong: #b9c2be;
+  --line-strong: #7f8c87;
   --ink: #17211e;
   --muted: #55625d;
   --accent: #0a6652;
@@ -121,7 +121,7 @@
     --surface: #171f1c;
     --line: #2a3531;
     --line-soft: #222c28;
-    --line-strong: #3b4843;
+    --line-strong: #6b7a74;
     --ink: #e6ece9;
     --muted: #9ba9a3;
     --accent: #62c7ad;
@@ -289,7 +289,7 @@ code,
   overflow-wrap: anywhere;
 }
 
-.who .button {
+.who button {
   margin-top: 10px;
 }
 
@@ -308,6 +308,10 @@ code,
 
 .page.narrow {
   max-width: 880px;
+}
+
+.back {
+  align-self: flex-start;
 }
 
 .page-head {
@@ -497,6 +501,15 @@ td:first-child {
   font-weight: 600;
 }
 
+/* The console's own warning. Never a service refusal, so it does not look like one. */
+.caution {
+  background: var(--wait-bg);
+  border: 1px solid var(--wait-ink);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  color: var(--wait-ink);
+}
+
 /* Home: the work queue. */
 .queue a {
   display: flex;
@@ -610,7 +623,8 @@ td:first-child {
 /* A leaver's entry that can be picked for the merge. */
 .pick {
   display: flex;
-  gap: 14px;
+  flex-direction: column;
+  gap: 6px;
   padding: 16px 20px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -621,11 +635,19 @@ td:first-child {
   border-color: var(--accent);
 }
 
-.pick > span {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
+.pick .check {
+  gap: 14px;
+  cursor: pointer;
+}
+
+.pick .check strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pick .meta,
+.pick pre {
+  padding-left: 32px;
 }
 
 .pick pre {
@@ -758,7 +780,6 @@ input[type="checkbox"] {
 .pick input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  margin-top: 2px;
 }
 
 button,
@@ -833,18 +854,70 @@ button.danger {
   font-size: 15px;
 }
 
-@media (max-width: 640px) {
-  .content {
-    padding: 24px 16px 40px;
+/* Below this width the rail no longer fits beside the page and stacks above it. */
+@media (max-width: 800px) {
+  .shell {
+    min-height: 0;
+    align-content: flex-start;
   }
 
   .rail {
+    flex-basis: 100%;
+    gap: 12px;
+    padding: 12px;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
 
-  .shell {
-    min-height: 0;
+  .rail nav,
+  .nav-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .nav-label {
+    display: none;
+  }
+
+  .who {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 12px 12px 0;
+  }
+
+  .who button {
+    align-self: center;
+    margin-top: 0;
+    margin-left: auto;
+  }
+
+  .content {
+    flex-basis: 100%;
+    padding: 24px 16px 40px;
+  }
+
+  .queue a {
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    padding: 16px;
+  }
+
+  .queue-count {
+    flex-basis: 40px;
+  }
+
+  .queue-what {
+    flex-basis: 0;
+    flex-grow: 1;
+    min-width: 12ch;
+  }
+
+  .queue-go {
+    flex-basis: 100%;
+    padding-left: 56px;
   }
 }
 

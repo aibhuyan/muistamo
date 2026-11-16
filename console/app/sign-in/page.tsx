@@ -21,7 +21,7 @@ export default async function SignInPage(props?: { searchParams?: Promise<Record
         {/* A POST from this page only; the customers this console serves are never listed. */}
         <form method="post" action="/auth/start" className="decision">
           {unknown ? (
-            <p role="alert" className="refusal">
+            <p role="alert" className="caution">
               That organisation is not set up in this console.
             </p>
           ) : null}
@@ -51,7 +51,7 @@ export default async function SignInPage(props?: { searchParams?: Promise<Record
   return (
     <div className="panel signin">
       <h1>Development sign-in</h1>
-      <p className="refusal">
+      <p className="caution">
         Insecure: you may claim any tenant and person, exactly as the services&apos; development headers allow.
         Never enable this outside development.
       </p>

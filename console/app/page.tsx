@@ -31,7 +31,7 @@ function Inbox<T>({
       <span className="queue-what">
         <strong>{what}</strong>
         <span className="muted">
-          {result.ok ? (waiting.length === 0 ? "Nothing is waiting." : detail(waiting)) : "The service refused this inbox. Open it to read why."}
+          {result.ok ? (waiting.length === 0 ? "Nothing is waiting." : detail(waiting)) : "This inbox could not be read. Open it to see why."}
         </span>
       </span>
       <span className="queue-go">{go}</span>
@@ -39,9 +39,10 @@ function Inbox<T>({
   );
 }
 
-// The earliest of some timestamps, as a date. ISO 8601 UTC strings sort as text.
+// The earliest of some timestamps, as a date. Compared as moments: the services may write an
+// offset other than Z.
 function earliest(timestamps: string[]): string {
-  return day([...timestamps].sort()[0]);
+  return day([...timestamps].sort((a, b) => Date.parse(a) - Date.parse(b))[0]);
 }
 
 export default async function Home() {
@@ -55,7 +56,7 @@ export default async function Home() {
     <div className="page narrow">
       <div className="page-head">
         <h1>Waiting for you</h1>
-        <p className="lede">Decisions only you can make. The services record each one as evidence before it takes effect.</p>
+        <p className="lede">What is waiting in your inboxes. The services record every decision as evidence.</p>
       </div>
       <div className="panel queue">
         <Inbox
@@ -64,15 +65,15 @@ export default async function Home() {
           open={(p) => p.status === "in-review"}
           what="Knowledge proposals to review"
           detail={(waiting) => `The oldest was created on ${earliest(waiting.map((p) => p.createdAt))}.`}
-          go="Review"
+          go="Open"
         />
         <Inbox
           href="/leaver-reviews"
           result={reviews}
           open={(r) => r.status === "open"}
           what="Leaver reviews open"
-          detail={(waiting) => `The next deadline is ${earliest(waiting.map((r) => r.deadline))}. Undecided entries are purged then.`}
-          go="Decide"
+          detail={(waiting) => `The next deadline is ${earliest(waiting.map((r) => r.deadline))}. Without a decision the entries are purged at the deadline.`}
+          go="Open"
         />
         <Inbox
           href="/catalogue"
@@ -83,10 +84,10 @@ export default async function Home() {
             const high = waiting.filter((c) => c.riskTier === "high").length;
             return high === 0 ? "None is high risk." : `${high} high risk, needing two approvers.`;
           }}
-          go="Approve or reject"
+          go="Open"
         />
       </div>
-      <p className="muted">A number like 403 is the service&apos;s answer for that inbox; open it to see why.</p>
+      <p className="muted">A number like 403 or 503 in place of a count means the inbox could not be read; open it to see why.</p>
     </div>
   );
 }

@@ -19,7 +19,9 @@ export default async function LeaverReviewPage({ params }: { params: Promise<{ i
   const entries = r.entries ?? [];
   return (
     <div className="page narrow">
-      <Link href="/leaver-reviews">Leaver reviews</Link>
+      <Link href="/leaver-reviews" className="back">
+        Leaver reviews
+      </Link>
       <h1>Personal knowledge of {r.person}</h1>
       <dl className="panel facts">
         <div>
@@ -35,7 +37,7 @@ export default async function LeaverReviewPage({ params }: { params: Promise<{ i
         </div>
         <div>
           <dt>Extension</dt>
-          <dd>{r.kept ? "Already extended once" : "Not used yet"}</dd>
+          <dd>{r.kept ? "Extended once" : "Not extended"}</dd>
         </div>
         {r.proposalId ? (
           <div>
@@ -60,18 +62,17 @@ export default async function LeaverReviewPage({ params }: { params: Promise<{ i
             <div className="stack">
               {entries.length === 0 ? <p>No entries.</p> : null}
               {entries.map((e) => (
-                <label key={e.id} className="pick">
-                  <input type="checkbox" name="entryIds" value={e.id} />
-                  <span>
-                    <strong>{e.title}</strong>
-                    <span className="meta">
-                      <span className="mono">{e.key}</span>
-                      <span>{label(e.type)}</span>
-                      <span>{label(e.dataClass)}</span>
-                    </span>
-                    <pre>{e.body}</pre>
-                  </span>
-                </label>
+                <div key={e.id} className="pick">
+                  <label className="check">
+                    <input type="checkbox" name="entryIds" value={e.id} /> <strong>{e.title}</strong>
+                  </label>
+                  <div className="meta">
+                    <span className="mono">{e.key}</span>
+                    <span>{label(e.type)}</span>
+                    <span>{label(e.dataClass)}</span>
+                  </div>
+                  <pre>{e.body}</pre>
+                </div>
               ))}
             </div>
           </fieldset>

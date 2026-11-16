@@ -17,7 +17,9 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
   const p = result.data;
   return (
     <div className="page narrow">
-      <Link href="/proposals">Knowledge proposals</Link>
+      <Link href="/proposals" className="back">
+        Knowledge proposals
+      </Link>
       <h1>{p.summary}</h1>
       <dl className="panel facts">
         <div>
