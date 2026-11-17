@@ -501,10 +501,14 @@ func recordEvidence(ctx context.Context, tx pgx.Tx, signer evidence.Signer, acto
 	return err
 }
 
-// ListEvents returns the tenant's evidence events after afterSeq, in chain order.
+// ListEvents returns the tenant's evidence events after afterSeq, in chain order. A console
+// caller must be a console auditor (D70).
 func (s *Service) ListEvents(ctx context.Context, actor Actor, afterSeq int64, limit int) ([]evidencechain.Event, error) {
 	var events []evidencechain.Event
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		if err := requireConsoleRole(ctx, tx, actor, ConsoleAuditor, "the evidence log"); err != nil {
+			return err
+		}
 		var err error
 		events, err = evidence.List(ctx, tx, afterSeq, limit)
 		return err

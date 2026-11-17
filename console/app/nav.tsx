@@ -5,10 +5,14 @@ import { usePathname } from "next/navigation";
 
 type NavGroup = { label: string | null; items: { href: string; name: string }[] };
 
+export type Roles = { administrator: boolean; auditor: boolean };
+
+const NONE: Roles = { administrator: false, auditor: false };
+
 // The console's navigation. Only screens that exist are listed: a link never promises a page the
-// services cannot back. The Workforce group is shown to console administrators; showing it is a
-// convenience, not a permission: the control plane decides every read itself.
-export function navGroups(administrator: boolean): NavGroup[] {
+// services cannot back. Workforce is shown to console administrators and Governance to auditors;
+// showing a link is a convenience, not a permission: the control plane decides every read itself.
+export function navGroups({ administrator, auditor }: Roles = NONE): NavGroup[] {
   const groups: NavGroup[] = [
     { label: null, items: [{ href: "/", name: "Home" }] },
     {
@@ -30,6 +34,9 @@ export function navGroups(administrator: boolean): NavGroup[] {
       ],
     });
   }
+  if (auditor) {
+    groups.push({ label: "Governance", items: [{ href: "/evidence", name: "Evidence log" }] });
+  }
   return groups;
 }
 
@@ -38,11 +45,11 @@ export function isCurrent(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
 }
 
-export function Nav({ administrator = false }: { administrator?: boolean }) {
+export function Nav({ roles = NONE }: { roles?: Roles }) {
   const pathname = usePathname();
   return (
     <nav aria-label="Console">
-      {navGroups(administrator).map((group) => (
+      {navGroups(roles).map((group) => (
         <div key={group.label ?? "home"} className="nav-group">
           {group.label ? <div className="nav-label">{group.label}</div> : null}
           {group.items.map((item) => (

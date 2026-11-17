@@ -1018,6 +1018,8 @@ paths:
     get:
       operationId: listEvents
       summary: Export the tenant's evidence chain in seq order
+      description: A person signed in through the console must be a console auditor
+        (403 otherwise).
       parameters:
       - name: afterSeq
         in: query
@@ -2041,8 +2043,8 @@ components:
             and HR events, and policies, follow in later slices (D70).
         auditor:
           type: boolean
-          description: The caller will read the evidence log in the console; that
-            screen is a later slice, so today the role grants nothing (D70).
+          description: The caller may read the control plane's evidence log in the
+            console (D70).
         catalogueApprover:
           type: boolean
           description: The caller decides catalogue requests.

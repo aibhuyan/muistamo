@@ -470,8 +470,8 @@ func consoleRolesCmd() *cobra.Command {
 	set := &cobra.Command{
 		Use:   "set --tenant ID --actor OPERATOR --role administrator|auditor PERSON... | --clear",
 		Short: "Replace the people in one console role (MUISTAMO_MIGRATE_DATABASE_URL)",
-		Long: "Administrators read agents and templates in the console. Auditors will read the evidence log,\n" +
-			"a later slice; today the role grants nothing. Name each person as the console knows them:\n" +
+		Long: "Administrators read agents and templates in the console. Auditors read the evidence log.\n" +
+			"Name each person as the console knows them:\n" +
 			"entra:<object id>, or dev:<identity> for development sign-in.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

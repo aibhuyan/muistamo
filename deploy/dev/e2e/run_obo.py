@@ -617,7 +617,7 @@ def main() -> None:
         assert status == 401, status
         # Nor does a console token on a route outside the console's list.
         reviewer_cp = bearer(ms.control_plane_token(str(REVIEWER)))
-        assert http("GET", cp + "/v1/events", None, reviewer_cp)[0] == 401
+        assert http("POST", cp + "/v1/events", {}, reviewer_cp)[0] == 401
         assert http("PUT", cp + "/v1/templates/controller", controller, reviewer_cp)[0] == 401
         assert http("GET", cp + "/v1/catalogue/requests", None, reviewer_cp)[0] == 200
 
@@ -667,6 +667,34 @@ def main() -> None:
             == 403
         )
         assert "console.roles.configured" in evidence_actions(cp, operator)
+
+        # The evidence log (D70): for console auditors. The reviewer, an administrator, is not one.
+        status, refused = http("GET", cp + "/v1/events", None, reviewer_cp)
+        assert status == 403, (status, refused)
+        status, page = console_get(console, "/evidence", jar)
+        assert status == 200 and "only console auditors can read the evidence log" in page, (
+            status,
+            page[:1500],
+        )
+        status, page = console_get(console, "/", jar)
+        assert 'href="/evidence"' not in page, page[:1500]
+        run(
+            [binary, "tenant", "console", "roles", "set", "--tenant", tenant]
+            + ["--actor", "operator:e2e", "--role", "auditor", f"entra:{REVIEWER}"],
+            base,
+        )
+        status, page = console_get(console, "/", jar)
+        assert 'href="/evidence"' in page, page[:1500]
+        status, page = console_get(console, "/evidence", jar)
+        assert status == 200 and 'href="/evidence/1"' in page, (status, page[:1500])
+        assert "mst evidence verify" in page, page[:1500]
+        status, first = http("GET", cp + "/v1/events?afterSeq=0&limit=1", None, reviewer_cp)
+        assert status == 200 and first["items"][0]["seq"] == 1, (status, first)
+        status, page = console_get(console, "/evidence/1", jar)
+        assert status == 200 and first["items"][0]["hash"] in page, (status, page[:1500])
+        # Read-only, and the console's other routes stay closed.
+        assert http("POST", cp + "/v1/events", {}, reviewer_cp)[0] == 401
+        assert http("GET", cp + "/v1/action-policies", None, reviewer_cp)[0] == 401
         # A current employee who is not an approver sees only their own requests (none).
         status, theirs = http(
             "GET", cp + "/v1/catalogue/requests", None, bearer(ms.control_plane_token(str(OTHER)))

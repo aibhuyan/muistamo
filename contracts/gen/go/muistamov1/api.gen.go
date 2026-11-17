@@ -2409,7 +2409,7 @@ type ConsoleAccess struct {
 	// Administrator The caller may read agents and templates in the console. People and HR events, and policies, follow in later slices (D70).
 	Administrator bool `json:"administrator"`
 
-	// Auditor The caller will read the evidence log in the console; that screen is a later slice, so today the role grants nothing (D70).
+	// Auditor The caller may read the control plane's evidence log in the console (D70).
 	Auditor bool `json:"auditor"`
 
 	// CatalogueApprover The caller decides catalogue requests.
@@ -4202,6 +4202,8 @@ type ClientInterface interface {
 
 	// ListEvents Export the tenant's evidence chain in seq order
 	//
+	// A person signed in through the console must be a console auditor (403 otherwise).
+	//
 	// Corresponds with GET /v1/events (the `ListEvents` operationId).
 	ListEvents(ctx context.Context, params *ListEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -4861,6 +4863,8 @@ func (c *Client) GetConsoleAccess(ctx context.Context, reqEditors ...RequestEdit
 }
 
 // ListEvents Export the tenant's evidence chain in seq order
+//
+// A person signed in through the console must be a console auditor (403 otherwise).
 //
 // Corresponds with GET /v1/events (the `ListEvents` operationId).
 func (c *Client) ListEvents(ctx context.Context, params *ListEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -8339,6 +8343,8 @@ type ClientWithResponsesInterface interface {
 	GetConsoleAccessWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetConsoleAccessResponse, error)
 
 	// ListEventsWithResponse Export the tenant's evidence chain in seq order
+	//
+	// A person signed in through the console must be a console auditor (403 otherwise).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -11885,6 +11891,8 @@ func (c *ClientWithResponses) GetConsoleAccessWithResponse(ctx context.Context, 
 }
 
 // ListEventsWithResponse Export the tenant's evidence chain in seq order
+//
+// A person signed in through the console must be a console auditor (403 otherwise).
 //
 // Returns a wrapper object for the known response body format(s).
 //

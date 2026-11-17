@@ -50,6 +50,8 @@ func TestConsoleCallersReachOnlyTheListedRoutes(t *testing.T) {
 		request(http.MethodGet, "/v1/instances/analyst-intern-hr-20418", bearer),
 		request(http.MethodGet, "/v1/templates", bearer),
 		request(http.MethodGet, "/v1/templates/analyst-intern", bearer),
+		request(http.MethodGet, "/v1/events", bearer),
+		request(http.MethodGet, "/v1/events?afterSeq=40&limit=50", bearer),
 	} {
 		console, dev := &fixedResolver{name: "entra:x"}, &fixedResolver{name: "dev:x"}
 		_, actor, err := api.WithConsole{Console: console, Fallback: dev}.Resolve(r)
@@ -80,8 +82,9 @@ func TestConsoleCallersReachOnlyTheListedRoutes(t *testing.T) {
 		request(http.MethodGet, "/v1/instances/", bearer),
 		request(http.MethodGet, "/v1/templates/"+strings.Repeat("a", 64), bearer),
 		request(http.MethodGet, "/v1/instances/%61nalyst", bearer),
-		// The other management reads are not opened by this slice.
-		request(http.MethodGet, "/v1/events", bearer),
+		// The other management reads are not opened yet, and the evidence log is read-only.
+		request(http.MethodPost, "/v1/events", bearer),
+		request(http.MethodGet, "/v1/events/40", bearer),
 		request(http.MethodGet, "/v1/action-policies", bearer),
 		request(http.MethodGet, "/v1/usage", bearer),
 		request(http.MethodPost, "/v1/catalogue/requests", bearer), // filing, not deciding

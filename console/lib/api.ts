@@ -32,6 +32,8 @@ export type AgentInstanceRecord = ControlPlane["schemas"]["AgentInstanceRecord"]
 export type AgentInstancePage = ControlPlane["schemas"]["AgentInstancePage"];
 export type AgentTemplateRecord = ControlPlane["schemas"]["AgentTemplateRecord"];
 export type AgentTemplatePage = ControlPlane["schemas"]["AgentTemplatePage"];
+export type EvidenceEvent = ControlPlane["schemas"]["EvidenceEvent"];
+export type EvidenceEventPage = ControlPlane["schemas"]["EvidenceEventPage"];
 
 export type Result<T> = { ok: true; data: T } | { ok: false; problem: Problem };
 
@@ -193,4 +195,7 @@ export const api = {
   templates: (s: Session, cursor?: string) =>
     call<AgentTemplatePage>(s, "control-plane", "GET", `/v1/templates?limit=${PAGE_SIZE}${page(cursor)}`),
   template: (s: Session, name: string) => call<AgentTemplateRecord>(s, "control-plane", "GET", `/v1/templates/${id(name)}`),
+  // The control plane's evidence chain, in chain order, for console auditors.
+  events: (s: Session, afterSeq: number, limit = PAGE_SIZE) =>
+    call<EvidenceEventPage>(s, "control-plane", "GET", `/v1/events?afterSeq=${afterSeq}&limit=${limit}`),
 };

@@ -69,6 +69,9 @@ func ConsoleRoute(r *http.Request) bool {
 		return true
 	case r.Method == http.MethodGet && (r.URL.Path == "/v1/instances" || r.URL.Path == "/v1/templates"):
 		return true
+	// The evidence log, for console auditors (the registry requires the role).
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/events":
+		return true
 	case r.Method == http.MethodGet && len(parts) == 4 && parts[1] == "v1" && (parts[2] == "instances" || parts[2] == "templates"):
 		// One instance or template by name, and nothing beneath it (versions, effective specs).
 		return objectName.MatchString(parts[3])

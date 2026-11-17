@@ -1,11 +1,18 @@
 import Link from "next/link";
 
-// Shared pieces of the Workforce pages (agents and templates, D70).
+// Shared pieces of the management pages (D70): Workforce and the evidence log.
 
 // The service's paging cursor from the page's query, or none. Only a single string is a cursor.
 export function cursorParam(query: Record<string, string | string[] | undefined> | undefined): string | undefined {
   const value = query?.cursor;
   return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+// A position in the evidence chain from the address: a whole number of events to skip, or the
+// start. Anything else is the start.
+export function afterParam(query: Record<string, string | string[] | undefined> | undefined): number {
+  const value = query?.after;
+  return typeof value === "string" && /^(0|[1-9][0-9]{0,14})$/.test(value) ? Number(value) : 0;
 }
 
 // Who an agent acts for, by kind only. Which person, team or service it is stays off these pages

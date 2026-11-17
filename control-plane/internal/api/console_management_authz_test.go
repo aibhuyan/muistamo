@@ -103,7 +103,6 @@ func TestAuthzConsoleReadsOfAgentsAndTemplatesNeedTheAdministratorRole(t *testin
 		{http.MethodGet, "/v1/instances/analyst-intern-person-a/effective"},
 		{http.MethodGet, "/v1/templates/analyst-intern/versions/1"},
 		{http.MethodGet, "/v1/templates/analyst-intern/clones"},
-		{http.MethodGet, "/v1/events"},
 		{http.MethodGet, "/v1/action-policies"},
 		{http.MethodGet, "/v1/usage"},
 		{http.MethodGet, "/v1/virtual-keys"},
@@ -132,5 +131,59 @@ func TestAuthzConsoleReadsOfAgentsAndTemplatesNeedTheAdministratorRole(t *testin
 		if got := h.call(t, a, http.MethodGet, path, ""); got.status != http.StatusOK {
 			t.Errorf("development GET %s = %d: %s", path, got.status, got.raw)
 		}
+	}
+}
+
+// Only a console auditor of the tenant reads its evidence log through the console, and only
+// reads it. Never skip or weaken.
+func TestAuthzConsoleEvidenceIsForAuditors(t *testing.T) {
+	var signedInto uuid.UUID
+	h := newHarness(t, api.WithConsole{Console: consoleAs{&signedInto}, Fallback: api.InsecureDevHeaders{}})
+	a, b := h.tenant(t, "tenant-a"), h.tenant(t, "tenant-b")
+	if got := h.call(t, a, http.MethodPut, "/v1/templates/analyst-intern", templateJSON); got.status != http.StatusCreated {
+		t.Fatalf("seed = %d: %s", got.status, got.raw)
+	}
+	const auditor, admin, nobody, auditorOfB = "entra:aaaaaaaa-0000-4000-8000-00000000000b", "entra:aaaaaaaa-0000-4000-8000-00000000000a",
+		"entra:aaaaaaaa-0000-4000-8000-00000000000c", "entra:bbbbbbbb-0000-4000-8000-00000000000b"
+	role := func(tenant uuid.UUID, role string, people ...string) {
+		t.Helper()
+		op := registry.Actor{Tenant: tenant, Name: "operator:test", RequestID: uuid.NewString()}
+		if err := registry.ConfigureConsoleRole(t.Context(), h.db.OwnerURL, op, role, people, h.key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	role(a, registry.ConsoleAuditor, auditor)
+	role(a, registry.ConsoleAdministrator, admin)
+	role(b, registry.ConsoleAuditor, auditorOfB)
+	console := func(person, method, path string) response {
+		t.Helper()
+		return h.call(t, uuid.Nil, method, path, "", "Authorization", "Bearer "+person)
+	}
+
+	signedInto = a
+	got := console(auditor, http.MethodGet, "/v1/events?limit=200")
+	if got.status != http.StatusOK || !strings.Contains(got.raw, `"action":"template.version.created"`) {
+		t.Fatalf("auditor = %d: %s", got.status, got.raw)
+	}
+	for _, person := range []string{admin, nobody, auditorOfB} {
+		got := console(person, http.MethodGet, "/v1/events")
+		if got.status != http.StatusForbidden || strings.Contains(got.raw, "template.version.created") {
+			t.Errorf("%s reads A's evidence = %d: %s", person, got.status, got.raw)
+		}
+	}
+	if got := console(auditor, http.MethodPost, "/v1/events"); got.status != http.StatusUnauthorized {
+		t.Errorf("auditor POST /v1/events = %d, want 401", got.status)
+	}
+	if got := console(auditor, http.MethodGet, "/v1/console/access"); !strings.Contains(strings.ReplaceAll(got.raw, " ", ""), `"administrator":false,"auditor":true`) {
+		t.Errorf("auditor access = %s", got.raw)
+	}
+	// B's auditor in B reads B's chain, which holds none of A's events.
+	signedInto = b
+	if got := console(auditorOfB, http.MethodGet, "/v1/events?limit=200"); got.status != http.StatusOK || strings.Contains(got.raw, "template.version.created") || strings.Contains(got.raw, a.String()) {
+		t.Errorf("B's auditor = %d: %s", got.status, got.raw)
+	}
+	// mst exports with development headers, unchanged.
+	if got := h.call(t, a, http.MethodGet, "/v1/events", ""); got.status != http.StatusOK {
+		t.Errorf("development export = %d", got.status)
 	}
 }

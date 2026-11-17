@@ -27,11 +27,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const session = await getSession();
   // Which links to show, never what may be read: if the control plane cannot say, the
   // management links are simply not shown.
-  let administrator = false;
+  let roles = { administrator: false, auditor: false };
   if (session) {
     try {
       const access = await api.consoleAccess(session);
-      administrator = access.ok && access.data.administrator;
+      if (access.ok) roles = { administrator: access.data.administrator, auditor: access.data.auditor };
     } catch {
       // Not configured or not reachable: the links stay hidden, and every page decides itself.
     }
@@ -43,7 +43,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <div className="shell">
             <div className="rail">
               <Brand />
-              <Nav administrator={administrator} />
+              <Nav roles={roles} />
               <form action={signOut} className="who">
                 <span className="who-name">{session.name ?? session.person}</span>
                 <code className="who-tenant">{session.tenant}</code>

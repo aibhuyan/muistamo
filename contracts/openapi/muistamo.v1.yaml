@@ -1043,6 +1043,8 @@ paths:
     get:
       operationId: listEvents
       summary: Export the tenant's evidence chain in seq order
+      description: >-
+        A person signed in through the console must be a console auditor (403 otherwise).
       parameters:
         - name: afterSeq
           in: query
