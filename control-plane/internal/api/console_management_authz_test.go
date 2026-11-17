@@ -28,9 +28,10 @@ func TestAuthzConsoleReadsOfAgentsAndTemplatesNeedTheAdministratorRole(t *testin
 	var signedInto uuid.UUID
 	h := newHarness(t, api.WithConsole{Console: consoleAs{&signedInto}, Fallback: api.InsecureDevHeaders{}})
 	a, b := h.tenant(t, "tenant-a"), h.tenant(t, "tenant-b")
-	for path, body := range map[string]string{"/v1/templates/analyst-intern": templateJSON, "/v1/instances/analyst-intern-person-a": instanceJSON} {
-		if got := h.call(t, a, http.MethodPut, path, body); got.status != http.StatusCreated {
-			t.Fatalf("seed %s = %d: %s", path, got.status, got.raw)
+	// In order: an instance needs its template.
+	for _, seed := range [][2]string{{"/v1/templates/analyst-intern", templateJSON}, {"/v1/instances/analyst-intern-person-a", instanceJSON}} {
+		if got := h.call(t, a, http.MethodPut, seed[0], seed[1]); got.status != http.StatusCreated {
+			t.Fatalf("seed %s = %d: %s", seed[0], got.status, got.raw)
 		}
 	}
 	const admin, auditor, nobody, adminOfB = "entra:aaaaaaaa-0000-4000-8000-00000000000a", "entra:aaaaaaaa-0000-4000-8000-00000000000b",
