@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -46,6 +47,10 @@ func (InsecureDevHeaders) Resolve(r *http.Request) (uuid.UUID, string, error) {
 	return tenant, "dev:" + actor, nil
 }
 
+// objectName is the contract's pattern for the name of an instance or template
+// (contracts/schemas/common/objectmeta.json).
+var objectName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
 // ConsoleRoutes is the explicit list of routes a person signed in through the console may call
 // (docs/control-plane-console-plan.md). Every other route refuses a console caller before any
 // handler runs. It grows with the console, one reviewed entry at a time.
@@ -57,6 +62,16 @@ func ConsoleRoute(r *http.Request) bool {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/catalogue/requests":
 		return true
+	// The management screens (docs/console-management-plan.md, D70): reads only. The registry
+	// requires the console administrator role for the agents and templates; the access route
+	// tells the console which links to show and authorises nothing.
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/console/access":
+		return true
+	case r.Method == http.MethodGet && (r.URL.Path == "/v1/instances" || r.URL.Path == "/v1/templates"):
+		return true
+	case r.Method == http.MethodGet && len(parts) == 4 && parts[1] == "v1" && (parts[2] == "instances" || parts[2] == "templates"):
+		// One instance or template by name, and nothing beneath it (versions, effective specs).
+		return objectName.MatchString(parts[3])
 	case r.Method == http.MethodPost && len(parts) == 6 && parts[1] == "v1" && parts[2] == "catalogue" &&
 		parts[3] == "requests" && parts[5] == "decision":
 		id, err := uuid.Parse(parts[4])

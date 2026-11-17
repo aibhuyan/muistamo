@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -42,6 +43,13 @@ func TestConsoleCallersReachOnlyTheListedRoutes(t *testing.T) {
 		request(http.MethodGet, "/v1/catalogue/requests", bearer),
 		request(http.MethodGet, "/v1/catalogue/requests?state=pending", bearer),
 		request(http.MethodPost, "/v1/catalogue/requests/"+uuid.NewString()+"/decision", bearer),
+		// The management screens: reads of agents and templates, and the caller's own roles.
+		request(http.MethodGet, "/v1/console/access", bearer),
+		request(http.MethodGet, "/v1/instances", bearer),
+		request(http.MethodGet, "/v1/instances?cursor=YQ&limit=50", bearer),
+		request(http.MethodGet, "/v1/instances/analyst-intern-hr-20418", bearer),
+		request(http.MethodGet, "/v1/templates", bearer),
+		request(http.MethodGet, "/v1/templates/analyst-intern", bearer),
 	} {
 		console, dev := &fixedResolver{name: "entra:x"}, &fixedResolver{name: "dev:x"}
 		_, actor, err := api.WithConsole{Console: console, Fallback: dev}.Resolve(r)
@@ -50,8 +58,32 @@ func TestConsoleCallersReachOnlyTheListedRoutes(t *testing.T) {
 		}
 	}
 	for _, r := range []*http.Request{
-		request(http.MethodGet, "/v1/instances", bearer),
 		request(http.MethodPost, "/v1/virtual-keys", bearer),
+		// Reads only, of one record by its name, and nothing beneath it.
+		request(http.MethodPost, "/v1/instances", bearer),
+		request(http.MethodPost, "/v1/templates", bearer),
+		request(http.MethodHead, "/v1/templates", bearer),
+		request(http.MethodPut, "/v1/instances/analyst-intern-hr-20418", bearer),
+		request(http.MethodPut, "/v1/templates/analyst-intern", bearer),
+		request(http.MethodDelete, "/v1/templates/analyst-intern", bearer),
+		request(http.MethodPost, "/v1/instances/analyst-intern-hr-20418/transitions", bearer),
+		request(http.MethodGet, "/v1/instances/analyst-intern-hr-20418/effective", bearer),
+		request(http.MethodGet, "/v1/templates/analyst-intern/versions/1", bearer),
+		request(http.MethodGet, "/v1/templates/analyst-intern/clones", bearer),
+		request(http.MethodPost, "/v1/console/access", bearer),
+		request(http.MethodGet, "/v1/console/access/x", bearer),
+		request(http.MethodGet, "/v1/console", bearer),
+		// Not a name by the contract's pattern: upper case, a dot, a trailing hyphen, empty, too long.
+		request(http.MethodGet, "/v1/instances/Analyst", bearer),
+		request(http.MethodGet, "/v1/instances/a.b", bearer),
+		request(http.MethodGet, "/v1/templates/analyst-", bearer),
+		request(http.MethodGet, "/v1/instances/", bearer),
+		request(http.MethodGet, "/v1/templates/"+strings.Repeat("a", 64), bearer),
+		request(http.MethodGet, "/v1/instances/%61nalyst", bearer),
+		// The other management reads are not opened by this slice.
+		request(http.MethodGet, "/v1/events", bearer),
+		request(http.MethodGet, "/v1/action-policies", bearer),
+		request(http.MethodGet, "/v1/usage", bearer),
 		request(http.MethodPost, "/v1/catalogue/requests", bearer), // filing, not deciding
 		request(http.MethodGet, "/v1/catalogue/requests/"+uuid.NewString(), bearer),
 		request(http.MethodPost, "/v1/catalogue/requests/x/y/decision", bearer),
@@ -77,7 +109,7 @@ func TestATokenIsNeverCombinedWithDevelopmentHeaders(t *testing.T) {
 		t.Fatalf("a request with two identities was resolved: %v", err)
 	}
 	// Without a token, the other resolver decides as before.
-	if _, actor, err := (api.WithConsole{Console: console, Fallback: dev}).Resolve(request(http.MethodGet, "/v1/instances", nil)); err != nil || actor != "dev:x" {
+	if _, actor, err := (api.WithConsole{Console: console, Fallback: dev}).Resolve(request(http.MethodGet, "/v1/virtual-keys", nil)); err != nil || actor != "dev:x" {
 		t.Fatalf("fallback = %q %v", actor, err)
 	}
 }

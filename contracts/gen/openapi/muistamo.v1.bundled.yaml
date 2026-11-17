@@ -24,6 +24,8 @@ paths:
     get:
       operationId: listTemplates
       summary: List the latest version of every template
+      description: A person signed in through the console must be a console administrator
+        (403 otherwise).
       parameters:
       - $ref: '#/components/parameters/Cursor'
       - $ref: '#/components/parameters/Limit'
@@ -42,6 +44,8 @@ paths:
     get:
       operationId: getTemplate
       summary: Get the latest version of a template
+      description: A person signed in through the console must be a console administrator
+        (403 otherwise).
       responses:
         '200':
           $ref: '#/components/responses/TemplateRecord'
@@ -578,10 +582,28 @@ paths:
                 $ref: '#/components/schemas/UsagePage'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/console/access:
+    get:
+      operationId: getConsoleAccess
+      summary: The caller's console roles
+      description: 'Which roles the caller holds, for the console to choose its navigation
+        links. A hint for display only: it authorises nothing, and every route decides
+        for itself at the time of the call.'
+      responses:
+        '200':
+          description: The caller's roles.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsoleAccess'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/instances:
     get:
       operationId: listInstances
       summary: List instances
+      description: A person signed in through the console must be a console administrator
+        (403 otherwise).
       parameters:
       - $ref: '#/components/parameters/Cursor'
       - $ref: '#/components/parameters/Limit'
@@ -600,6 +622,8 @@ paths:
     get:
       operationId: getInstance
       summary: Get an instance
+      description: A person signed in through the console must be a console administrator
+        (403 otherwise).
       responses:
         '200':
           $ref: '#/components/responses/InstanceRecord'
@@ -1997,6 +2021,35 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PolicyRuleRef'
+    ConsoleAccess:
+      title: ConsoleAccess
+      description: 'Which roles the caller holds in their tenant, so the console can
+        choose which navigation links to show. It is a hint for display only and never
+        an authorisation: every route still decides for itself at the time of the
+        call.'
+      type: object
+      additionalProperties: false
+      required:
+      - administrator
+      - auditor
+      - catalogueApprover
+      - gatewayAdministrator
+      properties:
+        administrator:
+          type: boolean
+          description: The caller may read agents and templates in the console. People
+            and HR events, and policies, follow in later slices (D70).
+        auditor:
+          type: boolean
+          description: The caller will read the evidence log in the console; that
+            screen is a later slice, so today the role grants nothing (D70).
+        catalogueApprover:
+          type: boolean
+          description: The caller decides catalogue requests.
+        gatewayAdministrator:
+          type: boolean
+          description: The caller issues and revokes virtual keys and reads the tenant's
+            usage.
     EffectiveAgentSpec:
       title: EffectiveAgentSpec
       description: 'What an instance actually runs with: its template version''s spec,

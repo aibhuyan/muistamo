@@ -314,6 +314,18 @@ code,
   align-self: flex-start;
 }
 
+.mono-title {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.pager {
+  display: flex;
+  gap: 20px;
+}
+
 .page-head {
   display: flex;
   flex-direction: column;

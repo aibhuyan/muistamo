@@ -1117,6 +1117,20 @@ export interface components {
             rules: components["schemas"]["PolicyRuleRef"][];
         };
         /**
+         * ConsoleAccess
+         * @description Which roles the caller holds in their tenant, so the console can choose which navigation links to show. It is a hint for display only and never an authorisation: every route still decides for itself at the time of the call.
+         */
+        ConsoleAccess: {
+            /** @description The caller may read agents and templates in the console. People and HR events, and policies, follow in later slices (D70). */
+            administrator: boolean;
+            /** @description The caller will read the evidence log in the console; that screen is a later slice, so today the role grants nothing (D70). */
+            auditor: boolean;
+            /** @description The caller decides catalogue requests. */
+            catalogueApprover: boolean;
+            /** @description The caller issues and revokes virtual keys and reads the tenant's usage. */
+            gatewayAdministrator: boolean;
+        };
+        /**
          * EffectiveAgentSpec
          * @description What an instance actually runs with: its template version's spec, with its clone's overlay applied if it belongs to a clone.
          */

@@ -15,7 +15,7 @@ vi.mock("next/navigation", async () => ({
 vi.mock("next/server", async () => ({ connection: (await import("@/test/next")).connection }));
 vi.mock("./globals.css", () => ({}));
 
-const { Nav, NAV_GROUPS, isCurrent } = await import("./nav");
+const { Nav, navGroups, isCurrent } = await import("./nav");
 const { Pill, day, decided, label, when } = await import("./entry");
 const { DecisionForm } = await import("./decision-form");
 const { default: Home } = await import("./page");
@@ -45,7 +45,7 @@ test("the navigation marks exactly one link as the current page", () => {
 });
 
 test("every navigation link leads to a page the console has", () => {
-  const hrefs = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href));
+  const hrefs = navGroups(true).flatMap((g) => g.items.map((i) => i.href));
   expect(hrefs.length).toBeGreaterThan(0);
   for (const href of hrefs) {
     const page = fileURLToPath(new URL(`.${href === "/" ? "" : href}/page.tsx`, import.meta.url));
@@ -53,7 +53,23 @@ test("every navigation link leads to a page the console has", () => {
   }
 });
 
+test("the Workforce links are shown to administrators only", () => {
+  const hrefs = (administrator: boolean) => navGroups(administrator).flatMap((g) => g.items.map((i) => i.href));
+  expect(hrefs(false)).not.toContain("/agents");
+  expect(hrefs(false)).not.toContain("/templates");
+  expect(hrefs(true)).toEqual(expect.arrayContaining(["/agents", "/templates"]));
+  pathname = "/agents/analyst-intern-hr-20418";
+  const html = renderToStaticMarkup(<Nav administrator />);
+  expect(html).toMatch(/aria-current="page"[^>]*href="\/agents"|href="\/agents"[^>]*aria-current="page"/);
+});
+
+const access = (administrator: boolean) =>
+  vi.fn(async () =>
+    jsonResponse(200, { administrator, auditor: false, catalogueApprover: false, gatewayAdministrator: false }),
+  );
+
 test("signed out there is no navigation; signed in there is a way to sign out", async () => {
+  vi.stubGlobal("fetch", access(true));
   const out = renderToStaticMarkup(await RootLayout({ children: <p>content</p> }));
   expect(out).not.toContain("<nav");
   expect(out).not.toContain("Sign out");
@@ -64,6 +80,21 @@ test("signed out there is no navigation; signed in there is a way to sign out", 
   expect(signedIn).toContain("<nav");
   expect(signedIn).toContain("r@example.invalid");
   expect(signedIn).toMatch(/<form[^>]*class="who"[\s\S]*<button type="submit" class="quiet">Sign out<\/button>/);
+});
+
+test("the layout asks the control plane which links to show, and hides them when it cannot say", async () => {
+  signInAs("r@example.invalid");
+  const fetch = access(true);
+  vi.stubGlobal("fetch", fetch);
+  expect(renderToStaticMarkup(await RootLayout({ children: null }))).toContain('href="/agents"');
+  expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe("http://control-plane.test/v1/console/access");
+  vi.stubGlobal("fetch", access(false));
+  expect(renderToStaticMarkup(await RootLayout({ children: null }))).not.toContain('href="/agents"');
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(500, { title: "Internal Server Error", status: 500 })));
+  const failed = renderToStaticMarkup(await RootLayout({ children: null }));
+  expect(failed).not.toContain('href="/agents"');
+  expect(failed).toContain('href="/proposals"');
 });
 
 test("moments are written in UTC, the same for every reader", () => {

@@ -25,6 +25,8 @@ paths:
     get:
       operationId: listTemplates
       summary: List the latest version of every template
+      description: >-
+        A person signed in through the console must be a console administrator (403 otherwise).
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -44,6 +46,8 @@ paths:
     get:
       operationId: getTemplate
       summary: Get the latest version of a template
+      description: >-
+        A person signed in through the console must be a console administrator (403 otherwise).
       responses:
         "200":
           $ref: "#/components/responses/TemplateRecord"
@@ -592,10 +596,30 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/console/access:
+    get:
+      operationId: getConsoleAccess
+      summary: The caller's console roles
+      description: >-
+        Which roles the caller holds, for the console to choose its navigation links. A hint for
+        display only: it authorises nothing, and every route decides for itself at the time of
+        the call.
+      responses:
+        "200":
+          description: The caller's roles.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/consoleaccess.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/instances:
     get:
       operationId: listInstances
       summary: List instances
+      description: >-
+        A person signed in through the console must be a console administrator (403 otherwise).
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -615,6 +639,8 @@ paths:
     get:
       operationId: getInstance
       summary: Get an instance
+      description: >-
+        A person signed in through the console must be a console administrator (403 otherwise).
       responses:
         "200":
           $ref: "#/components/responses/InstanceRecord"

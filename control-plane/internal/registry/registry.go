@@ -118,10 +118,14 @@ func (s *Service) ApplyTemplate(ctx context.Context, actor Actor, doc muistamov1
 	return rec, created, err
 }
 
-// GetTemplate returns the latest version of a template.
+// GetTemplate returns the latest version of a template. A console caller must be a console
+// administrator.
 func (s *Service) GetTemplate(ctx context.Context, actor Actor, name string) (muistamov1.AgentTemplateRecord, error) {
 	var rec muistamov1.AgentTemplateRecord
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		if err := requireConsoleAdministrator(ctx, tx, actor, "templates"); err != nil {
+			return err
+		}
 		var latest int
 		err := tx.QueryRow(ctx, `SELECT latest_version FROM agent_templates WHERE name = $1`, name).Scan(&latest)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -147,7 +151,8 @@ func (s *Service) GetTemplateVersion(ctx context.Context, actor Actor, name stri
 	return rec, err
 }
 
-// ListTemplates returns the latest version of each template, ordered by name.
+// ListTemplates returns the latest version of each template, ordered by name. A console caller
+// must be a console administrator.
 func (s *Service) ListTemplates(ctx context.Context, actor Actor, cursor string, limit int) (muistamov1.AgentTemplatePage, error) {
 	after, err := decodeCursor(cursor)
 	if err != nil {
@@ -155,6 +160,9 @@ func (s *Service) ListTemplates(ctx context.Context, actor Actor, cursor string,
 	}
 	page := muistamov1.AgentTemplatePage{Items: []muistamov1.AgentTemplateRecord{}}
 	err = s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		if err := requireConsoleAdministrator(ctx, tx, actor, "templates"); err != nil {
+			return err
+		}
 		rows, err := tx.Query(ctx, `
 			SELECT v.version, v.created_at, v.created_by, v.document
 			FROM agent_templates t
@@ -228,10 +236,13 @@ func (s *Service) ApplyInstance(ctx context.Context, actor Actor, doc muistamov1
 	return rec, created, err
 }
 
-// GetInstance returns an instance.
+// GetInstance returns an instance. A console caller must be a console administrator.
 func (s *Service) GetInstance(ctx context.Context, actor Actor, name string) (muistamov1.AgentInstanceRecord, error) {
 	var rec muistamov1.AgentInstanceRecord
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		if err := requireConsoleAdministrator(ctx, tx, actor, "agents"); err != nil {
+			return err
+		}
 		var err error
 		rec, err = scanInstance(tx.QueryRow(ctx, instanceColumns+` WHERE name = $1`, name), name)
 		return err
@@ -239,7 +250,8 @@ func (s *Service) GetInstance(ctx context.Context, actor Actor, name string) (mu
 	return rec, err
 }
 
-// ListInstances returns instances ordered by name.
+// ListInstances returns instances ordered by name. A console caller must be a console
+// administrator.
 func (s *Service) ListInstances(ctx context.Context, actor Actor, cursor string, limit int) (muistamov1.AgentInstancePage, error) {
 	after, err := decodeCursor(cursor)
 	if err != nil {
@@ -247,6 +259,9 @@ func (s *Service) ListInstances(ctx context.Context, actor Actor, cursor string,
 	}
 	page := muistamov1.AgentInstancePage{Items: []muistamov1.AgentInstanceRecord{}}
 	err = s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		if err := requireConsoleAdministrator(ctx, tx, actor, "agents"); err != nil {
+			return err
+		}
 		rows, err := tx.Query(ctx, instanceColumns+` WHERE name > $1 ORDER BY name LIMIT $2`, after, limit+1)
 		if err != nil {
 			return fmt.Errorf("list instances: %w", err)

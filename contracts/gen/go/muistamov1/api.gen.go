@@ -2404,6 +2404,21 @@ type CompiledPolicies struct {
 	Rules []PolicyRuleRef `json:"rules"`
 }
 
+// ConsoleAccess Which roles the caller holds in their tenant, so the console can choose which navigation links to show. It is a hint for display only and never an authorisation: every route still decides for itself at the time of the call.
+type ConsoleAccess struct {
+	// Administrator The caller may read agents and templates in the console. People and HR events, and policies, follow in later slices (D70).
+	Administrator bool `json:"administrator"`
+
+	// Auditor The caller will read the evidence log in the console; that screen is a later slice, so today the role grants nothing (D70).
+	Auditor bool `json:"auditor"`
+
+	// CatalogueApprover The caller decides catalogue requests.
+	CatalogueApprover bool `json:"catalogueApprover"`
+
+	// GatewayAdministrator The caller issues and revokes virtual keys and reads the tenant's usage.
+	GatewayAdministrator bool `json:"gatewayAdministrator"`
+}
+
 // EffectiveAgentSpec What an instance actually runs with: its template version's spec, with its clone's overlay applied if it belongs to a clone.
 type EffectiveAgentSpec struct {
 	Clone    *string `json:"clone,omitempty"`
@@ -4178,6 +4193,13 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/clones/{name}/sync (the `SyncClone` operationId).
 	SyncClone(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetConsoleAccess The caller's console roles
+	//
+	// Which roles the caller holds, for the console to choose its navigation links. A hint for display only: it authorises nothing, and every route decides for itself at the time of the call.
+	//
+	// Corresponds with GET /v1/console/access (the `GetConsoleAccess` operationId).
+	GetConsoleAccess(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListEvents Export the tenant's evidence chain in seq order
 	//
 	// Corresponds with GET /v1/events (the `ListEvents` operationId).
@@ -4203,10 +4225,14 @@ type ClientInterface interface {
 
 	// ListInstances List instances
 	//
+	// A person signed in through the console must be a console administrator (403 otherwise).
+	//
 	// Corresponds with GET /v1/instances (the `ListInstances` operationId).
 	ListInstances(ctx context.Context, params *ListInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetInstance Get an instance
+	//
+	// A person signed in through the console must be a console administrator (403 otherwise).
 	//
 	// Corresponds with GET /v1/instances/{name} (the `GetInstance` operationId).
 	GetInstance(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4488,10 +4514,14 @@ type ClientInterface interface {
 
 	// ListTemplates List the latest version of every template
 	//
+	// A person signed in through the console must be a console administrator (403 otherwise).
+	//
 	// Corresponds with GET /v1/templates (the `ListTemplates` operationId).
 	ListTemplates(ctx context.Context, params *ListTemplatesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTemplate Get the latest version of a template
+	//
+	// A person signed in through the console must be a console administrator (403 otherwise).
 	//
 	// Corresponds with GET /v1/templates/{name} (the `GetTemplate` operationId).
 	GetTemplate(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4813,6 +4843,23 @@ func (c *Client) SyncClone(ctx context.Context, name Name, reqEditors ...Request
 	return c.Client.Do(req)
 }
 
+// GetConsoleAccess The caller's console roles
+//
+// Which roles the caller holds, for the console to choose its navigation links. A hint for display only: it authorises nothing, and every route decides for itself at the time of the call.
+//
+// Corresponds with GET /v1/console/access (the `GetConsoleAccess` operationId).
+func (c *Client) GetConsoleAccess(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetConsoleAccessRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListEvents Export the tenant's evidence chain in seq order
 //
 // Corresponds with GET /v1/events (the `ListEvents` operationId).
@@ -4868,6 +4915,8 @@ func (c *Client) ReceiveHrEvent(ctx context.Context, body ReceiveHrEventJSONRequ
 
 // ListInstances List instances
 //
+// A person signed in through the console must be a console administrator (403 otherwise).
+//
 // Corresponds with GET /v1/instances (the `ListInstances` operationId).
 func (c *Client) ListInstances(ctx context.Context, params *ListInstancesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListInstancesRequest(c.Server, params)
@@ -4882,6 +4931,8 @@ func (c *Client) ListInstances(ctx context.Context, params *ListInstancesParams,
 }
 
 // GetInstance Get an instance
+//
+// A person signed in through the console must be a console administrator (403 otherwise).
 //
 // Corresponds with GET /v1/instances/{name} (the `GetInstance` operationId).
 func (c *Client) GetInstance(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5583,6 +5634,8 @@ func (c *Client) RollbackRollout(ctx context.Context, id openapi_types.UUID, bod
 
 // ListTemplates List the latest version of every template
 //
+// A person signed in through the console must be a console administrator (403 otherwise).
+//
 // Corresponds with GET /v1/templates (the `ListTemplates` operationId).
 func (c *Client) ListTemplates(ctx context.Context, params *ListTemplatesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListTemplatesRequest(c.Server, params)
@@ -5597,6 +5650,8 @@ func (c *Client) ListTemplates(ctx context.Context, params *ListTemplatesParams,
 }
 
 // GetTemplate Get the latest version of a template
+//
+// A person signed in through the console must be a console administrator (403 otherwise).
 //
 // Corresponds with GET /v1/templates/{name} (the `GetTemplate` operationId).
 func (c *Client) GetTemplate(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6267,6 +6322,33 @@ func NewSyncCloneRequest(server string, name Name) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetConsoleAccessRequest constructs an http.Request for the GetConsoleAccess method
+func NewGetConsoleAccessRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/console/access")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -8247,6 +8329,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/clones/{name}/sync (the `SyncClone` operationId).
 	SyncCloneWithResponse(ctx context.Context, name Name, reqEditors ...RequestEditorFn) (*SyncCloneResponse, error)
 
+	// GetConsoleAccessWithResponse The caller's console roles
+	//
+	// Which roles the caller holds, for the console to choose its navigation links. A hint for display only: it authorises nothing, and every route decides for itself at the time of the call.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/console/access (the `GetConsoleAccess` operationId).
+	GetConsoleAccessWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetConsoleAccessResponse, error)
+
 	// ListEventsWithResponse Export the tenant's evidence chain in seq order
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -8274,12 +8365,16 @@ type ClientWithResponsesInterface interface {
 
 	// ListInstancesWithResponse List instances
 	//
+	// A person signed in through the console must be a console administrator (403 otherwise).
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/instances (the `ListInstances` operationId).
 	ListInstancesWithResponse(ctx context.Context, params *ListInstancesParams, reqEditors ...RequestEditorFn) (*ListInstancesResponse, error)
 
 	// GetInstanceWithResponse Get an instance
+	//
+	// A person signed in through the console must be a console administrator (403 otherwise).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8589,12 +8684,16 @@ type ClientWithResponsesInterface interface {
 
 	// ListTemplatesWithResponse List the latest version of every template
 	//
+	// A person signed in through the console must be a console administrator (403 otherwise).
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/templates (the `ListTemplates` operationId).
 	ListTemplatesWithResponse(ctx context.Context, params *ListTemplatesParams, reqEditors ...RequestEditorFn) (*ListTemplatesResponse, error)
 
 	// GetTemplateWithResponse Get the latest version of a template
+	//
+	// A person signed in through the console must be a console administrator (403 otherwise).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -9344,6 +9443,54 @@ func (r SyncCloneResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SyncCloneResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetConsoleAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ConsoleAccess
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetConsoleAccessResponse) GetJSON200() *ConsoleAccess {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetConsoleAccessResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetConsoleAccessResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetConsoleAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetConsoleAccessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetConsoleAccessResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11722,6 +11869,21 @@ func (c *ClientWithResponses) SyncCloneWithResponse(ctx context.Context, name Na
 	return ParseSyncCloneResponse(rsp)
 }
 
+// GetConsoleAccessWithResponse The caller's console roles
+//
+// Which roles the caller holds, for the console to choose its navigation links. A hint for display only: it authorises nothing, and every route decides for itself at the time of the call.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/console/access (the `GetConsoleAccess` operationId).
+func (c *ClientWithResponses) GetConsoleAccessWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetConsoleAccessResponse, error) {
+	rsp, err := c.GetConsoleAccess(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetConsoleAccessResponse(rsp)
+}
+
 // ListEventsWithResponse Export the tenant's evidence chain in seq order
 //
 // Returns a wrapper object for the known response body format(s).
@@ -11767,6 +11929,8 @@ func (c *ClientWithResponses) ReceiveHrEventWithResponse(ctx context.Context, bo
 
 // ListInstancesWithResponse List instances
 //
+// A person signed in through the console must be a console administrator (403 otherwise).
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /v1/instances (the `ListInstances` operationId).
@@ -11779,6 +11943,8 @@ func (c *ClientWithResponses) ListInstancesWithResponse(ctx context.Context, par
 }
 
 // GetInstanceWithResponse Get an instance
+//
+// A person signed in through the console must be a console administrator (403 otherwise).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12340,6 +12506,8 @@ func (c *ClientWithResponses) RollbackRolloutWithResponse(ctx context.Context, i
 
 // ListTemplatesWithResponse List the latest version of every template
 //
+// A person signed in through the console must be a console administrator (403 otherwise).
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /v1/templates (the `ListTemplates` operationId).
@@ -12352,6 +12520,8 @@ func (c *ClientWithResponses) ListTemplatesWithResponse(ctx context.Context, par
 }
 
 // GetTemplateWithResponse Get the latest version of a template
+//
+// A person signed in through the console must be a console administrator (403 otherwise).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13026,6 +13196,39 @@ func ParseSyncCloneResponse(rsp *http.Response) (*SyncCloneResponse, error) {
 			headers.ETag = &value
 		}
 		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetConsoleAccessResponse parses an HTTP response from a GetConsoleAccessWithResponse call
+func ParseGetConsoleAccessResponse(rsp *http.Response) (*GetConsoleAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetConsoleAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ConsoleAccess
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -14690,6 +14893,9 @@ type ServerInterface interface {
 	// SyncClone Move a manual clone to its template's published version
 	// (POST /v1/clones/{name}/sync)
 	SyncClone(w http.ResponseWriter, r *http.Request, name Name)
+	// GetConsoleAccess The caller's console roles
+	// (GET /v1/console/access)
+	GetConsoleAccess(w http.ResponseWriter, r *http.Request)
 	// ListEvents Export the tenant's evidence chain in seq order
 	// (GET /v1/events)
 	ListEvents(w http.ResponseWriter, r *http.Request, params ListEventsParams)
@@ -15115,6 +15321,20 @@ func (siw *ServerInterfaceWrapper) SyncClone(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SyncClone(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConsoleAccess operation middleware
+func (siw *ServerInterfaceWrapper) GetConsoleAccess(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConsoleAccess(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16429,6 +16649,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/virtual-keys/{id}", wrapper.GetVirtualKey)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/virtual-keys/{id}/revocation", wrapper.RevokeVirtualKey)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/usage", wrapper.ListUsage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/console/access", wrapper.GetConsoleAccess)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/instances", wrapper.ListInstances)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/instances/{name}", wrapper.GetInstance)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/instances/{name}", wrapper.ApplyInstance)
@@ -17035,6 +17256,44 @@ type SyncClonedefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response SyncClonedefaultApplicationProblemPlusJSONResponse) VisitSyncCloneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetConsoleAccessRequestObject struct {
+}
+
+type GetConsoleAccessResponseObject interface {
+	VisitGetConsoleAccessResponse(w http.ResponseWriter) error
+}
+
+type GetConsoleAccess200JSONResponse ConsoleAccess
+
+func (response GetConsoleAccess200JSONResponse) VisitGetConsoleAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetConsoleAccessdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetConsoleAccessdefaultApplicationProblemPlusJSONResponse) VisitGetConsoleAccessResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -18932,6 +19191,9 @@ type StrictServerInterface interface {
 	// SyncClone Move a manual clone to its template's published version
 	// (POST /v1/clones/{name}/sync)
 	SyncClone(ctx context.Context, request SyncCloneRequestObject) (SyncCloneResponseObject, error)
+	// GetConsoleAccess The caller's console roles
+	// (GET /v1/console/access)
+	GetConsoleAccess(ctx context.Context, request GetConsoleAccessRequestObject) (GetConsoleAccessResponseObject, error)
 	// ListEvents Export the tenant's evidence chain in seq order
 	// (GET /v1/events)
 	ListEvents(ctx context.Context, request ListEventsRequestObject) (ListEventsResponseObject, error)
@@ -19443,6 +19705,30 @@ func (sh *strictHandler) SyncClone(w http.ResponseWriter, r *http.Request, name 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SyncCloneResponseObject); ok {
 		if err := validResponse.VisitSyncCloneResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetConsoleAccess operation middleware
+func (sh *strictHandler) GetConsoleAccess(w http.ResponseWriter, r *http.Request) {
+	var request GetConsoleAccessRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetConsoleAccess(ctx, request.(GetConsoleAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetConsoleAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetConsoleAccessResponseObject); ok {
+		if err := validResponse.VisitGetConsoleAccessResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
