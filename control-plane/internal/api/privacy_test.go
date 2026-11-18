@@ -405,6 +405,11 @@ func TestErasureByHRIdReachesThePersonsConsoleRoles(t *testing.T) {
 	if strings.Contains(got.raw, user.String()) {
 		t.Errorf("the proof names the person's Entra identity: %s", got.raw)
 	}
+	// The person's page after erasure: the HR id, which erasure keeps by design, and no email.
+	if page := h.call(t, a, http.MethodGet, "/v1/people/A-PERSON", ""); page.status != http.StatusOK ||
+		!strings.Contains(page.raw, `"A-PERSON"`) || strings.Contains(page.raw, subjectEmail) || strings.Contains(page.raw, "@example") {
+		t.Errorf("person after erasure = %d: %s", page.status, page.raw)
+	}
 	err := registry.ConfigureConsoleRole(t.Context(), h.db.OwnerURL, operator, registry.ConsoleAdministrator, []string{person}, h.key)
 	if !errors.Is(err, registry.ErrConflict) {
 		t.Errorf("an erased person was given a console role again: %v", err)

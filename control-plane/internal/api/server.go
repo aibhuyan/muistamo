@@ -173,6 +173,32 @@ func (s *server) ListInstances(ctx context.Context, req muistamov1.ListInstances
 	return muistamov1.ListInstances200JSONResponse(page), nil
 }
 
+// ListHrReceipts lists HR events as received and decided, for the console's people screens.
+func (s *server) ListHrReceipts(ctx context.Context, req muistamov1.ListHrReceiptsRequestObject) (muistamov1.ListHrReceiptsResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err != nil {
+		return muistamov1.ListHrReceiptsdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	page, err := s.svc.ListHrReceipts(ctx, actor, deref(req.Params.Cursor), limit(req.Params.Limit))
+	if err != nil {
+		return muistamov1.ListHrReceiptsdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	return muistamov1.ListHrReceipts200JSONResponse(page), nil
+}
+
+// GetPerson returns a person's HR events and agents by HR id.
+func (s *server) GetPerson(ctx context.Context, req muistamov1.GetPersonRequestObject) (muistamov1.GetPersonResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err != nil {
+		return muistamov1.GetPersondefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	person, err := s.svc.GetPerson(ctx, actor, req.PersonId)
+	if err != nil {
+		return muistamov1.GetPersondefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	return muistamov1.GetPerson200JSONResponse(person), nil
+}
+
 func (s *server) TransitionInstance(ctx context.Context, req muistamov1.TransitionInstanceRequestObject) (muistamov1.TransitionInstanceResponseObject, error) {
 	actor, err := s.actor(ctx)
 	if err != nil {

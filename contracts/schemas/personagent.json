@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/personagent.json",
+  "title": "PersonAgent",
+  "description": "An agent labelled with a person's HR id, as listed on that person's page. Who it is bound to is not part of this schema: the binding names the person by email.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "templateName", "templateVersion", "state", "updatedAt"],
+  "properties": {
+    "name": { "type": "string" },
+    "templateName": { "type": "string" },
+    "templateVersion": { "type": "string" },
+    "cloneName": { "type": "string" },
+    "state": { "$ref": "common/instancestate.json" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

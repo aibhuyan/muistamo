@@ -58,7 +58,9 @@ test("the Workforce links are shown to administrators only", () => {
     navGroups({ administrator, auditor }).flatMap((g) => g.items.map((i) => i.href));
   expect(hrefs(false)).not.toContain("/agents");
   expect(hrefs(false)).not.toContain("/templates");
-  expect(hrefs(true)).toEqual(expect.arrayContaining(["/agents", "/templates"]));
+  expect(hrefs(true)).toEqual(expect.arrayContaining(["/agents", "/templates", "/people"]));
+  expect(hrefs(false)).not.toContain("/people");
+  expect(hrefs(false, true)).not.toContain("/people");
   // Each role brings its own group, and only its own.
   expect(hrefs(true)).not.toContain("/evidence");
   expect(hrefs(false, true)).toContain("/evidence");

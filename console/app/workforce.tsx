@@ -21,6 +21,15 @@ export function bindingKind(type: "user" | "team" | "service"): string {
   return { user: "A person", team: "A team", service: "A service" }[type] ?? type;
 }
 
+// The HR ids the console links a person by: the control plane admits only these from the console
+// (api.consolePersonID). Others are shown as text, unlinked. None of these characters is escaped
+// in a URL, and the control plane refuses an escaped path from the console.
+const PERSON_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+
+export function personHref(personId: string): string | undefined {
+  return PERSON_ID.test(personId) ? `/people/${encodeURIComponent(personId)}` : undefined;
+}
+
 // Forward paging, as the service pages: back to the first page, or on to the next.
 export function Pager({ path, cursor, nextCursor }: { path: string; cursor?: string; nextCursor?: string }) {
   if (!cursor && !nextCursor) return null;

@@ -729,6 +729,90 @@ func (e HealthStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for HrReceiptDecision.
+const (
+	HrReceiptDecisionAccepted HrReceiptDecision = "accepted"
+	HrReceiptDecisionIgnored  HrReceiptDecision = "ignored"
+	HrReceiptDecisionLegacy   HrReceiptDecision = "legacy"
+)
+
+// Valid indicates whether the value is a known member of the HrReceiptDecision enum.
+func (e HrReceiptDecision) Valid() bool {
+	switch e {
+	case HrReceiptDecisionAccepted:
+		return true
+	case HrReceiptDecisionIgnored:
+		return true
+	case HrReceiptDecisionLegacy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HrReceiptDispatchState.
+const (
+	HrReceiptDispatchStateCancelled  HrReceiptDispatchState = "cancelled"
+	HrReceiptDispatchStateDispatched HrReceiptDispatchState = "dispatched"
+	HrReceiptDispatchStateIgnored    HrReceiptDispatchState = "ignored"
+	HrReceiptDispatchStateLegacy     HrReceiptDispatchState = "legacy"
+	HrReceiptDispatchStatePending    HrReceiptDispatchState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the HrReceiptDispatchState enum.
+func (e HrReceiptDispatchState) Valid() bool {
+	switch e {
+	case HrReceiptDispatchStateCancelled:
+		return true
+	case HrReceiptDispatchStateDispatched:
+		return true
+	case HrReceiptDispatchStateIgnored:
+		return true
+	case HrReceiptDispatchStateLegacy:
+		return true
+	case HrReceiptDispatchStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HrReceiptIdentityMode.
+const (
+	HrReceiptIdentityModeEntra     HrReceiptIdentityMode = "entra"
+	HrReceiptIdentityModeSimulated HrReceiptIdentityMode = "simulated"
+)
+
+// Valid indicates whether the value is a known member of the HrReceiptIdentityMode enum.
+func (e HrReceiptIdentityMode) Valid() bool {
+	switch e {
+	case HrReceiptIdentityModeEntra:
+		return true
+	case HrReceiptIdentityModeSimulated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HrReceiptType.
+const (
+	HrReceiptTypeJoiner HrReceiptType = "joiner"
+	HrReceiptTypeLeaver HrReceiptType = "leaver"
+)
+
+// Valid indicates whether the value is a known member of the HrReceiptType enum.
+func (e HrReceiptType) Valid() bool {
+	switch e {
+	case HrReceiptTypeJoiner:
+		return true
+	case HrReceiptTypeLeaver:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IdentityOperationStatusAction.
 const (
 	IdentityOperationStatusActionCreate  IdentityOperationStatusAction = "create"
@@ -2406,7 +2490,7 @@ type CompiledPolicies struct {
 
 // ConsoleAccess Which roles the caller holds in their tenant, so the console can choose which navigation links to show. It is a hint for display only and never an authorisation: every route still decides for itself at the time of the call.
 type ConsoleAccess struct {
-	// Administrator The caller may read agents and templates in the console. People and HR events, and policies, follow in later slices (D70).
+	// Administrator The caller may read agents, templates, and people and HR events in the console. Policies follow in a later slice (D70).
 	Administrator bool `json:"administrator"`
 
 	// Auditor The caller may read the control plane's evidence log in the console (D70).
@@ -2704,6 +2788,55 @@ type HealthStatus struct {
 
 // HealthStatusStatus defines model for HealthStatus.Status.
 type HealthStatusStatus string
+
+// HrReceipt One HR event as the control plane received and decided it, for console administrators (D70). It names the person by their HR id only: nothing from the event's payload (email, job code, manager) is part of this schema.
+type HrReceipt struct {
+	// Decision accepted: it changed what the person has. ignored: it was older than what the control plane already held. legacy: received before decisions were recorded.
+	Decision HrReceiptDecision `json:"decision"`
+
+	// DispatchState Whether the event was handed to its workflow: pending (not yet), dispatched, ignored (never, because it was ignored), cancelled (withdrawn, for example by an erasure), legacy.
+	DispatchState HrReceiptDispatchState `json:"dispatchState"`
+
+	// EventId The HR system's event id.
+	EventId string `json:"eventId"`
+
+	// Generation The event's place in the person's accepted HR history; 0 for an ignored or legacy event.
+	Generation int `json:"generation"`
+
+	// IdentityMode Whether agents get a directory identity in Entra or a simulated one.
+	IdentityMode HrReceiptIdentityMode `json:"identityMode"`
+
+	// OccurredAt When the HR system says the change took effect.
+	OccurredAt time.Time `json:"occurredAt"`
+
+	// PersonId The HR system's stable id for the person.
+	PersonId   string    `json:"personId"`
+	ReceivedAt time.Time `json:"receivedAt"`
+
+	// SetupCompleted The workflow no longer uses this event's HR details (email, manager). It is not a claim that the workflow, a grace period or provider clean-up has finished. Always false for ignored and legacy events.
+	SetupCompleted bool          `json:"setupCompleted"`
+	Type           HrReceiptType `json:"type"`
+}
+
+// HrReceiptDecision accepted: it changed what the person has. ignored: it was older than what the control plane already held. legacy: received before decisions were recorded.
+type HrReceiptDecision string
+
+// HrReceiptDispatchState Whether the event was handed to its workflow: pending (not yet), dispatched, ignored (never, because it was ignored), cancelled (withdrawn, for example by an erasure), legacy.
+type HrReceiptDispatchState string
+
+// HrReceiptIdentityMode Whether agents get a directory identity in Entra or a simulated one.
+type HrReceiptIdentityMode string
+
+// HrReceiptType defines model for HrReceipt.Type.
+type HrReceiptType string
+
+// HrReceiptPage A page of HR events, the most recently received first.
+type HrReceiptPage struct {
+	Items []HrReceipt `json:"items"`
+
+	// NextCursor Absent on the last page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
 
 // IdentityBindingStatus Operator-only durable binding metadata. The full config, sponsor list and credential reference/value are not stored here; configDigest pins the exact validated EntraIdentityBinding. This is not a public YAML kind or administration endpoint.
 type IdentityBindingStatus struct {
@@ -3334,6 +3467,31 @@ type PackVersionPage struct {
 	Items []PackVersion `json:"items"`
 }
 
+// PersonAgent An agent labelled with a person's HR id, as listed on that person's page. Who it is bound to is not part of this schema: the binding names the person by email.
+type PersonAgent struct {
+	CloneName *string `json:"cloneName,omitempty"`
+	Name      string  `json:"name"`
+
+	// State Lifecycle state of an agent instance (PRD section 5).
+	State           InstanceState `json:"state"`
+	TemplateName    string        `json:"templateName"`
+	TemplateVersion string        `json:"templateVersion"`
+	UpdatedAt       time.Time     `json:"updatedAt"`
+}
+
+// PersonSummary What the control plane holds for one person, by their HR id, for console administrators (D70): their HR events and the agents labelled with their HR id. Nothing from an HR event's payload is part of this schema.
+type PersonSummary struct {
+	// Agents The agents labelled with this person's HR id, by name.
+	Agents   []PersonAgent `json:"agents"`
+	PersonId string        `json:"personId"`
+
+	// Receipts The person's HR events, the most recently received first, at most 100.
+	Receipts []HrReceipt `json:"receipts"`
+
+	// ReceiptsTruncated The person has more HR events than are listed.
+	ReceiptsTruncated bool `json:"receiptsTruncated"`
+}
+
 // PersonalEntry An entry in the caller's own personal layer, with whether it is private (D59). Only the owner ever sees this view.
 type PersonalEntry struct {
 	Body        string                 `json:"body"`
@@ -3930,6 +4088,12 @@ type ListEventsParams struct {
 	Limit    *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListHrReceiptsParams defines parameters for ListHrReceipts.
+type ListHrReceiptsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListInstancesParams defines parameters for ListInstances.
 type ListInstancesParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -4225,6 +4389,13 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/hr/events (the `ReceiveHrEvent` operationId).
 	ReceiveHrEvent(ctx context.Context, body ReceiveHrEventJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListHrReceipts List HR events as received and decided, the most recent first
+	//
+	// For the console's people screens (D70). Each event names the person by HR id only; no part of the HR payload is returned. A person signed in through the console must be a console administrator (403 otherwise).
+	//
+	// Corresponds with GET /v1/hr/receipts (the `ListHrReceipts` operationId).
+	ListHrReceipts(ctx context.Context, params *ListHrReceiptsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListInstances List instances
 	//
 	// A person signed in through the console must be a console administrator (403 otherwise).
@@ -4414,6 +4585,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
 	DecideModel(ctx context.Context, name Name, body DecideModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPerson A person's HR events and the agents labelled with their HR id
+	//
+	// 404 when the tenant has neither an HR event nor an agent for the id. No part of the HR payload, and no agent binding (it names the person by email), is returned. A person signed in through the console must be a console administrator (403 otherwise).
+	//
+	// Corresponds with GET /v1/people/{personId} (the `GetPerson` operationId).
+	GetPerson(ctx context.Context, personId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetEntraUserLink Which Entra user an HR person was matched to (privacy officers only)
 	//
@@ -4917,6 +5095,23 @@ func (c *Client) ReceiveHrEvent(ctx context.Context, body ReceiveHrEventJSONRequ
 	return c.Client.Do(req)
 }
 
+// ListHrReceipts List HR events as received and decided, the most recent first
+//
+// For the console's people screens (D70). Each event names the person by HR id only; no part of the HR payload is returned. A person signed in through the console must be a console administrator (403 otherwise).
+//
+// Corresponds with GET /v1/hr/receipts (the `ListHrReceipts` operationId).
+func (c *Client) ListHrReceipts(ctx context.Context, params *ListHrReceiptsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListHrReceiptsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListInstances List instances
 //
 // A person signed in through the console must be a console administrator (403 otherwise).
@@ -5377,6 +5572,23 @@ func (c *Client) DecideModelWithBody(ctx context.Context, name Name, contentType
 // Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
 func (c *Client) DecideModel(ctx context.Context, name Name, body DecideModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDecideModelRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetPerson A person's HR events and the agents labelled with their HR id
+//
+// 404 when the tenant has neither an HR event nor an agent for the id. No part of the HR payload, and no agent binding (it names the person by email), is returned. A person signed in through the console must be a console administrator (403 otherwise).
+//
+// Corresponds with GET /v1/people/{personId} (the `GetPerson` operationId).
+func (c *Client) GetPerson(ctx context.Context, personId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPersonRequest(c.Server, personId)
 	if err != nil {
 		return nil, err
 	}
@@ -6466,6 +6678,72 @@ func NewReceiveHrEventRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
+// NewListHrReceiptsRequest constructs an http.Request for the ListHrReceipts method
+func NewListHrReceiptsRequest(server string, params *ListHrReceiptsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/hr/receipts")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListInstancesRequest constructs an http.Request for the ListInstances method
 func NewListInstancesRequest(server string, params *ListInstancesParams) (*http.Request, error) {
 	var err error
@@ -7252,6 +7530,40 @@ func NewDecideModelRequestWithBody(server string, name Name, contentType string,
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetPersonRequest constructs an http.Request for the GetPerson method
+func NewGetPersonRequest(server string, personId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "personId", personId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/people/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -8369,6 +8681,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/hr/events (the `ReceiveHrEvent` operationId).
 	ReceiveHrEventWithResponse(ctx context.Context, body ReceiveHrEventJSONRequestBody, reqEditors ...RequestEditorFn) (*ReceiveHrEventResponse, error)
 
+	// ListHrReceiptsWithResponse List HR events as received and decided, the most recent first
+	//
+	// For the console's people screens (D70). Each event names the person by HR id only; no part of the HR payload is returned. A person signed in through the console must be a console administrator (403 otherwise).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/hr/receipts (the `ListHrReceipts` operationId).
+	ListHrReceiptsWithResponse(ctx context.Context, params *ListHrReceiptsParams, reqEditors ...RequestEditorFn) (*ListHrReceiptsResponse, error)
+
 	// ListInstancesWithResponse List instances
 	//
 	// A person signed in through the console must be a console administrator (403 otherwise).
@@ -8578,6 +8899,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/models/{name}/approval (the `DecideModel` operationId).
 	DecideModelWithResponse(ctx context.Context, name Name, body DecideModelJSONRequestBody, reqEditors ...RequestEditorFn) (*DecideModelResponse, error)
+
+	// GetPersonWithResponse A person's HR events and the agents labelled with their HR id
+	//
+	// 404 when the tenant has neither an HR event nor an agent for the id. No part of the HR payload, and no agent binding (it names the person by email), is returned. A person signed in through the console must be a console administrator (403 otherwise).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/people/{personId} (the `GetPerson` operationId).
+	GetPersonWithResponse(ctx context.Context, personId string, reqEditors ...RequestEditorFn) (*GetPersonResponse, error)
 
 	// GetEntraUserLinkWithResponse Which Entra user an HR person was matched to (privacy officers only)
 	//
@@ -9606,6 +9936,54 @@ func (r ReceiveHrEventResponse) ContentType() string {
 	return ""
 }
 
+type ListHrReceiptsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HrReceiptPage
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListHrReceiptsResponse) GetJSON200() *HrReceiptPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListHrReceiptsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListHrReceiptsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListHrReceiptsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListHrReceiptsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListHrReceiptsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListInstancesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10610,6 +10988,54 @@ func (r DecideModelResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r DecideModelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetPersonResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PersonSummary
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetPersonResponse) GetJSON200() *PersonSummary {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetPersonResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetPersonResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPersonResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPersonResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetPersonResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11935,6 +12361,21 @@ func (c *ClientWithResponses) ReceiveHrEventWithResponse(ctx context.Context, bo
 	return ParseReceiveHrEventResponse(rsp)
 }
 
+// ListHrReceiptsWithResponse List HR events as received and decided, the most recent first
+//
+// For the console's people screens (D70). Each event names the person by HR id only; no part of the HR payload is returned. A person signed in through the console must be a console administrator (403 otherwise).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/hr/receipts (the `ListHrReceipts` operationId).
+func (c *ClientWithResponses) ListHrReceiptsWithResponse(ctx context.Context, params *ListHrReceiptsParams, reqEditors ...RequestEditorFn) (*ListHrReceiptsResponse, error) {
+	rsp, err := c.ListHrReceipts(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListHrReceiptsResponse(rsp)
+}
+
 // ListInstancesWithResponse List instances
 //
 // A person signed in through the console must be a console administrator (403 otherwise).
@@ -12311,6 +12752,21 @@ func (c *ClientWithResponses) DecideModelWithResponse(ctx context.Context, name 
 		return nil, err
 	}
 	return ParseDecideModelResponse(rsp)
+}
+
+// GetPersonWithResponse A person's HR events and the agents labelled with their HR id
+//
+// 404 when the tenant has neither an HR event nor an agent for the id. No part of the HR payload, and no agent binding (it names the person by email), is returned. A person signed in through the console must be a console administrator (403 otherwise).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/people/{personId} (the `GetPerson` operationId).
+func (c *ClientWithResponses) GetPersonWithResponse(ctx context.Context, personId string, reqEditors ...RequestEditorFn) (*GetPersonResponse, error) {
+	rsp, err := c.GetPerson(ctx, personId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPersonResponse(rsp)
 }
 
 // GetEntraUserLinkWithResponse Which Entra user an HR person was matched to (privacy officers only)
@@ -13315,6 +13771,39 @@ func ParseReceiveHrEventResponse(rsp *http.Response) (*ReceiveHrEventResponse, e
 	return response, nil
 }
 
+// ParseListHrReceiptsResponse parses an HTTP response from a ListHrReceiptsWithResponse call
+func ParseListHrReceiptsResponse(rsp *http.Response) (*ListHrReceiptsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListHrReceiptsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HrReceiptPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListInstancesResponse parses an HTTP response from a ListInstancesWithResponse call
 func ParseListInstancesResponse(rsp *http.Response) (*ListInstancesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14074,6 +14563,39 @@ func ParseDecideModelResponse(rsp *http.Response) (*DecideModelResponse, error) 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ModelCatalogueItemRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPersonResponse parses an HTTP response from a GetPersonWithResponse call
+func ParseGetPersonResponse(rsp *http.Response) (*GetPersonResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPersonResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PersonSummary
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -14910,6 +15432,9 @@ type ServerInterface interface {
 	// ReceiveHrEvent Receive a joiner or leaver event from the HR system
 	// (POST /v1/hr/events)
 	ReceiveHrEvent(w http.ResponseWriter, r *http.Request)
+	// ListHrReceipts List HR events as received and decided, the most recent first
+	// (GET /v1/hr/receipts)
+	ListHrReceipts(w http.ResponseWriter, r *http.Request, params ListHrReceiptsParams)
 	// ListInstances List instances
 	// (GET /v1/instances)
 	ListInstances(w http.ResponseWriter, r *http.Request, params ListInstancesParams)
@@ -14967,6 +15492,9 @@ type ServerInterface interface {
 	// DecideModel Approve, reject or revoke a model (privacy officers; never its last editor)
 	// (POST /v1/models/{name}/approval)
 	DecideModel(w http.ResponseWriter, r *http.Request, name Name)
+	// GetPerson A person's HR events and the agents labelled with their HR id
+	// (GET /v1/people/{personId})
+	GetPerson(w http.ResponseWriter, r *http.Request, personId string)
 	// GetEntraUserLink Which Entra user an HR person was matched to (privacy officers only)
 	// (GET /v1/people/{personId}/entra-link)
 	GetEntraUserLink(w http.ResponseWriter, r *http.Request, personId string)
@@ -15403,6 +15931,52 @@ func (siw *ServerInterfaceWrapper) ReceiveHrEvent(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReceiveHrEvent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListHrReceipts operation middleware
+func (siw *ServerInterfaceWrapper) ListHrReceipts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListHrReceiptsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListHrReceipts(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -15905,6 +16479,32 @@ func (siw *ServerInterfaceWrapper) DecideModel(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DecideModel(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPerson operation middleware
+func (siw *ServerInterfaceWrapper) GetPerson(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "personId" -------------
+	var personId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "personId", r.PathValue("personId"), &personId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "personId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPerson(w, r, personId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16681,6 +17281,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/internal/knowledge/delegations", wrapper.IssueKnowledgeDelegation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/privacy/access", wrapper.ExportPersonalData)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events", wrapper.ListEvents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/hr/receipts", wrapper.ListHrReceipts)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/people/{personId}", wrapper.GetPerson)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/hr/events", wrapper.ReceiveHrEvent)
 
 	return m
@@ -17394,6 +17996,45 @@ type ReceiveHrEventdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ReceiveHrEventdefaultApplicationProblemPlusJSONResponse) VisitReceiveHrEventResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListHrReceiptsRequestObject struct {
+	Params ListHrReceiptsParams
+}
+
+type ListHrReceiptsResponseObject interface {
+	VisitListHrReceiptsResponse(w http.ResponseWriter) error
+}
+
+type ListHrReceipts200JSONResponse HrReceiptPage
+
+func (response ListHrReceipts200JSONResponse) VisitListHrReceiptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListHrReceiptsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListHrReceiptsdefaultApplicationProblemPlusJSONResponse) VisitListHrReceiptsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -18270,6 +18911,45 @@ type DecideModeldefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response DecideModeldefaultApplicationProblemPlusJSONResponse) VisitDecideModelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonRequestObject struct {
+	PersonId string `json:"personId"`
+}
+
+type GetPersonResponseObject interface {
+	VisitGetPersonResponse(w http.ResponseWriter) error
+}
+
+type GetPerson200JSONResponse PersonSummary
+
+func (response GetPerson200JSONResponse) VisitGetPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersondefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetPersondefaultApplicationProblemPlusJSONResponse) VisitGetPersonResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -19208,6 +19888,9 @@ type StrictServerInterface interface {
 	// ReceiveHrEvent Receive a joiner or leaver event from the HR system
 	// (POST /v1/hr/events)
 	ReceiveHrEvent(ctx context.Context, request ReceiveHrEventRequestObject) (ReceiveHrEventResponseObject, error)
+	// ListHrReceipts List HR events as received and decided, the most recent first
+	// (GET /v1/hr/receipts)
+	ListHrReceipts(ctx context.Context, request ListHrReceiptsRequestObject) (ListHrReceiptsResponseObject, error)
 	// ListInstances List instances
 	// (GET /v1/instances)
 	ListInstances(ctx context.Context, request ListInstancesRequestObject) (ListInstancesResponseObject, error)
@@ -19265,6 +19948,9 @@ type StrictServerInterface interface {
 	// DecideModel Approve, reject or revoke a model (privacy officers; never its last editor)
 	// (POST /v1/models/{name}/approval)
 	DecideModel(ctx context.Context, request DecideModelRequestObject) (DecideModelResponseObject, error)
+	// GetPerson A person's HR events and the agents labelled with their HR id
+	// (GET /v1/people/{personId})
+	GetPerson(ctx context.Context, request GetPersonRequestObject) (GetPersonResponseObject, error)
 	// GetEntraUserLink Which Entra user an HR person was matched to (privacy officers only)
 	// (GET /v1/people/{personId}/entra-link)
 	GetEntraUserLink(ctx context.Context, request GetEntraUserLinkRequestObject) (GetEntraUserLinkResponseObject, error)
@@ -19794,6 +20480,32 @@ func (sh *strictHandler) ReceiveHrEvent(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReceiveHrEventResponseObject); ok {
 		if err := validResponse.VisitReceiveHrEventResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListHrReceipts operation middleware
+func (sh *strictHandler) ListHrReceipts(w http.ResponseWriter, r *http.Request, params ListHrReceiptsParams) {
+	var request ListHrReceiptsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListHrReceipts(ctx, request.(ListHrReceiptsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListHrReceipts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListHrReceiptsResponseObject); ok {
+		if err := validResponse.VisitListHrReceiptsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -20343,6 +21055,32 @@ func (sh *strictHandler) DecideModel(w http.ResponseWriter, r *http.Request, nam
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DecideModelResponseObject); ok {
 		if err := validResponse.VisitDecideModelResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPerson operation middleware
+func (sh *strictHandler) GetPerson(w http.ResponseWriter, r *http.Request, personId string) {
+	var request GetPersonRequestObject
+
+	request.PersonId = personId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPerson(ctx, request.(GetPersonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPerson")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPersonResponseObject); ok {
+		if err := validResponse.VisitGetPersonResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

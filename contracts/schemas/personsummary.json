@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/personsummary.json",
+  "title": "PersonSummary",
+  "description": "What the control plane holds for one person, by their HR id, for console administrators (D70): their HR events and the agents labelled with their HR id. Nothing from an HR event's payload is part of this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["personId", "receipts", "receiptsTruncated", "agents"],
+  "properties": {
+    "personId": { "type": "string" },
+    "receipts": { "description": "The person's HR events, the most recently received first, at most 100.", "type": "array", "items": { "$ref": "hrreceipt.json" } },
+    "receiptsTruncated": { "description": "The person has more HR events than are listed.", "type": "boolean" },
+    "agents": { "description": "The agents labelled with this person's HR id, by name.", "type": "array", "items": { "$ref": "personagent.json" } }
+  }
+}

@@ -51,6 +51,11 @@ func (InsecureDevHeaders) Resolve(r *http.Request) (uuid.UUID, string, error) {
 // (contracts/schemas/common/objectmeta.json).
 var objectName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
+// consolePersonID is the HR ids a console caller may address a person by. HR ids are free text;
+// the console links only these and lists the rest unlinked (docs/console-management-plan.md).
+// Every character is one a URL never escapes, so the path is the id exactly.
+var consolePersonID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$`)
+
 // ConsoleRoutes is the explicit list of routes a person signed in through the console may call
 // (docs/control-plane-console-plan.md). Every other route refuses a console caller before any
 // handler runs. It grows with the console, one reviewed entry at a time.
@@ -72,6 +77,12 @@ func ConsoleRoute(r *http.Request) bool {
 	// The evidence log, for console auditors (the registry requires the role).
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/events":
 		return true
+	// People and HR events, for console administrators (the registry requires the role). A
+	// person by HR id, and nothing beneath it (the Entra link stays refused).
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/hr/receipts":
+		return true
+	case r.Method == http.MethodGet && len(parts) == 4 && parts[1] == "v1" && parts[2] == "people":
+		return consolePersonID.MatchString(parts[3])
 	case r.Method == http.MethodGet && len(parts) == 4 && parts[1] == "v1" && (parts[2] == "instances" || parts[2] == "templates"):
 		// One instance or template by name, and nothing beneath it (versions, effective specs).
 		return objectName.MatchString(parts[3])

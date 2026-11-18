@@ -1770,8 +1770,8 @@ components:
       properties:
         administrator:
           type: boolean
-          description: The caller may read agents and templates in the console. People
-            and HR events, and policies, follow in later slices (D70).
+          description: The caller may read agents, templates, and people and HR events
+            in the console. Policies follow in a later slice (D70).
         auditor:
           type: boolean
           description: The caller may read the control plane's evidence log in the
@@ -2453,6 +2453,95 @@ components:
           enum:
           - ok
         service:
+          type: string
+    HrReceipt:
+      title: HrReceipt
+      description: 'One HR event as the control plane received and decided it, for
+        console administrators (D70). It names the person by their HR id only: nothing
+        from the event''s payload (email, job code, manager) is part of this schema.'
+      type: object
+      additionalProperties: false
+      required:
+      - eventId
+      - type
+      - personId
+      - occurredAt
+      - receivedAt
+      - generation
+      - decision
+      - dispatchState
+      - setupCompleted
+      - identityMode
+      properties:
+        eventId:
+          description: The HR system's event id.
+          type: string
+        type:
+          type: string
+          enum:
+          - joiner
+          - leaver
+        personId:
+          description: The HR system's stable id for the person.
+          type: string
+        occurredAt:
+          description: When the HR system says the change took effect.
+          type: string
+          format: date-time
+        receivedAt:
+          type: string
+          format: date-time
+        generation:
+          description: The event's place in the person's accepted HR history; 0 for
+            an ignored or legacy event.
+          type: integer
+          minimum: 0
+        decision:
+          description: 'accepted: it changed what the person has. ignored: it was
+            older than what the control plane already held. legacy: received before
+            decisions were recorded.'
+          type: string
+          enum:
+          - legacy
+          - accepted
+          - ignored
+        dispatchState:
+          description: 'Whether the event was handed to its workflow: pending (not
+            yet), dispatched, ignored (never, because it was ignored), cancelled (withdrawn,
+            for example by an erasure), legacy.'
+          type: string
+          enum:
+          - legacy
+          - pending
+          - dispatched
+          - ignored
+          - cancelled
+        setupCompleted:
+          description: The workflow no longer uses this event's HR details (email,
+            manager). It is not a claim that the workflow, a grace period or provider
+            clean-up has finished. Always false for ignored and legacy events.
+          type: boolean
+        identityMode:
+          description: Whether agents get a directory identity in Entra or a simulated
+            one.
+          type: string
+          enum:
+          - simulated
+          - entra
+    HrReceiptPage:
+      title: HrReceiptPage
+      description: A page of HR events, the most recently received first.
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/HrReceipt'
+        nextCursor:
+          description: Absent on the last page.
           type: string
     IdentityBindingStatus:
       title: IdentityBindingStatus
@@ -3903,6 +3992,62 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PackVersion'
+    PersonAgent:
+      title: PersonAgent
+      description: 'An agent labelled with a person''s HR id, as listed on that person''s
+        page. Who it is bound to is not part of this schema: the binding names the
+        person by email.'
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - templateName
+      - templateVersion
+      - state
+      - updatedAt
+      properties:
+        name:
+          type: string
+        templateName:
+          type: string
+        templateVersion:
+          type: string
+        cloneName:
+          type: string
+        state:
+          $ref: '#/components/schemas/InstanceState'
+        updatedAt:
+          type: string
+          format: date-time
+    PersonSummary:
+      title: PersonSummary
+      description: 'What the control plane holds for one person, by their HR id, for
+        console administrators (D70): their HR events and the agents labelled with
+        their HR id. Nothing from an HR event''s payload is part of this schema.'
+      type: object
+      additionalProperties: false
+      required:
+      - personId
+      - receipts
+      - receiptsTruncated
+      - agents
+      properties:
+        personId:
+          type: string
+        receipts:
+          description: The person's HR events, the most recently received first, at
+            most 100.
+          type: array
+          items:
+            $ref: '#/components/schemas/HrReceipt'
+        receiptsTruncated:
+          description: The person has more HR events than are listed.
+          type: boolean
+        agents:
+          description: The agents labelled with this person's HR id, by name.
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonAgent'
     PersonalEntry:
       title: PersonalEntry
       description: An entry in the caller's own personal layer, with whether it is

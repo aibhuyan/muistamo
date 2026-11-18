@@ -76,6 +76,13 @@ const TONES: Record<string, Tone> = {
   suspended: "stop",
   quarantined: "stop",
   retired: "neutral",
+  // HR events: the decision and the hand-over to the workflow
+  accepted: "ok",
+  ignored: "neutral",
+  legacy: "neutral",
+  pending: "wait",
+  dispatched: "ok",
+  cancelled: "neutral",
 };
 
 // A status as a word on a tinted ground. A value the console does not know is shown neutrally,

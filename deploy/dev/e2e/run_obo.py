@@ -668,6 +668,37 @@ def main() -> None:
         )
         assert "console.roles.configured" in evidence_actions(cp, operator)
 
+        # People and HR events (D70, slice 3): for administrators, by HR id only. Nothing from
+        # the HR payload (email, job code, manager) reaches the API answer or the page.
+        payload_values = [PERSON_HR["email"], PERSON_HR["managerEmail"], COLLEAGUE_HR["email"]]
+        status, feed = http("GET", cp + "/v1/hr/receipts", None, reviewer_cp)
+        raw = json.dumps(feed)
+        assert status == 200 and '"join-1"' in raw and PERSON_HR["id"] in raw, (status, raw[:800])
+        assert not any(v in raw for v in payload_values), raw[:800]
+        status, refused = http(
+            "GET", cp + "/v1/hr/receipts", None, bearer(ms.control_plane_token(str(OTHER)))
+        )
+        assert status == 403, (status, refused)
+        status, page = console_get(console, "/people", jar)
+        assert status == 200 and 'href="/people"' in page and "join-1" in page, (
+            status,
+            page[-800:],
+        )
+        assert f'href="/people/{PERSON_HR["id"]}"' in page, page[-1500:]
+        assert not any(v in page for v in payload_values), "the HR feed shows the HR payload"
+        status, person = http("GET", cp + f"/v1/people/{PERSON_HR['id']}", None, reviewer_cp)
+        agents = [a["name"] for a in person.get("agents", [])] if status == 200 else []
+        assert agents and set(agents) <= set(names), (status, person)
+        status, page = console_get(console, f"/people/{PERSON_HR['id']}", jar)
+        assert status == 200 and all(f'href="/agents/{a}"' in page for a in agents), (
+            status,
+            page[-1500:],
+        )
+        assert not any(v in page for v in payload_values), "the person page shows the HR payload"
+        assert "jobCode" not in raw and "jobCode" not in json.dumps(person), (
+            "a job code was returned"
+        )
+
         # The evidence log (D70): for console auditors. The reviewer, an administrator, is not one.
         status, refused = http("GET", cp + "/v1/events", None, reviewer_cp)
         assert status == 403, (status, refused)

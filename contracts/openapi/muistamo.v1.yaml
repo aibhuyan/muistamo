@@ -1063,6 +1063,53 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /v1/hr/receipts:
+    get:
+      operationId: listHrReceipts
+      summary: List HR events as received and decided, the most recent first
+      description: >-
+        For the console's people screens (D70). Each event names the person by HR id only; no
+        part of the HR payload is returned. A person signed in through the console must be a
+        console administrator (403 otherwise).
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of HR events.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/hrreceiptpage.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /v1/people/{personId}:
+    parameters:
+      - name: personId
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+    get:
+      operationId: getPerson
+      summary: A person's HR events and the agents labelled with their HR id
+      description: >-
+        404 when the tenant has neither an HR event nor an agent for the id. No part of the HR
+        payload, and no agent binding (it names the person by email), is returned. A person
+        signed in through the console must be a console administrator (403 otherwise).
+      responses:
+        "200":
+          description: The person.
+          content:
+            application/json:
+              schema:
+                $ref: "../schemas/personsummary.json"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /v1/hr/events:
     post:
       operationId: receiveHrEvent

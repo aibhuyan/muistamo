@@ -1121,7 +1121,7 @@ export interface components {
          * @description Which roles the caller holds in their tenant, so the console can choose which navigation links to show. It is a hint for display only and never an authorisation: every route still decides for itself at the time of the call.
          */
         ConsoleAccess: {
-            /** @description The caller may read agents and templates in the console. People and HR events, and policies, follow in later slices (D70). */
+            /** @description The caller may read agents, templates, and people and HR events in the console. Policies follow in a later slice (D70). */
             administrator: boolean;
             /** @description The caller may read the control plane's evidence log in the console (D70). */
             auditor: boolean;
@@ -1428,6 +1428,53 @@ export interface components {
             /** @enum {string} */
             status: "ok";
             service: string;
+        };
+        /**
+         * HrReceipt
+         * @description One HR event as the control plane received and decided it, for console administrators (D70). It names the person by their HR id only: nothing from the event's payload (email, job code, manager) is part of this schema.
+         */
+        HrReceipt: {
+            /** @description The HR system's event id. */
+            eventId: string;
+            /** @enum {string} */
+            type: "joiner" | "leaver";
+            /** @description The HR system's stable id for the person. */
+            personId: string;
+            /**
+             * Format: date-time
+             * @description When the HR system says the change took effect.
+             */
+            occurredAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            /** @description The event's place in the person's accepted HR history; 0 for an ignored or legacy event. */
+            generation: number;
+            /**
+             * @description accepted: it changed what the person has. ignored: it was older than what the control plane already held. legacy: received before decisions were recorded.
+             * @enum {string}
+             */
+            decision: "legacy" | "accepted" | "ignored";
+            /**
+             * @description Whether the event was handed to its workflow: pending (not yet), dispatched, ignored (never, because it was ignored), cancelled (withdrawn, for example by an erasure), legacy.
+             * @enum {string}
+             */
+            dispatchState: "legacy" | "pending" | "dispatched" | "ignored" | "cancelled";
+            /** @description The workflow no longer uses this event's HR details (email, manager). It is not a claim that the workflow, a grace period or provider clean-up has finished. Always false for ignored and legacy events. */
+            setupCompleted: boolean;
+            /**
+             * @description Whether agents get a directory identity in Entra or a simulated one.
+             * @enum {string}
+             */
+            identityMode: "simulated" | "entra";
+        };
+        /**
+         * HrReceiptPage
+         * @description A page of HR events, the most recently received first.
+         */
+        HrReceiptPage: {
+            items: components["schemas"]["HrReceipt"][];
+            /** @description Absent on the last page. */
+            nextCursor?: string;
         };
         /**
          * IdentityBindingStatus
@@ -2091,6 +2138,32 @@ export interface components {
          */
         PackVersionPage: {
             items: components["schemas"]["PackVersion"][];
+        };
+        /**
+         * PersonAgent
+         * @description An agent labelled with a person's HR id, as listed on that person's page. Who it is bound to is not part of this schema: the binding names the person by email.
+         */
+        PersonAgent: {
+            name: string;
+            templateName: string;
+            templateVersion: string;
+            cloneName?: string;
+            state: components["schemas"]["InstanceState"];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * PersonSummary
+         * @description What the control plane holds for one person, by their HR id, for console administrators (D70): their HR events and the agents labelled with their HR id. Nothing from an HR event's payload is part of this schema.
+         */
+        PersonSummary: {
+            personId: string;
+            /** @description The person's HR events, the most recently received first, at most 100. */
+            receipts: components["schemas"]["HrReceipt"][];
+            /** @description The person has more HR events than are listed. */
+            receiptsTruncated: boolean;
+            /** @description The agents labelled with this person's HR id, by name. */
+            agents: components["schemas"]["PersonAgent"][];
         };
         /**
          * PersonalEntry
