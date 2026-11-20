@@ -61,6 +61,9 @@ const template = {
 };
 
 const params = (name: string) => ({ params: Promise.resolve({ name }) });
+
+// The template page also reads the links and action policies: here, none.
+const noPolicies = (url: string) => (url.endsWith("/v1/links") || url.endsWith("/v1/action-policies") ? { items: [] } : undefined);
 const query = (q: Record<string, string>) => ({ searchParams: Promise.resolve(q) });
 
 const pages: [string, () => Promise<unknown>][] = [
@@ -125,7 +128,11 @@ test("agent and template pages never show a person's identifier", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) =>
-      jsonResponse(200, url.includes("/instances/") ? instance : url.includes("/templates/") ? template : { items: [url.includes("/instances") ? instance : template] }),
+      jsonResponse(
+        200,
+        noPolicies(url) ??
+          (url.includes("/instances/") ? instance : url.includes("/templates/") ? template : { items: [url.includes("/instances") ? instance : template] }),
+      ),
     ),
   );
   for (const page of [
@@ -144,9 +151,10 @@ test("agent and template pages never show a person's identifier", async () => {
 
 test("a template page shows its scope as the template states it", async () => {
   signInAs("r@example.invalid");
-  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, template)));
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => jsonResponse(200, noPolicies(url) ?? template)));
   const html = renderToStaticMarkup(await TemplatePage(params("analyst-intern")));
   expect(html).toContain("Support interns");
+  expect(html).toContain("None: every tool action is denied by default");
   expect(html).toContain('<span class="pill pill-stop">High</span>');
   expect(html).toContain("client-onboarding");
   expect(html).toContain("hr-handbook");

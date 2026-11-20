@@ -103,7 +103,7 @@ func TestAuthzConsoleReadsOfAgentsAndTemplatesNeedTheAdministratorRole(t *testin
 		{http.MethodGet, "/v1/instances/analyst-intern-person-a/effective"},
 		{http.MethodGet, "/v1/templates/analyst-intern/versions/1"},
 		{http.MethodGet, "/v1/templates/analyst-intern/clones"},
-		{http.MethodGet, "/v1/action-policies"},
+		{http.MethodGet, "/v1/policy/cedar"}, // the policy reads are slice 4's own test
 		{http.MethodGet, "/v1/usage"},
 		{http.MethodGet, "/v1/virtual-keys"},
 	} {

@@ -83,8 +83,13 @@ func ConsoleRoute(r *http.Request) bool {
 		return true
 	case r.Method == http.MethodGet && len(parts) == 4 && parts[1] == "v1" && parts[2] == "people":
 		return consolePersonID.MatchString(parts[3])
-	case r.Method == http.MethodGet && len(parts) == 4 && parts[1] == "v1" && (parts[2] == "instances" || parts[2] == "templates"):
-		// One instance or template by name, and nothing beneath it (versions, effective specs).
+	// Agent links and action policies, for console administrators (the registry requires the
+	// role). Reads only: /v1/policy/* (decide, simulate, the compiled Cedar) stays refused.
+	case r.Method == http.MethodGet && (r.URL.Path == "/v1/links" || r.URL.Path == "/v1/action-policies"):
+		return true
+	case r.Method == http.MethodGet && len(parts) == 4 && parts[1] == "v1" &&
+		(parts[2] == "instances" || parts[2] == "templates" || parts[2] == "links" || parts[2] == "action-policies"):
+		// One instance, template, link or action policy by name, and nothing beneath it.
 		return objectName.MatchString(parts[3])
 	case r.Method == http.MethodPost && len(parts) == 6 && parts[1] == "v1" && parts[2] == "catalogue" &&
 		parts[3] == "requests" && parts[5] == "decision":

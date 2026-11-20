@@ -4,14 +4,71 @@ import { routeParam } from "@/lib/actions";
 import { api } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 
+import type { ActionPolicyRecord, AgentLinkRecord } from "@/lib/api";
+
 import { Pill, label, when } from "../../entry";
+import { Target, actionPolicyHref, forTemplate, linkHref } from "../../policies/policy";
 import { Refusal } from "../../refusal";
+
+// The action policy for a template and the links from and to it, each linked to its page.
+function TemplatePolicies({ from, to, policies }: { from: AgentLinkRecord[]; to: AgentLinkRecord[]; policies: ActionPolicyRecord[] }) {
+  return (
+    <dl className="panel facts">
+      <div>
+        <dt>Action policy</dt>
+        <dd>
+          {policies.length === 0
+            ? "None: every tool action is denied by default"
+            : policies.map((p) => (
+                <Link key={p.document.metadata.name} href={actionPolicyHref(p.document.metadata.name)} className="mono">
+                  {p.document.metadata.name}
+                </Link>
+              ))}
+        </dd>
+      </div>
+      <div>
+        <dt>May call</dt>
+        <dd>
+          {from.length === 0
+            ? "No other agent"
+            : from.map((l) => (
+                <div key={l.document.metadata.name}>
+                  <Target target={l.document.spec.to} /> through{" "}
+                  <Link href={linkHref(l.document.metadata.name)} className="mono">
+                    {l.document.metadata.name}
+                  </Link>
+                </div>
+              ))}
+        </dd>
+      </div>
+      <div>
+        <dt>May be called by</dt>
+        <dd>
+          {to.length === 0
+            ? "No other agent"
+            : to.map((l) => (
+                <div key={l.document.metadata.name}>
+                  <Target target={l.document.spec.from} /> through{" "}
+                  <Link href={linkHref(l.document.metadata.name)} className="mono">
+                    {l.document.metadata.name}
+                  </Link>
+                </div>
+              ))}
+        </dd>
+      </div>
+    </dl>
+  );
+}
 
 // The latest version of one template, for console administrators (D70). Read-only.
 export default async function TemplatePage({ params }: { params: Promise<{ name: string }> }) {
   const name = routeParam((await params).name);
   const session = await requireSession();
-  const result = await api.template(session, name);
+  const [result, links, policies] = await Promise.all([
+    api.template(session, name),
+    api.links(session),
+    api.actionPolicies(session),
+  ]);
   if (!result.ok) return <Refusal problem={result.problem} />;
   const rec = result.data;
   const { metadata, spec } = rec.document;
@@ -89,6 +146,20 @@ export default async function TemplatePage({ params }: { params: Promise<{ name:
             <dd>{spec.evaluationSet ?? "None"}</dd>
           </div>
         </dl>
+      </section>
+      <section className="section">
+        <h2>Policies</h2>
+        {!links.ok ? (
+          <p className="muted">The links could not be read: {links.problem.title}.</p>
+        ) : !policies.ok ? (
+          <p className="muted">The action policies could not be read: {policies.problem.title}.</p>
+        ) : (
+          <TemplatePolicies {...forTemplate(metadata.name, links.data.items, policies.data.items)} />
+        )}
+        <p className="muted">
+          Links and policies that name one of this template&apos;s clones are listed on <Link href="/policies">Policies</Link>,
+          not here. Nothing is blocked yet: release 1 observes only.
+        </p>
       </section>
       <p className="muted">Templates are changed as code. A new version is published after catalogue approval.</p>
     </div>

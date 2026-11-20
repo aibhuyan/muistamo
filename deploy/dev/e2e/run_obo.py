@@ -699,6 +699,55 @@ def main() -> None:
             "a job code was returned"
         )
 
+        # Policies (D70, slice 4): agent links and action policies, read-only, for administrators.
+        link = {
+            "apiVersion": "muistamo.dev/v1",
+            "kind": "AgentLink",
+            "metadata": {"name": "analyst-to-controller"},
+            "spec": {
+                "from": {"template": "analyst"},
+                "to": {"template": "controller"},
+                "allowedSkills": ["close-status"],
+                "dataClasses": ["internal"],
+            },
+        }
+        policy = {
+            "apiVersion": "muistamo.dev/v1",
+            "kind": "ActionPolicy",
+            "metadata": {"name": "analyst-actions"},
+            "spec": {
+                "appliesTo": {"template": "analyst"},
+                "rules": [{"action": "email.send", "effect": "deny"}],
+            },
+        }
+        for path, doc in [
+            ("/v1/links/analyst-to-controller", link),
+            ("/v1/action-policies/analyst-actions", policy),
+        ]:
+            status, body = http("PUT", cp + path, doc, operator)
+            assert status == 201, (path, status, body)
+            # The console's token reads it and cannot change it.
+            assert http("GET", cp + path, None, reviewer_cp)[0] == 200, path
+            assert http("PUT", cp + path, doc, reviewer_cp)[0] == 401, path
+        status, refused = http(
+            "GET", cp + "/v1/links", None, bearer(ms.control_plane_token(str(OTHER)))
+        )
+        assert status == 403, (status, refused)
+        assert http("GET", cp + "/v1/policy/cedar", None, reviewer_cp)[0] == 401
+        status, page = console_get(console, "/policies", jar)
+        assert status == 200 and 'href="/policies"' in page, (status, page[-800:])
+        assert 'href="/policies/links/analyst-to-controller"' in page, page[-1500:]
+        assert 'href="/policies/actions/analyst-actions"' in page, page[-1500:]
+        assert "nothing is blocked yet" in page, page[-1500:]
+        status, page = console_get(console, "/policies/actions/analyst-actions", jar)
+        assert status == 200 and "email.send" in page and 'href="/templates/analyst"' in page, (
+            status,
+            page[-1500:],
+        )
+        status, page = console_get(console, "/templates/analyst", jar)
+        assert status == 200 and 'href="/policies/actions/analyst-actions"' in page, page[-1500:]
+        assert 'href="/policies/links/analyst-to-controller"' in page, page[-1500:]
+
         # The evidence log (D70): for console auditors. The reviewer, an administrator, is not one.
         status, refused = http("GET", cp + "/v1/events", None, reviewer_cp)
         assert status == 403, (status, refused)
@@ -725,7 +774,7 @@ def main() -> None:
         assert status == 200 and first["items"][0]["hash"] in page, (status, page[:1500])
         # Read-only, and the console's other routes stay closed.
         assert http("POST", cp + "/v1/events", {}, reviewer_cp)[0] == 401
-        assert http("GET", cp + "/v1/action-policies", None, reviewer_cp)[0] == 401
+        assert http("GET", cp + "/v1/usage", None, reviewer_cp)[0] == 401
         # A current employee who is not an approver sees only their own requests (none).
         status, theirs = http(
             "GET", cp + "/v1/catalogue/requests", None, bearer(ms.control_plane_token(str(OTHER)))

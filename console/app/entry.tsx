@@ -83,6 +83,11 @@ const TONES: Record<string, Tone> = {
   pending: "wait",
   dispatched: "ok",
   cancelled: "neutral",
+  // policy rule effects and policy modes
+  allow: "ok",
+  deny: "stop",
+  monitor: "wait",
+  enforce: "info",
 };
 
 // A status as a word on a tinted ground. A value the console does not know is shown neutrally,
