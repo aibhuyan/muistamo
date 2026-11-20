@@ -154,7 +154,7 @@ test("a template page shows its scope as the template states it", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => jsonResponse(200, noPolicies(url) ?? template)));
   const html = renderToStaticMarkup(await TemplatePage(params("analyst-intern")));
   expect(html).toContain("Support interns");
-  expect(html).toContain("None: every tool action is denied by default");
+  expect(html).toContain("No action policy names this template");
   expect(html).toContain('<span class="pill pill-stop">High</span>');
   expect(html).toContain("client-onboarding");
   expect(html).toContain("hr-handbook");

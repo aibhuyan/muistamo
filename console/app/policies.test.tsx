@@ -50,7 +50,7 @@ const policies = [
       { action: "crm.update", effect: "deny" },
     ],
   }),
-  policy("se-actions", { clone: "analyst-se" }),
+  policy("se-actions", { clone: "analyst-se" }, { rules: [{ action: "email.send", effect: "monitor" }] }),
   policy("desk-actions", { template: "desk" }),
 ];
 
@@ -107,8 +107,10 @@ test("the policies page lists links and action policies, says nothing is blocked
   const html = await render(PoliciesPage());
   const urls = fetch.mock.calls.map((c) => (c as unknown as [string])[0]).sort();
   expect(urls).toEqual(["http://control-plane.test/v1/action-policies", "http://control-plane.test/v1/links"]);
-  expect(html).toContain("Release 1 observes only.");
+  // Honest coverage: nothing in release 1 checks live calls or actions against these rules.
+  expect(html).toContain("Release 1 does not check live calls or actions against these rules.");
   expect(html).toContain("nothing is blocked yet");
+  expect(html).not.toMatch(/observes|are evaluated|monitored/i);
   for (const name of ["intern-to-market", "desk-to-intern", "se-clone-to-tax"]) expect(html).toContain(`href="/policies/links/${name}"`);
   for (const name of ["intern-actions", "se-actions", "desk-actions"]) expect(html).toContain(`href="/policies/actions/${name}"`);
   // Templates are linked; a clone is named, not linked (the console has no clone page).
@@ -135,7 +137,7 @@ test("a link page shows the link in full, with the rate limit as stored and not 
   expect(html).toContain('href="/templates/market-data"');
   expect(html).toContain("get-quotes");
   expect(html).toContain("The calling person");
-  expect(html).toContain("direct calls only");
+  expect(html).toContain("allowed only as a direct call");
   expect(html).toContain("60/min (stored, not yet evaluated)");
   expect(html).toContain("nothing is blocked yet");
   expect(html).not.toContain(CHANGED_BY);
@@ -162,6 +164,9 @@ test("a clone's action policy says it can only narrow its template's", async () 
   serve();
   const html = await render(ActionPolicyPage(params("se-actions")));
   expect(html).toContain("can only narrow it");
+  // A clone's monitor rule flags what the template allows; it never allows anything itself.
+  expect(html).toContain("Flag if allowed");
+  expect(html).not.toContain("Allow and flag");
   expect(html).not.toContain("Actions no rule allows");
   expect(html).not.toContain('href="/templates/analyst-se"');
 });

@@ -738,7 +738,7 @@ def main() -> None:
         assert status == 200 and 'href="/policies"' in page, (status, page[-800:])
         assert 'href="/policies/links/analyst-to-controller"' in page, page[-1500:]
         assert 'href="/policies/actions/analyst-actions"' in page, page[-1500:]
-        assert "nothing is blocked yet" in page, page[-1500:]
+        assert "does not check live calls or actions" in page, page[-1500:]
         status, page = console_get(console, "/policies/actions/analyst-actions", jar)
         assert status == 200 and "email.send" in page and 'href="/templates/analyst"' in page, (
             status,

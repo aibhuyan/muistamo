@@ -18,7 +18,7 @@ function TemplatePolicies({ from, to, policies }: { from: AgentLinkRecord[]; to:
         <dt>Action policy</dt>
         <dd>
           {policies.length === 0
-            ? "None: every tool action is denied by default"
+            ? "No action policy names this template: its tool actions are denied by default"
             : policies.map((p) => (
                 <Link key={p.document.metadata.name} href={actionPolicyHref(p.document.metadata.name)} className="mono">
                   {p.document.metadata.name}
@@ -30,7 +30,7 @@ function TemplatePolicies({ from, to, policies }: { from: AgentLinkRecord[]; to:
         <dt>May call</dt>
         <dd>
           {from.length === 0
-            ? "No other agent"
+            ? "No link names this template as the caller"
             : from.map((l) => (
                 <div key={l.document.metadata.name}>
                   <Target target={l.document.spec.to} /> through{" "}
@@ -45,7 +45,7 @@ function TemplatePolicies({ from, to, policies }: { from: AgentLinkRecord[]; to:
         <dt>May be called by</dt>
         <dd>
           {to.length === 0
-            ? "No other agent"
+            ? "No link names this template as the one called"
             : to.map((l) => (
                 <div key={l.document.metadata.name}>
                   <Target target={l.document.spec.from} /> through{" "}
@@ -158,7 +158,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ name:
         )}
         <p className="muted">
           Links and policies that name one of this template&apos;s clones are listed on <Link href="/policies">Policies</Link>,
-          not here. Nothing is blocked yet: release 1 observes only.
+          not here. Release 1 does not check live calls or actions against them, and nothing is blocked yet.
         </p>
       </section>
       <p className="muted">Templates are changed as code. A new version is published after catalogue approval.</p>

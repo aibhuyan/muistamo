@@ -5,7 +5,7 @@ import { requireSession } from "@/lib/session";
 
 import { Pill, label } from "../entry";
 import { Refusal } from "../refusal";
-import { ObservesOnly, Target, actFor, actionPolicyHref, linkHref } from "./policy";
+import { NotChecked, Target, actFor, actionPolicyHref, linkHref } from "./policy";
 
 // The tenant's agent links and action policies, for console administrators (D70). Read-only:
 // policies are changed as code.
@@ -23,7 +23,7 @@ export default async function PoliciesPage() {
           denied; an action no rule allows is denied unless the policy&apos;s default is allow.
         </p>
       </div>
-      <ObservesOnly />
+      <NotChecked />
       <section className="section">
         <h2>Agent links</h2>
         {links.data.items.length === 0 ? (

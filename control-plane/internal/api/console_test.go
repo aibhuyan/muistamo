@@ -124,6 +124,8 @@ func TestConsoleCallersReachOnlyTheListedRoutes(t *testing.T) {
 		request(http.MethodGet, "/v1/action-policies/-x", bearer),
 		request(http.MethodGet, "/v1/action-policies/a%2Db", bearer),
 		request(http.MethodGet, "/v1/policy/cedar", bearer),
+		request(http.MethodHead, "/v1/links", bearer),
+		request(http.MethodHead, "/v1/action-policies/intern-actions", bearer),
 		request(http.MethodPost, "/v1/policy/decisions", bearer),
 		request(http.MethodPost, "/v1/policy/simulate", bearer),
 		request(http.MethodGet, "/v1/usage", bearer),

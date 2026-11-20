@@ -6,7 +6,7 @@ import { requireSession } from "@/lib/session";
 
 import { Pill, when } from "../../../entry";
 import { Refusal } from "../../../refusal";
-import { ObservesOnly, Target } from "../../policy";
+import { NotChecked, Target } from "../../policy";
 
 // One action policy, for console administrators (D70). Read-only.
 export default async function ActionPolicyPage({ params }: { params: Promise<{ name: string }> }) {
@@ -29,7 +29,7 @@ export default async function ActionPolicyPage({ params }: { params: Promise<{ n
           : "The tool actions agents of one template, and its clones, may take."}{" "}
         Deny overrides allow: when any deny rule applies, the action is denied whatever else allows it.
       </p>
-      <ObservesOnly />
+      <NotChecked />
       <dl className="panel facts">
         <div>
           <dt>Applies to</dt>
@@ -85,10 +85,11 @@ export default async function ActionPolicyPage({ params }: { params: Promise<{ n
                     <td className="muted">{i + 1}</td>
                     <td className="mono">{r.action}</td>
                     <td>
-                      <Pill value={r.effect}>{r.effect === "monitor" ? "Allow and flag" : undefined}</Pill>
+                      {/* A clone's monitor rule only flags what its template already allows; it never grants. */}
+                      <Pill value={r.effect}>{r.effect !== "monitor" ? undefined : forClone ? "Flag if allowed" : "Allow and flag"}</Pill>
                     </td>
-                    <td className="mono">{r.when && r.when.length > 0 ? r.when.join(", ") : "—"}</td>
-                    <td className="mono">{r.unless && r.unless.length > 0 ? r.unless.join(", ") : "—"}</td>
+                    <td className="mono">{r.when && r.when.length > 0 ? r.when.join(", ") : "None"}</td>
+                    <td className="mono">{r.unless && r.unless.length > 0 ? r.unless.join(", ") : "None"}</td>
                   </tr>
                 ))}
               </tbody>

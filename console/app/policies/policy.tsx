@@ -4,15 +4,16 @@ import type { ActionPolicyRecord, AgentLinkEndpoint, AgentLinkRecord } from "@/l
 
 // Shared pieces of the policy pages (D70, slice 4). Read-only.
 
-// Release 1 evaluates links and action policies and reports what they decide, but no call or action
-// is blocked yet (invariant 8: never imply enforcement that does not happen).
-export function ObservesOnly() {
+// Release 1 does not check live agent calls or tool actions against these rules: nothing in the
+// runtime asks the policy engine, and nothing is blocked. They are decided only when someone asks
+// the decision API (invariant 8: never imply checking or enforcement that does not happen).
+export function NotChecked() {
   return (
     <div className="notice">
-      <strong>Release 1 observes only.</strong>
+      <strong>Release 1 does not check live calls or actions against these rules.</strong>
       <span>
-        These rules are evaluated and their decisions reported, but nothing is blocked yet. A policy in enforce mode
-        will block what it denies once the gateway enforces.
+        They are decided only when asked through the policy decision API, and nothing is blocked yet. A policy in enforce
+        mode will block what it denies once the gateway enforces.
       </span>
     </div>
   );

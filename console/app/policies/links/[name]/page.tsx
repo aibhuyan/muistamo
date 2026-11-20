@@ -6,7 +6,7 @@ import { requireSession } from "@/lib/session";
 
 import { label, when } from "../../../entry";
 import { Refusal } from "../../../refusal";
-import { ObservesOnly, Target, actFor } from "../../policy";
+import { NotChecked, Target, actFor } from "../../policy";
 
 // One agent link, for console administrators (D70). Read-only.
 export default async function LinkPage({ params }: { params: Promise<{ name: string }> }) {
@@ -26,7 +26,7 @@ export default async function LinkPage({ params }: { params: Promise<{ name: str
       <p className="lede">
         A one-way permission: agents at the first end may call agents at the second. It never allows calls the other way.
       </p>
-      <ObservesOnly />
+      <NotChecked />
       <dl className="panel facts">
         <div>
           <dt>From</dt>
@@ -54,7 +54,7 @@ export default async function LinkPage({ params }: { params: Promise<{ name: str
         </div>
         <div>
           <dt>Delegation depth</dt>
-          <dd>{depth === 1 ? "1: direct calls only; the called agent may not pass the work on" : depth}</dd>
+          <dd>{depth === 1 ? "1: allowed only as a direct call, not as part of a longer delegation chain" : `Up to ${depth} in a delegation chain`}</dd>
         </div>
         <div>
           <dt>Rate limit</dt>
