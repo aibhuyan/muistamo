@@ -212,3 +212,30 @@ func TestTheServerRoleCannotChangeConsoleRoles(t *testing.T) {
 		t.Error("the database accepted a role that does not exist")
 	}
 }
+
+// The evidence log is the auditor's (D70): through the console, only a console auditor reads it.
+func TestConsoleCallersNeedTheAuditorRoleToReadEvidence(t *testing.T) {
+	f := setup(t)
+	seedAgent(t, f)
+	const admin, auditor, nobody = "entra:aaaaaaaa-0000-4000-8000-000000000001", "entra:aaaaaaaa-0000-4000-8000-000000000002", "entra:aaaaaaaa-0000-4000-8000-000000000003"
+	setRole(t, f, f.actor.Tenant, "administrator", admin)
+	setRole(t, f, f.actor.Tenant, "auditor", auditor)
+
+	events, err := f.svc.ListEvents(t.Context(), throughConsole(f.actor, auditor), 0, 50)
+	if err != nil || len(events) == 0 {
+		t.Fatalf("auditor reads %d events, %v", len(events), err)
+	}
+	for _, who := range []string{admin, nobody} {
+		if _, err := f.svc.ListEvents(t.Context(), throughConsole(f.actor, who), 0, 50); !errors.Is(err, registry.ErrForbidden) {
+			t.Errorf("%s reads the evidence log: %v", who, err)
+		}
+	}
+	// mst and other development callers are unchanged.
+	if dev, err := f.svc.ListEvents(t.Context(), f.actor, 0, 50); err != nil || len(dev) != len(events) {
+		t.Errorf("development caller reads %d events, %v", len(dev), err)
+	}
+	setRole(t, f, f.actor.Tenant, "auditor")
+	if _, err := f.svc.ListEvents(t.Context(), throughConsole(f.actor, auditor), 0, 50); !errors.Is(err, registry.ErrForbidden) {
+		t.Errorf("a former auditor reads the evidence log: %v", err)
+	}
+}

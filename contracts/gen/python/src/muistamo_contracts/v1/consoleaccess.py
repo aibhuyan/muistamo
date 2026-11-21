@@ -19,7 +19,7 @@ class ConsoleAccess(BaseModel):
     auditor: Annotated[
         bool,
         Field(
-            description="The caller will read the evidence log in the console; that screen is a later slice, so today the role grants nothing (D70)."
+            description="The caller may read the control plane's evidence log in the console (D70)."
         ),
     ]
     catalogueApprover: Annotated[bool, Field(description="The caller decides catalogue requests.")]

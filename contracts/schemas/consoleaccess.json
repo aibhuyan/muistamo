@@ -13,7 +13,7 @@
     },
     "auditor": {
       "type": "boolean",
-      "description": "The caller will read the evidence log in the console; that screen is a later slice, so today the role grants nothing (D70)."
+      "description": "The caller may read the control plane's evidence log in the console (D70)."
     },
     "catalogueApprover": {
       "type": "boolean",

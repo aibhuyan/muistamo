@@ -843,7 +843,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export the tenant's evidence chain in seq order */
+        /**
+         * Export the tenant's evidence chain in seq order
+         * @description A person signed in through the console must be a console auditor (403 otherwise).
+         */
         get: operations["listEvents"];
         put?: never;
         post?: never;
@@ -1338,7 +1341,7 @@ export interface components {
         ConsoleAccess: {
             /** @description The caller may read agents and templates in the console. People and HR events, and policies, follow in later slices (D70). */
             administrator: boolean;
-            /** @description The caller will read the evidence log in the console; that screen is a later slice, so today the role grants nothing (D70). */
+            /** @description The caller may read the control plane's evidence log in the console (D70). */
             auditor: boolean;
             /** @description The caller decides catalogue requests. */
             catalogueApprover: boolean;

@@ -45,7 +45,7 @@ test("the navigation marks exactly one link as the current page", () => {
 });
 
 test("every navigation link leads to a page the console has", () => {
-  const hrefs = navGroups(true).flatMap((g) => g.items.map((i) => i.href));
+  const hrefs = navGroups({ administrator: true, auditor: true }).flatMap((g) => g.items.map((i) => i.href));
   expect(hrefs.length).toBeGreaterThan(0);
   for (const href of hrefs) {
     const page = fileURLToPath(new URL(`.${href === "/" ? "" : href}/page.tsx`, import.meta.url));
@@ -54,19 +54,22 @@ test("every navigation link leads to a page the console has", () => {
 });
 
 test("the Workforce links are shown to administrators only", () => {
-  const hrefs = (administrator: boolean) => navGroups(administrator).flatMap((g) => g.items.map((i) => i.href));
+  const hrefs = (administrator: boolean, auditor = false) =>
+    navGroups({ administrator, auditor }).flatMap((g) => g.items.map((i) => i.href));
   expect(hrefs(false)).not.toContain("/agents");
   expect(hrefs(false)).not.toContain("/templates");
   expect(hrefs(true)).toEqual(expect.arrayContaining(["/agents", "/templates"]));
+  // Each role brings its own group, and only its own.
+  expect(hrefs(true)).not.toContain("/evidence");
+  expect(hrefs(false, true)).toContain("/evidence");
+  expect(hrefs(false, true)).not.toContain("/agents");
   pathname = "/agents/analyst-intern-hr-20418";
-  const html = renderToStaticMarkup(<Nav administrator />);
+  const html = renderToStaticMarkup(<Nav roles={{ administrator: true, auditor: false }} />);
   expect(html).toMatch(/aria-current="page"[^>]*href="\/agents"|href="\/agents"[^>]*aria-current="page"/);
 });
 
-const access = (administrator: boolean) =>
-  vi.fn(async () =>
-    jsonResponse(200, { administrator, auditor: false, catalogueApprover: false, gatewayAdministrator: false }),
-  );
+const access = (administrator: boolean, auditor = false) =>
+  vi.fn(async () => jsonResponse(200, { administrator, auditor, catalogueApprover: false, gatewayAdministrator: false }));
 
 test("signed out there is no navigation; signed in there is a way to sign out", async () => {
   vi.stubGlobal("fetch", access(true));
@@ -90,6 +93,10 @@ test("the layout asks the control plane which links to show, and hides them when
   expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe("http://control-plane.test/v1/console/access");
   vi.stubGlobal("fetch", access(false));
   expect(renderToStaticMarkup(await RootLayout({ children: null }))).not.toContain('href="/agents"');
+  vi.stubGlobal("fetch", access(false, true));
+  const auditor = renderToStaticMarkup(await RootLayout({ children: null }));
+  expect(auditor).toContain('href="/evidence"');
+  expect(auditor).not.toContain('href="/agents"');
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(500, { title: "Internal Server Error", status: 500 })));
   const failed = renderToStaticMarkup(await RootLayout({ children: null }));

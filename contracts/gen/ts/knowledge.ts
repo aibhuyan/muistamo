@@ -1123,7 +1123,7 @@ export interface components {
         ConsoleAccess: {
             /** @description The caller may read agents and templates in the console. People and HR events, and policies, follow in later slices (D70). */
             administrator: boolean;
-            /** @description The caller will read the evidence log in the console; that screen is a later slice, so today the role grants nothing (D70). */
+            /** @description The caller may read the control plane's evidence log in the console (D70). */
             auditor: boolean;
             /** @description The caller decides catalogue requests. */
             catalogueApprover: boolean;

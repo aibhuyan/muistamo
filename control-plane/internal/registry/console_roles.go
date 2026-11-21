@@ -17,8 +17,8 @@ import (
 	"muistamo.dev/muistamo/control-plane/internal/store"
 )
 
-// The console roles (D70). Administrators read agents and templates; auditors will read the
-// evidence log, a later slice.
+// The console roles (D70). Administrators read agents and templates; auditors read the evidence
+// log.
 const (
 	ConsoleAdministrator = "administrator"
 	ConsoleAuditor       = "auditor"
@@ -129,26 +129,30 @@ func hasConsoleRole(ctx context.Context, tx pgx.Tx, role, name string) (bool, er
 	return ok, nil
 }
 
-// requireConsoleAdministrator refuses a person signed in through the console who is not a console
-// administrator. It runs in the transaction of the read it guards, so the role is the one held at
-// the moment of the call. A caller with no console app (the CLI, Terraform and workflows, which
-// reach the control plane only in development or from inside it) is not a console caller and is
-// unchanged; whether such callers need a role too is an open decision for CLI sign-in. A person
-// signed in with Entra (entra:<object id>) needs the role whatever app they came through, so a
-// future resolver that does not name the console app cannot open these reads (security review,
-// 2026-11-21).
-func requireConsoleAdministrator(ctx context.Context, tx pgx.Tx, actor Actor, what string) error {
+// requireConsoleRole refuses a person signed in through the console who does not hold role. It
+// runs in the transaction of the read it guards, so the role is the one held at the moment of the
+// call. A caller with no console app (the CLI, Terraform and workflows, which reach the control
+// plane only in development or from inside it) is not a console caller and is unchanged; whether
+// such callers need a role too is an open decision for CLI sign-in. A person signed in with Entra
+// (entra:<object id>) needs the role whatever app they came through, so a future resolver that
+// does not name the console app cannot open these reads (security review, 2026-11-21).
+func requireConsoleRole(ctx context.Context, tx pgx.Tx, actor Actor, role, what string) error {
 	if actor.ClientApp == uuid.Nil && !strings.HasPrefix(actor.Name, "entra:") {
 		return nil
 	}
-	ok, err := hasConsoleRole(ctx, tx, ConsoleAdministrator, actor.Name)
+	ok, err := hasConsoleRole(ctx, tx, role, actor.Name)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("only console administrators can read %s: %w", what, ErrForbidden)
+		return fmt.Errorf("only console %ss can read %s: %w", role, what, ErrForbidden)
 	}
 	return nil
+}
+
+// requireConsoleAdministrator guards the Workforce reads: agents and templates.
+func requireConsoleAdministrator(ctx context.Context, tx pgx.Tx, actor Actor, what string) error {
+	return requireConsoleRole(ctx, tx, actor, ConsoleAdministrator, what)
 }
 
 // ConsoleAccess reports which roles the caller holds, for the console to choose its navigation
