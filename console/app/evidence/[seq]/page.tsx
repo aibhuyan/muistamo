@@ -6,10 +6,11 @@ import { requireSession } from "@/lib/session";
 
 import { when } from "../../entry";
 import { Refusal } from "../../refusal";
+import { hideEmails, withoutEmails } from "../record";
 
-// The recorded state as it was signed, readable: JSON with two-space indents, or "None".
+// The recorded state, readable: JSON with two-space indents, or "None", with email addresses hidden.
 function recorded(value: unknown): string {
-  return value === null || value === undefined ? "None" : JSON.stringify(value, null, 2);
+  return value === null || value === undefined ? "None" : JSON.stringify(withoutEmails(value), null, 2);
 }
 
 // One evidence event, as recorded, for console auditors (D70). Read-only.
@@ -38,12 +39,12 @@ export default async function EvidenceEventPage({ params }: { params: Promise<{ 
         </div>
         <div>
           <dt>By</dt>
-          <dd className="mono">{e.actor}</dd>
+          <dd className="mono">{hideEmails(e.actor)}</dd>
         </div>
         <div>
           <dt>About</dt>
           <dd>
-            {e.subject.kind} <span className="mono">{e.subject.name}</span>
+            {e.subject.kind} <span className="mono">{hideEmails(e.subject.name)}</span>
           </dd>
         </div>
         <div>
@@ -79,8 +80,9 @@ export default async function EvidenceEventPage({ params }: { params: Promise<{ 
         <pre className="panel padded record">{recorded(e.after)}</pre>
       </section>
       <p className="muted">
-        Shown as recorded, re-indented for reading; the export holds the exact signed form. Evidence is never rewritten,
-        not even after an erasure: changing an event would break the chain from that event on.
+        Shown as recorded, re-indented for reading, with email addresses hidden; the export holds the exact signed form.
+        Evidence is never rewritten, not even after an erasure: changing an event would break the chain from that event
+        on.
       </p>
     </div>
   );
