@@ -75,13 +75,12 @@ func TestPersonPageListsTheirEventsAndAgentsOnly(t *testing.T) {
 	if _, _, err := f.svc.ApplyTemplate(ctx, f.actor, template("research")); err != nil {
 		t.Fatal(err)
 	}
-	// An agent labelled with P3's id, made by hand: P3 has no HR event and is still found.
-	doc := instance("requested")
-	labels := map[string]string{registry.PersonLabel: "P3"}
-	doc.Metadata.Labels = &labels
-	if _, _, err := f.svc.ApplyInstance(ctx, f.actor, doc, ""); err != nil {
+	// An agent labelled with P3's id before only the HR joiner could label one (older development
+	// data, set here as the table owner): P3 has no HR event and is still found.
+	if _, _, err := f.svc.ApplyInstance(ctx, f.actor, instance("requested"), ""); err != nil {
 		t.Fatal(err)
 	}
+	testdb.Exec(t, f.db.OwnerURL, `UPDATE agent_instances SET document = jsonb_set(document, '{metadata,labels}', jsonb_build_object($1::text, 'P3'))`, registry.PersonLabel)
 
 	p1, err := f.svc.GetPerson(ctx, f.actor, "P1")
 	if err != nil {

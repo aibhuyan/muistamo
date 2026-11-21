@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -41,8 +42,103 @@ func (s *Service) SettleHRSetup(ctx context.Context, actor Actor, eventID string
 	})
 }
 
-// PersonLabel links an instance to the HR person it was created for.
+// PersonLabel links an instance to the HR person it was created for. Only the HR joiner sets it:
+// CreateHRInstance here, CreateEntraHRInstance in Entra mode. ApplyInstance refuses it.
 const PersonLabel = "muistamo.dev/hr-person-id"
+
+// personLabel returns the document's HR person label, if it has one.
+func personLabel(doc muistamov1.AgentInstance) (string, bool) {
+	if doc.Metadata.Labels == nil {
+		return "", false
+	}
+	value, ok := (*doc.Metadata.Labels)[PersonLabel]
+	return value, ok
+}
+
+// CreateHRInstance creates the agent an HR joiner event gives a person, labelled with their HR
+// person id. It is for the simulated joiner workflow only and has no HTTP route.
+//
+// HUMAN REVIEW REQUIRED (AGENTS.md): the label decides which agents the leaver suspends, which a
+// privacy export and erasure include, and which the console lists for a person
+// (docs/hr-person-label-plan.md). It is set only when the tenant holds an accepted (or legacy,
+// pre-decision) joiner event with eventID for exactly this person. An instance that already exists
+// is returned unchanged only if it is this person's agent of the same document.
+func (s *Service) CreateHRInstance(ctx context.Context, actor Actor, doc muistamov1.AgentInstance, personID, eventID string) (muistamov1.AgentInstanceRecord, bool, error) {
+	var rec muistamov1.AgentInstanceRecord
+	var created bool
+	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		if err := store.LockHRPrivacy(ctx, tx, actor.Tenant, false); err != nil {
+			return err
+		}
+		// The person's lock, as HR intake and the Entra path take it: a leaver for this person
+		// cannot be recorded between the supersession check below and the agent's creation.
+		if err := lockIdentityHRPerson(ctx, tx, actor.Tenant, personID); err != nil {
+			return fmt.Errorf("lock HR person: %w", err)
+		}
+		var kind, person, decision string
+		var generation, latest int64
+		var occurred time.Time
+		err := tx.QueryRow(ctx, `SELECT type, person_id, decision, generation, occurred_at,
+				(SELECT coalesce(max(l.generation), 0) FROM hr_events l WHERE l.person_id = e.person_id AND l.decision = 'accepted')
+			FROM hr_events e WHERE event_id = $1`, eventID).Scan(&kind, &person, &decision, &generation, &occurred, &latest)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("HR event %q is not recorded: %w", eventID, ErrConflict)
+		}
+		if err != nil {
+			return fmt.Errorf("read HR event %q: %w", eventID, err)
+		}
+		if kind != "joiner" || person != personID || (decision != "accepted" && decision != "legacy") {
+			return fmt.Errorf("HR event %q is not an accepted joiner for this person: %w", eventID, ErrConflict)
+		}
+		// As on the Entra path: a joiner a later accepted event (a leaver) has overtaken creates
+		// nothing, or the leaver, which may already have run, would never suspend it. Legacy
+		// events predate generations and are left as they were.
+		if decision == "accepted" && generation != latest {
+			return fmt.Errorf("HR event %q is superseded by a later HR event for this person: %w", eventID, ErrConflict)
+		}
+		// Invariant 5: an event from before the person's erasure never recreates their agent, for
+		// example a joiner whose handoff was not yet attempted when the erasure ran and whose workflow
+		// runs afterwards. The shared privacy lock held above keeps an erasure from completing in
+		// between. A rehire after the erasure is a newer event.
+		erased, err := store.HRFenceTime(ctx, tx, []string{
+			store.HRFenceKey(actor.Tenant, "hr-person", personID),
+			store.HRFenceKey(actor.Tenant, "identifier", doc.Spec.Binding.Ref),
+		})
+		if err != nil {
+			return fmt.Errorf("read erasure fence: %w", err)
+		}
+		if erased != nil && !occurred.After(*erased) {
+			return fmt.Errorf("HR event %q predates this person's erasure: %w", eventID, ErrConflict)
+		}
+		labels := map[string]string{}
+		if doc.Metadata.Labels != nil {
+			for key, value := range *doc.Metadata.Labels {
+				labels[key] = value
+			}
+		}
+		if label, ok := labels[PersonLabel]; ok && label != personID {
+			return fmt.Errorf("HR person label conflicts with the HR event: %w", ErrConflict)
+		}
+		labels[PersonLabel] = personID
+		doc.Metadata.Labels = &labels
+
+		current, err := lockInstance(ctx, tx, doc.Metadata.Name)
+		if err == nil {
+			if !equalJSON(current.Document, doc) {
+				return fmt.Errorf("instance %q already exists and is not this joiner's: %w", doc.Metadata.Name, ErrConflict)
+			}
+			rec = current
+			return nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		rec, err = createInstance(ctx, tx, s.signer, actor, doc)
+		created = err == nil
+		return err
+	})
+	return rec, created, err
+}
 
 // TemplateVersionRef names one template version, and the clone of it a joiner gets, if any.
 type TemplateVersionRef struct {

@@ -210,6 +210,12 @@ func (s *Service) ApplyInstance(ctx context.Context, actor Actor, doc muistamov1
 			if ifMatch != "" {
 				return fmt.Errorf("instance %q does not exist: %w", name, ErrPrecondition)
 			}
+			// HUMAN REVIEW REQUIRED (AGENTS.md): the leaver, privacy exports, erasure and the console
+			// find a person's agents by this label, so only the HR joiner sets it (CreateHRInstance;
+			// docs/hr-person-label-plan.md). Labels are immutable after creation.
+			if _, labelled := personLabel(doc); labelled {
+				return fmt.Errorf("instance %q: the label %s is set only by the HR joiner workflow: %w", name, PersonLabel, ErrInvalid)
+			}
 			rec, err = createInstance(ctx, tx, s.signer, actor, doc)
 			created = err == nil
 			return err

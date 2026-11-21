@@ -632,8 +632,10 @@ paths:
     put:
       operationId: applyInstance
       summary: Create an instance, or update its sponsor, delegate and cost centre
-      description: Creating requires spec.state = requested and no If-Match. Updating
+      description: 'Creating requires spec.state = requested and no If-Match. Updating
         requires If-Match with the current ETag; state changes go through transitions.
+        Labels never change after creation, and the label muistamo.dev/hr-person-id
+        is refused (422): only the HR joiner workflow sets it.'
       parameters:
       - $ref: '#/components/parameters/IfMatch'
       requestBody:

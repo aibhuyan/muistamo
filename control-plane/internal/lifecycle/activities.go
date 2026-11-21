@@ -76,6 +76,11 @@ func (a *Activities) EnsureInstance(ctx context.Context, scope Scope, template r
 		case err == nil && !sameAgent(existing.Document, template):
 			// The name belongs to another template's or clone's instance; this one needs its own.
 			continue
+		case err == nil && !labelledFor(existing.Document, person.ID):
+			// The name belongs to an agent made by hand or for another person (ids that differ
+			// only in case or punctuation share a name): never adopt it, or this person's leaver
+			// would not find it (docs/hr-person-label-plan.md).
+			continue
 		case err == nil:
 			if err := a.Registry.AssertSimulated(ctx, actor, name); err != nil {
 				return "", err
@@ -92,7 +97,12 @@ func (a *Activities) EnsureInstance(ctx context.Context, scope Scope, template r
 		if err := contracts.Validate(body); err != nil {
 			return "", temporal.NewNonRetryableApplicationError("instance document invalid", "invalid", err)
 		}
-		if _, _, err := a.Registry.ApplyInstance(ctx, actor, doc, ""); err != nil {
+		// Only the HR joiner labels an agent with a person, and only for its own accepted event.
+		if _, _, err := a.Registry.CreateHRInstance(ctx, actor, doc, person.ID, scope.EventID); err != nil {
+			if errors.Is(err, registry.ErrConflict) {
+				// A missing, mismatched or superseded HR event does not resolve on retry.
+				return "", temporal.NewNonRetryableApplicationError(err.Error(), "hr-event", err)
+			}
 			return "", err
 		}
 		return name, nil
@@ -186,6 +196,11 @@ func (a *Activities) SetIdentityEnabled(ctx context.Context, scope Scope, instan
 func (a *Activities) RecordPersonalLayerDecision(ctx context.Context, scope Scope, instance string) error {
 	return a.Registry.RecordLifecycleEvent(ctx, scope.actor(), "personal-layer.decision", instance,
 		map[string]any{"decision": "none", "reason": "this leaver workflow started before personal-layer reviews existed; no review was opened"})
+}
+
+// labelledFor reports whether an instance carries the HR person label for personID.
+func labelledFor(doc muistamov1.AgentInstance, personID string) bool {
+	return doc.Metadata.Labels != nil && (*doc.Metadata.Labels)[registry.PersonLabel] == personID
 }
 
 // sameAgent reports whether an instance is of the template, or clone, a joiner was matched to.

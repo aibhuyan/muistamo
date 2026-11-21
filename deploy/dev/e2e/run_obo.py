@@ -699,6 +699,27 @@ def main() -> None:
             "a job code was returned"
         )
 
+        # Only the HR joiner labels an agent with a person (docs/hr-person-label-plan.md): an
+        # agent applied by hand with the person's HR id is refused, and the person's page is
+        # unchanged.
+        forged = {
+            "apiVersion": "muistamo.dev/v1",
+            "kind": "AgentInstance",
+            "metadata": {
+                "name": "forged-agent",
+                "labels": {"muistamo.dev/hr-person-id": PERSON_HR["id"]},
+            },
+            "spec": {
+                "templateRef": {"name": "analyst", "version": "1"},
+                "binding": {"type": "user", "ref": "someone-else@example.invalid"},
+                "state": "requested",
+            },
+        }
+        status, body = http("PUT", cp + "/v1/instances/forged-agent", forged, operator)
+        assert status == 422 and "HR joiner" in json.dumps(body), (status, body)
+        status, again = http("GET", cp + f"/v1/people/{PERSON_HR['id']}", None, reviewer_cp)
+        assert status == 200 and "forged-agent" not in json.dumps(again), (status, again)
+
         # Policies (D70, slice 4): agent links and action policies, read-only, for administrators.
         link = {
             "apiVersion": "muistamo.dev/v1",

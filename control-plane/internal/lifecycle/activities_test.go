@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
+
+	"go.temporal.io/sdk/temporal"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 	"muistamo.dev/muistamo/control-plane/evidencechain"
@@ -77,6 +80,14 @@ func (f fixture) template(t *testing.T, name string, jobCodes ...string) {
 	}
 }
 
+// joined records the HR joiner event the fixture's scope names, for personID, as the webhook
+// would: only an agent for a recorded joiner may carry the person's HR label.
+func (f fixture) joined(t *testing.T, personID string) {
+	t.Helper()
+	testdb.Exec(t, f.db.OwnerURL, `INSERT INTO hr_events (tenant_id,event_id,type,person_id,received_at,occurred_at,workflow_id,payload)
+		VALUES ($1,$2,'joiner',$3,now(),now(),$4,'{}')`, f.scope.Tenant, f.scope.EventID, personID, f.scope.WorkflowID)
+}
+
 // templateUnpublished applies a template without publishing it to the catalogue.
 func (f fixture) templateUnpublished(t *testing.T, name string, jobCodes ...string) {
 	t.Helper()
@@ -117,6 +128,7 @@ func TestJoinerAndLeaverActivitiesAgainstTheRegistry(t *testing.T) {
 	f.template(t, "research-assistant", "ANALYST_INTERN")
 	f.template(t, "sales-coach", "SALES")
 	f.template(t, "unassigned")
+	f.joined(t, person.ID)
 
 	matched, err := f.acts.MatchTemplates(ctx, f.scope, "ANALYST_INTERN")
 	if err != nil {
@@ -209,10 +221,61 @@ func TestJoinerAndLeaverActivitiesAgainstTheRegistry(t *testing.T) {
 	}
 }
 
+// HUMAN REVIEW REQUIRED: the joiner labels an agent with a person only for its own recorded
+// joiner event for that person (docs/hr-person-label-plan.md).
+func TestTheJoinerCreatesALabelledAgentOnlyForItsOwnHREvent(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	f.template(t, "analyst-intern", "ANALYST_INTERN")
+	ref := registry.TemplateVersionRef{Name: "analyst-intern", Version: 1}
+	_, err := f.acts.EnsureInstance(ctx, f.scope, ref, person)
+	var appErr *temporal.ApplicationError
+	if !errors.Is(err, registry.ErrConflict) || !errors.As(err, &appErr) || !appErr.NonRetryable() {
+		t.Fatalf("no recorded joiner: %v, want a conflict that is not retried", err)
+	}
+	f.joined(t, "SOMEONE-ELSE")
+	if _, err := f.acts.EnsureInstance(ctx, f.scope, ref, person); !errors.Is(err, registry.ErrConflict) {
+		t.Fatalf("another person's joiner: %v, want a conflict", err)
+	}
+	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM agent_instances`); n != 0 {
+		t.Fatalf("%d agents were created", n)
+	}
+}
+
+// An agent made by hand under the name the joiner would use is never adopted: it carries no label,
+// so the person's leaver would never find it (docs/hr-person-label-plan.md).
+func TestTheJoinerNeverAdoptsAnUnlabelledAgent(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	f.template(t, "analyst-intern", "ANALYST_INTERN")
+	taken := lifecycle.InstanceName("analyst-intern", person.ID, 1)
+	var squatter muistamov1.AgentInstance
+	if err := json.Unmarshal([]byte(`{"apiVersion":"muistamo.dev/v1","kind":"AgentInstance","metadata":{"name":"`+taken+`"},
+		"spec":{"templateRef":{"name":"analyst-intern","version":"1"},"binding":{"type":"user","ref":"squatter@example.invalid"},"state":"requested"}}`), &squatter); err != nil {
+		t.Fatal(err)
+	}
+	admin := registry.Actor{Tenant: f.scope.Tenant, Name: "dev:admin@example.invalid", RequestID: "seed"}
+	if _, _, err := f.svc.ApplyInstance(ctx, admin, squatter, ""); err != nil {
+		t.Fatal(err)
+	}
+	f.joined(t, person.ID)
+	name, err := f.acts.EnsureInstance(ctx, f.scope, registry.TemplateVersionRef{Name: "analyst-intern", Version: 1}, person)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name == taken {
+		t.Fatalf("the joiner adopted the hand-made agent %s", name)
+	}
+	if found, err := f.acts.PersonInstances(ctx, f.scope, person.ID); err != nil || !slices.Equal(found, []string{name}) {
+		t.Errorf("the leaver finds %v, %v; want %s", found, err, name)
+	}
+}
+
 func TestLeaverBeforeActivationSuspends(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
 	f.template(t, "analyst-intern", "ANALYST_INTERN")
+	f.joined(t, person.ID)
 	name, err := f.acts.EnsureInstance(ctx, f.scope, registry.TemplateVersionRef{Name: "analyst-intern", Version: 1}, person)
 	if err != nil {
 		t.Fatal(err)
@@ -229,6 +292,7 @@ func TestLeaverRevokesTheInstancesVirtualKeys(t *testing.T) {
 	ctx := context.Background()
 	f.acts.Revoker = lifecycle.KeyRevoker{Registry: f.svc}
 	f.template(t, "analyst-intern", "ANALYST_INTERN")
+	f.joined(t, person.ID)
 	name, err := f.acts.EnsureInstance(ctx, f.scope, registry.TemplateVersionRef{Name: "analyst-intern", Version: 1}, person)
 	if err != nil {
 		t.Fatal(err)

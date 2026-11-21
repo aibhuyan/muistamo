@@ -539,7 +539,7 @@ export interface paths {
         get: operations["getInstance"];
         /**
          * Create an instance, or update its sponsor, delegate and cost centre
-         * @description Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions.
+         * @description Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions. Labels never change after creation, and the label muistamo.dev/hr-person-id is refused (422): only the HR joiner workflow sets it.
          */
         put: operations["applyInstance"];
         post?: never;
