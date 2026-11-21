@@ -133,9 +133,11 @@ func hasConsoleRole(ctx context.Context, tx pgx.Tx, role, name string) (bool, er
 // runs in the transaction of the read it guards, so the role is the one held at the moment of the
 // call. A caller with no console app (the CLI, Terraform and workflows, which reach the control
 // plane only in development or from inside it) is not a console caller and is unchanged; whether
-// such callers need a role too is an open decision for CLI sign-in.
+// such callers need a role too is an open decision for CLI sign-in. A person signed in with Entra
+// (entra:<object id>) needs the role whatever app they came through, so a future resolver that
+// does not name the console app cannot open these reads (security review, 2026-11-21).
 func requireConsoleRole(ctx context.Context, tx pgx.Tx, actor Actor, role, what string) error {
-	if actor.ClientApp == uuid.Nil {
+	if actor.ClientApp == uuid.Nil && !strings.HasPrefix(actor.Name, "entra:") {
 		return nil
 	}
 	ok, err := hasConsoleRole(ctx, tx, role, actor.Name)
