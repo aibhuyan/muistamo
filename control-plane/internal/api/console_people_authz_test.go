@@ -7,6 +7,8 @@ package api_test
 // D70). Run by `make test-authz`; never skip or weaken.
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -14,8 +16,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 	"muistamo.dev/muistamo/control-plane/internal/api"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
+	"muistamo.dev/muistamo/control-plane/internal/store"
 )
 
 // labelledInstanceJSON is instanceJSON labelled with person A's HR id, as the joiner workflow
@@ -30,10 +34,8 @@ func TestAuthzConsolePeopleAndHREventsAreForAdministrators(t *testing.T) {
 	if !strings.Contains(labelledInstanceJSON, registry.PersonLabel) {
 		t.Fatal("the fixture instance carries no person label")
 	}
-	for _, seed := range [][2]string{{"/v1/templates/analyst-intern", templateJSON}, {"/v1/instances/analyst-intern-person-a", labelledInstanceJSON}} {
-		if got := h.call(t, a, http.MethodPut, seed[0], seed[1]); got.status != http.StatusCreated {
-			t.Fatalf("seed %s = %d: %s", seed[0], got.status, got.raw)
-		}
+	if got := h.call(t, a, http.MethodPut, "/v1/templates/analyst-intern", templateJSON); got.status != http.StatusCreated {
+		t.Fatalf("seed template = %d: %s", got.status, got.raw)
 	}
 	secretA, secretB := h.hrSecret(t, a), h.hrSecret(t, b)
 	// Every HR event's payload carries the person's email and job code; neither may come back.
@@ -49,6 +51,29 @@ func TestAuthzConsolePeopleAndHREventsAreForAdministrators(t *testing.T) {
 		if got := h.postHR(t, ev.tenant, ev.secret, time.Now(), ev.body); got.status != http.StatusAccepted {
 			t.Fatalf("HR event = %d: %s", got.status, got.raw)
 		}
+	}
+	// The agent A's joiner creates, labelled with A's HR id as only the joiner may label it
+	// (docs/hr-person-label-plan.md). A development caller cannot label one by hand.
+	if got := h.call(t, a, http.MethodPut, "/v1/instances/analyst-intern-person-a", labelledInstanceJSON); got.status != http.StatusUnprocessableEntity {
+		t.Fatalf("labelled agent by hand = %d, want 422: %s", got.status, got.raw)
+	}
+	conn, err := store.Open(t.Context(), h.db.AppURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	var doc muistamov1.AgentInstance
+	if err := json.Unmarshal([]byte(instanceJSON), &doc); err != nil {
+		t.Fatal(err)
+	}
+	worker := registry.Actor{Tenant: a, Name: "workflow:test", RequestID: "hr-event:ev-1"}
+	if _, _, err := registry.New(conn, h.key).CreateHRInstance(t.Context(), worker, doc, "A-PERSON", "ev-1"); err != nil {
+		t.Fatalf("A's joiner agent: %v", err)
+	}
+	// B's worker cannot label an agent with A's person from A's joiner event.
+	inB := registry.Actor{Tenant: b, Name: "workflow:attack", RequestID: "hr-event:ev-1"}
+	if _, _, err := registry.New(conn, h.key).CreateHRInstance(t.Context(), inB, doc, "A-PERSON", "ev-1"); !errors.Is(err, registry.ErrConflict) {
+		t.Errorf("B's worker with A's joiner event = %v, want ErrConflict", err)
 	}
 	const admin, auditor, nobody, adminOfB = "entra:aaaaaaaa-0000-4000-8000-00000000000a", "entra:aaaaaaaa-0000-4000-8000-00000000000b",
 		"entra:aaaaaaaa-0000-4000-8000-00000000000c", "entra:bbbbbbbb-0000-4000-8000-00000000000a"

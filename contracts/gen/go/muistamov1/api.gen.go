@@ -4412,7 +4412,7 @@ type ClientInterface interface {
 
 	// ApplyInstanceWithBody Create an instance, or update its sponsor, delegate and cost centre
 	//
-	// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions.
+	// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions. Labels never change after creation, and the label muistamo.dev/hr-person-id is refused (422): only the HR joiner workflow sets it.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4421,7 +4421,7 @@ type ClientInterface interface {
 
 	// ApplyInstance Create an instance, or update its sponsor, delegate and cost centre
 	//
-	// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions.
+	// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions. Labels never change after creation, and the label muistamo.dev/hr-person-id is refused (422): only the HR joiner workflow sets it.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5148,7 +5148,7 @@ func (c *Client) GetInstance(ctx context.Context, name Name, reqEditors ...Reque
 
 // ApplyInstanceWithBody Create an instance, or update its sponsor, delegate and cost centre
 //
-// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions.
+// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions. Labels never change after creation, and the label muistamo.dev/hr-person-id is refused (422): only the HR joiner workflow sets it.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5167,7 +5167,7 @@ func (c *Client) ApplyInstanceWithBody(ctx context.Context, name Name, params *A
 
 // ApplyInstance Create an instance, or update its sponsor, delegate and cost centre
 //
-// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions.
+// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions. Labels never change after creation, and the label muistamo.dev/hr-person-id is refused (422): only the HR joiner workflow sets it.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -8710,7 +8710,7 @@ type ClientWithResponsesInterface interface {
 
 	// ApplyInstanceWithBodyWithResponse Create an instance, or update its sponsor, delegate and cost centre
 	//
-	// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions.
+	// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions. Labels never change after creation, and the label muistamo.dev/hr-person-id is refused (422): only the HR joiner workflow sets it.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8719,7 +8719,7 @@ type ClientWithResponsesInterface interface {
 
 	// ApplyInstanceWithResponse Create an instance, or update its sponsor, delegate and cost centre
 	//
-	// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions.
+	// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions. Labels never change after creation, and the label muistamo.dev/hr-person-id is refused (422): only the HR joiner workflow sets it.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12408,7 +12408,7 @@ func (c *ClientWithResponses) GetInstanceWithResponse(ctx context.Context, name 
 
 // ApplyInstanceWithBodyWithResponse Create an instance, or update its sponsor, delegate and cost centre
 //
-// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions.
+// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions. Labels never change after creation, and the label muistamo.dev/hr-person-id is refused (422): only the HR joiner workflow sets it.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12423,7 +12423,7 @@ func (c *ClientWithResponses) ApplyInstanceWithBodyWithResponse(ctx context.Cont
 
 // ApplyInstanceWithResponse Create an instance, or update its sponsor, delegate and cost centre
 //
-// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions.
+// Creating requires spec.state = requested and no If-Match. Updating requires If-Match with the current ETag; state changes go through transitions. Labels never change after creation, and the label muistamo.dev/hr-person-id is refused (422): only the HR joiner workflow sets it.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

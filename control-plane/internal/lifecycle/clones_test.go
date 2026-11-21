@@ -54,6 +54,7 @@ func TestJoinersGetTheMatchingClone(t *testing.T) {
 	}
 
 	// The instance is named after the clone and belongs to it.
+	f.joined(t, "P-1")
 	name, err := f.acts.EnsureInstance(context.Background(), f.scope, f.match(t, "ANALYST_FI")[0],
 		lifecycle.Person{ID: "P-1", Email: "p1@example.invalid", JobCode: "ANALYST_FI"})
 	if err != nil {
@@ -154,6 +155,7 @@ func TestEnsureInstanceNeverReusesAnotherAgentsInstance(t *testing.T) {
 	if _, _, err := f.svc.ApplyInstance(context.Background(), admin, doc, ""); err != nil {
 		t.Fatal(err)
 	}
+	f.joined(t, person.ID)
 	name, err := f.acts.EnsureInstance(context.Background(), f.scope, registry.TemplateVersionRef{Name: "analyst", Version: 1}, person)
 	if err != nil {
 		t.Fatal(err)

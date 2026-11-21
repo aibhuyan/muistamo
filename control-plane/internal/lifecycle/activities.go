@@ -92,7 +92,8 @@ func (a *Activities) EnsureInstance(ctx context.Context, scope Scope, template r
 		if err := contracts.Validate(body); err != nil {
 			return "", temporal.NewNonRetryableApplicationError("instance document invalid", "invalid", err)
 		}
-		if _, _, err := a.Registry.ApplyInstance(ctx, actor, doc, ""); err != nil {
+		// Only the HR joiner labels an agent with a person, and only for its own accepted event.
+		if _, _, err := a.Registry.CreateHRInstance(ctx, actor, doc, person.ID, scope.EventID); err != nil {
 			return "", err
 		}
 		return name, nil
