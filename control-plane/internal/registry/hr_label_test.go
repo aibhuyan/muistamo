@@ -221,3 +221,35 @@ func TestOnlyTheHRJoinerLabelsAnAgentWithAPerson(t *testing.T) {
 		t.Errorf("P1's erasure with only a hand-made agent active = %v", err)
 	}
 }
+
+// Invariant 5: a joiner retried after the person was erased never recreates their agent; a rehire
+// after the erasure is a new event and does.
+func TestAnErasedPersonsJoinerCreatesNothing(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	if _, _, err := f.svc.ApplyTemplate(ctx, f.actor, template("research")); err != nil {
+		t.Fatal(err)
+	}
+	// An accepted joiner whose handoff was never attempted does not hold the erasure back (a legacy
+	// one does, privacy.go), yet its workflow can still run afterwards and reach EnsureInstance.
+	hrEvent(t, f, f.actor.Tenant, "join-p8", "joiner", "P8", "accepted")
+	officer := registry.Actor{Tenant: f.actor.Tenant, Name: "operator:dpo", RequestID: "privacy"}
+	if err := store.SetPrivacyOfficers(ctx, f.db.OwnerURL, f.actor.Tenant, []string{officer.Name}); err != nil {
+		t.Fatal(err)
+	}
+	p8 := "P8"
+	if _, _, err := f.svc.Erase(ctx, officer, muistamov1.ErasureRequest{Id: uuid.New(), Subject: muistamov1.PrivacySubject{Email: "p8@example.invalid", HrPersonId: &p8}, Reason: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	worker := registry.Actor{Tenant: f.actor.Tenant, Name: "workflow:wf", RequestID: "hr-event:join-p8"}
+	if _, _, err := f.svc.CreateHRInstance(ctx, worker, instance("requested"), "P8", "join-p8"); !errors.Is(err, registry.ErrConflict) {
+		t.Errorf("the erased person's joiner, retried = %v, want ErrConflict", err)
+	}
+	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM agent_instances`); n != 0 {
+		t.Fatalf("%d agents were created for an erased person", n)
+	}
+	hrEvent(t, f, f.actor.Tenant, "rehire-p8", "joiner", "P8", "accepted")
+	if _, created, err := f.svc.CreateHRInstance(ctx, worker, instance("requested"), "P8", "rehire-p8"); err != nil || !created {
+		t.Errorf("a rehire after the erasure = %v, %v; want the agent created", created, err)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -76,9 +77,10 @@ func (s *Service) CreateHRInstance(ctx context.Context, actor Actor, doc muistam
 		}
 		var kind, person, decision string
 		var generation, latest int64
-		err := tx.QueryRow(ctx, `SELECT type, person_id, decision, generation,
+		var occurred time.Time
+		err := tx.QueryRow(ctx, `SELECT type, person_id, decision, generation, occurred_at,
 				(SELECT coalesce(max(l.generation), 0) FROM hr_events l WHERE l.person_id = e.person_id AND l.decision = 'accepted')
-			FROM hr_events e WHERE event_id = $1`, eventID).Scan(&kind, &person, &decision, &generation, &latest)
+			FROM hr_events e WHERE event_id = $1`, eventID).Scan(&kind, &person, &decision, &generation, &occurred, &latest)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("HR event %q is not recorded: %w", eventID, ErrConflict)
 		}
@@ -93,6 +95,20 @@ func (s *Service) CreateHRInstance(ctx context.Context, actor Actor, doc muistam
 		// events predate generations and are left as they were.
 		if decision == "accepted" && generation != latest {
 			return fmt.Errorf("HR event %q is superseded by a later HR event for this person: %w", eventID, ErrConflict)
+		}
+		// Invariant 5: an event from before the person's erasure never recreates their agent, for
+		// example a joiner whose handoff was not yet attempted when the erasure ran and whose workflow
+		// runs afterwards. The shared privacy lock held above keeps an erasure from completing in
+		// between. A rehire after the erasure is a newer event.
+		erased, err := store.HRFenceTime(ctx, tx, []string{
+			store.HRFenceKey(actor.Tenant, "hr-person", personID),
+			store.HRFenceKey(actor.Tenant, "identifier", doc.Spec.Binding.Ref),
+		})
+		if err != nil {
+			return fmt.Errorf("read erasure fence: %w", err)
+		}
+		if erased != nil && !occurred.After(*erased) {
+			return fmt.Errorf("HR event %q predates this person's erasure: %w", eventID, ErrConflict)
 		}
 		labels := map[string]string{}
 		if doc.Metadata.Labels != nil {

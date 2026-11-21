@@ -99,9 +99,10 @@ func (s *Service) ListHrReceipts(ctx context.Context, actor Actor, cursor string
 	return page, nil
 }
 
-// GetPerson returns one person's HR events and the agents labelled with their HR id (a label the
-// joiner workflow sets; an agent applied by hand may carry it too). A console
-// caller must be a console administrator. An id with neither is ErrNotFound.
+// GetPerson returns one person's HR events and the agents labelled with their HR id (a label only
+// the HR joiner sets; agents labelled by hand before that rule exist in development databases
+// only, docs/hr-person-label-plan.md). A console caller must be a console administrator. An id
+// with neither is ErrNotFound.
 func (s *Service) GetPerson(ctx context.Context, actor Actor, personID string) (muistamov1.PersonSummary, error) {
 	p := muistamov1.PersonSummary{PersonId: personID, Receipts: []muistamov1.HrReceipt{}, Agents: []muistamov1.PersonAgent{}}
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
