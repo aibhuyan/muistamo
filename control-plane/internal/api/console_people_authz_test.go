@@ -39,23 +39,22 @@ func TestAuthzConsolePeopleAndHREventsAreForAdministrators(t *testing.T) {
 	}
 	secretA, secretB := h.hrSecret(t, a), h.hrSecret(t, b)
 	// Every HR event's payload carries the person's email and job code; neither may come back.
-	for _, ev := range []struct {
-		tenant uuid.UUID
-		secret []byte
-		body   string
-	}{
-		{a, secretA, hrEvent("ev-1", "joiner", "A-PERSON")},
-		{a, secretA, strings.Replace(hrEvent("ev-2", "leaver", "A-PERSON"), "2026-10-25T09:00", "2026-10-26T09:00", 1)},
-		{b, secretB, hrEvent("ev-b", "joiner", "B-PERSON")},
-	} {
-		if got := h.postHR(t, ev.tenant, ev.secret, time.Now(), ev.body); got.status != http.StatusAccepted {
+	post := func(tenant uuid.UUID, secret []byte, body string) {
+		t.Helper()
+		if got := h.postHR(t, tenant, secret, time.Now(), body); got.status != http.StatusAccepted {
 			t.Fatalf("HR event = %d: %s", got.status, got.raw)
 		}
 	}
+	post(a, secretA, hrEvent("ev-1", "joiner", "A-PERSON"))
 	// The agent A's joiner creates, labelled with A's HR id as only the joiner may label it
 	// (docs/hr-person-label-plan.md). A development caller cannot label one by hand.
 	if got := h.call(t, a, http.MethodPut, "/v1/instances/analyst-intern-person-a", labelledInstanceJSON); got.status != http.StatusUnprocessableEntity {
 		t.Fatalf("labelled agent by hand = %d, want 422: %s", got.status, got.raw)
+	}
+	// The same agent without the label is accepted, under its own name, and is no one's.
+	unlabelled := strings.ReplaceAll(instanceJSON, "analyst-intern-person-a", "hand-made-agent")
+	if got := h.call(t, a, http.MethodPut, "/v1/instances/hand-made-agent", unlabelled); got.status != http.StatusCreated {
+		t.Fatalf("unlabelled agent by hand = %d, want 201: %s", got.status, got.raw)
 	}
 	conn, err := store.Open(t.Context(), h.db.AppURL)
 	if err != nil {
@@ -74,6 +73,14 @@ func TestAuthzConsolePeopleAndHREventsAreForAdministrators(t *testing.T) {
 	inB := registry.Actor{Tenant: b, Name: "workflow:attack", RequestID: "hr-event:ev-1"}
 	if _, _, err := registry.New(conn, h.key).CreateHRInstance(t.Context(), inB, doc, "A-PERSON", "ev-1"); !errors.Is(err, registry.ErrConflict) {
 		t.Errorf("B's worker with A's joiner event = %v, want ErrConflict", err)
+	}
+	// A leaves. From then on A's joiner event creates nothing, under any name.
+	post(a, secretA, strings.Replace(hrEvent("ev-2", "leaver", "A-PERSON"), "2026-10-25T09:00", "2026-10-26T09:00", 1))
+	post(b, secretB, hrEvent("ev-b", "joiner", "B-PERSON"))
+	late := doc
+	late.Metadata.Name = "analyst-intern-person-a-2"
+	if _, _, err := registry.New(conn, h.key).CreateHRInstance(t.Context(), worker, late, "A-PERSON", "ev-1"); !errors.Is(err, registry.ErrConflict) {
+		t.Errorf("A's joiner after A's leaver = %v, want ErrConflict", err)
 	}
 	const admin, auditor, nobody, adminOfB = "entra:aaaaaaaa-0000-4000-8000-00000000000a", "entra:aaaaaaaa-0000-4000-8000-00000000000b",
 		"entra:aaaaaaaa-0000-4000-8000-00000000000c", "entra:bbbbbbbb-0000-4000-8000-00000000000a"
@@ -107,7 +114,8 @@ func TestAuthzConsolePeopleAndHREventsAreForAdministrators(t *testing.T) {
 	}
 	person := console(admin, "/v1/people/A-PERSON")
 	if person.status != http.StatusOK || !strings.Contains(person.raw, `"analyst-intern-person-a"`) ||
-		!strings.Contains(person.raw, `"ev-1"`) || leaks(person.raw) || strings.Contains(person.raw, "binding") {
+		!strings.Contains(person.raw, `"ev-1"`) || leaks(person.raw) || strings.Contains(person.raw, "binding") ||
+		strings.Contains(person.raw, "hand-made-agent") {
 		t.Errorf("administrator person = %d: %s", person.status, person.raw)
 	}
 	// Not an administrator of A: an auditor, no role, and B's administrator signed in to A.

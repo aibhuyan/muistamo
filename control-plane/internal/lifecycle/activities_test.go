@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.temporal.io/sdk/temporal"
+
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 	"muistamo.dev/muistamo/control-plane/evidencechain"
 	"muistamo.dev/muistamo/control-plane/internal/evidence"
@@ -226,8 +228,10 @@ func TestTheJoinerCreatesALabelledAgentOnlyForItsOwnHREvent(t *testing.T) {
 	ctx := context.Background()
 	f.template(t, "analyst-intern", "ANALYST_INTERN")
 	ref := registry.TemplateVersionRef{Name: "analyst-intern", Version: 1}
-	if _, err := f.acts.EnsureInstance(ctx, f.scope, ref, person); !errors.Is(err, registry.ErrConflict) {
-		t.Fatalf("no recorded joiner: %v, want a conflict", err)
+	_, err := f.acts.EnsureInstance(ctx, f.scope, ref, person)
+	var appErr *temporal.ApplicationError
+	if !errors.Is(err, registry.ErrConflict) || !errors.As(err, &appErr) || !appErr.NonRetryable() {
+		t.Fatalf("no recorded joiner: %v, want a conflict that is not retried", err)
 	}
 	f.joined(t, "SOMEONE-ELSE")
 	if _, err := f.acts.EnsureInstance(ctx, f.scope, ref, person); !errors.Is(err, registry.ErrConflict) {
@@ -235,6 +239,35 @@ func TestTheJoinerCreatesALabelledAgentOnlyForItsOwnHREvent(t *testing.T) {
 	}
 	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM agent_instances`); n != 0 {
 		t.Fatalf("%d agents were created", n)
+	}
+}
+
+// An agent made by hand under the name the joiner would use is never adopted: it carries no label,
+// so the person's leaver would never find it (docs/hr-person-label-plan.md).
+func TestTheJoinerNeverAdoptsAnUnlabelledAgent(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	f.template(t, "analyst-intern", "ANALYST_INTERN")
+	taken := lifecycle.InstanceName("analyst-intern", person.ID, 1)
+	var squatter muistamov1.AgentInstance
+	if err := json.Unmarshal([]byte(`{"apiVersion":"muistamo.dev/v1","kind":"AgentInstance","metadata":{"name":"`+taken+`"},
+		"spec":{"templateRef":{"name":"analyst-intern","version":"1"},"binding":{"type":"user","ref":"squatter@example.invalid"},"state":"requested"}}`), &squatter); err != nil {
+		t.Fatal(err)
+	}
+	admin := registry.Actor{Tenant: f.scope.Tenant, Name: "dev:admin@example.invalid", RequestID: "seed"}
+	if _, _, err := f.svc.ApplyInstance(ctx, admin, squatter, ""); err != nil {
+		t.Fatal(err)
+	}
+	f.joined(t, person.ID)
+	name, err := f.acts.EnsureInstance(ctx, f.scope, registry.TemplateVersionRef{Name: "analyst-intern", Version: 1}, person)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name == taken {
+		t.Fatalf("the joiner adopted the hand-made agent %s", name)
+	}
+	if found, err := f.acts.PersonInstances(ctx, f.scope, person.ID); err != nil || !slices.Equal(found, []string{name}) {
+		t.Errorf("the leaver finds %v, %v; want %s", found, err, name)
 	}
 }
 

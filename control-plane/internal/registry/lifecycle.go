@@ -70,7 +70,10 @@ func (s *Service) CreateHRInstance(ctx context.Context, actor Actor, doc muistam
 			return err
 		}
 		var kind, person, decision string
-		err := tx.QueryRow(ctx, `SELECT type, person_id, decision FROM hr_events WHERE event_id = $1`, eventID).Scan(&kind, &person, &decision)
+		var generation, latest int64
+		err := tx.QueryRow(ctx, `SELECT type, person_id, decision, generation,
+				(SELECT coalesce(max(l.generation), 0) FROM hr_events l WHERE l.person_id = e.person_id AND l.decision = 'accepted')
+			FROM hr_events e WHERE event_id = $1`, eventID).Scan(&kind, &person, &decision, &generation, &latest)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("HR event %q is not recorded: %w", eventID, ErrConflict)
 		}
@@ -79,6 +82,12 @@ func (s *Service) CreateHRInstance(ctx context.Context, actor Actor, doc muistam
 		}
 		if kind != "joiner" || person != personID || (decision != "accepted" && decision != "legacy") {
 			return fmt.Errorf("HR event %q is not an accepted joiner for this person: %w", eventID, ErrConflict)
+		}
+		// As on the Entra path: a joiner a later accepted event (a leaver) has overtaken creates
+		// nothing, or the leaver, which may already have run, would never suspend it. Legacy
+		// events predate generations and are left as they were.
+		if decision == "accepted" && generation != latest {
+			return fmt.Errorf("HR event %q is superseded by a later HR event for this person: %w", eventID, ErrConflict)
 		}
 		labels := map[string]string{}
 		if doc.Metadata.Labels != nil {

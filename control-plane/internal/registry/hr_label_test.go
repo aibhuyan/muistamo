@@ -46,7 +46,11 @@ func TestOnlyTheHRJoinerLabelsAnAgentWithAPerson(t *testing.T) {
 	hrEvent(t, f, f.actor.Tenant, "join-accepted", "joiner", "P1", "accepted")
 	hrEvent(t, f, f.actor.Tenant, "join-legacy", "joiner", "P2", "legacy")
 	hrEvent(t, f, f.actor.Tenant, "join-ignored", "joiner", "P3", "ignored")
-	hrEvent(t, f, f.actor.Tenant, "leave-p1", "leaver", "P1", "accepted")
+	hrEvent(t, f, f.actor.Tenant, "leave-p5", "leaver", "P5", "accepted")
+	// P6's joiner was overtaken by P6's leaver: the leaver may already have run, so the joiner
+	// must create nothing it would never suspend.
+	hrEvent(t, f, f.actor.Tenant, "join-p6", "joiner", "P6", "accepted")
+	hrEvent(t, f, f.actor.Tenant, "leave-p6", "leaver", "P6", "accepted")
 	// Another tenant's joiner for P1 proves nothing in this tenant.
 	other, err := store.CreateTenant(ctx, f.db.OwnerURL, "other")
 	if err != nil {
@@ -72,7 +76,8 @@ func TestOnlyTheHRJoinerLabelsAnAgentWithAPerson(t *testing.T) {
 	refused := map[string]struct{ person, event string }{
 		"an unknown event":         {"P1", "no-such-event"},
 		"another person's joiner":  {"P9", "join-accepted"},
-		"a leaver":                 {"P1", "leave-p1"},
+		"a leaver":                 {"P5", "leave-p5"},
+		"a superseded joiner":      {"P6", "join-p6"},
 		"an ignored joiner":        {"P3", "join-ignored"},
 		"another tenant's joiner":  {"P1", "join-elsewhere"},
 		"a label for someone else": {"P1", "join-accepted"},
@@ -102,9 +107,19 @@ func TestOnlyTheHRJoinerLabelsAnAgentWithAPerson(t *testing.T) {
 	if err != nil || created || again.Revision != rec.Revision {
 		t.Errorf("asked again = %v, %v; want the same agent unchanged", created, err)
 	}
-	// The name now belongs to P1's agent: P2's joiner cannot take it over.
+	// The name now belongs to P1's agent: P2's joiner cannot take it over, and P1's own joiner
+	// cannot replace it with a different document (another binding) under the same label.
 	if _, _, err := f.svc.CreateHRInstance(ctx, worker, instance("requested"), "P2", "join-legacy"); !errors.Is(err, registry.ErrConflict) {
 		t.Errorf("another person's joiner on P1's agent = %v, want ErrConflict", err)
+	}
+	rebound := instance("requested")
+	rebound.Spec.Binding.Ref = "someone-else@example.invalid"
+	if _, _, err := f.svc.CreateHRInstance(ctx, worker, rebound, "P1", "join-accepted"); !errors.Is(err, registry.ErrConflict) {
+		t.Errorf("a different document on P1's agent = %v, want ErrConflict", err)
+	}
+	// Labels stay immutable: an update cannot remove or move the label.
+	if _, _, err := f.svc.ApplyInstance(ctx, f.actor, instance("requested"), `"1"`); !errors.Is(err, registry.ErrConflict) {
+		t.Errorf("removing the label by update = %v, want ErrConflict", err)
 	}
 	// A legacy joiner (a workflow started before decisions were recorded) still creates its agent.
 	doc := instance("requested")
@@ -124,8 +139,35 @@ func TestOnlyTheHRJoinerLabelsAnAgentWithAPerson(t *testing.T) {
 	if err != nil || len(mine) != 1 || mine[0].Document.Metadata.Name != rec.Document.Metadata.Name {
 		t.Errorf("P1's agents = %v, %v; want only the joiner's", len(mine), err)
 	}
-	// Labels stay immutable: an update cannot remove or move the label.
-	if _, _, err := f.svc.ApplyInstance(ctx, f.actor, instance("requested"), `"1"`); !errors.Is(err, registry.ErrConflict) {
-		t.Errorf("removing the label by update = %v, want ErrConflict", err)
+	// Nor can an update add the label to it later.
+	if _, _, err := f.svc.ApplyInstance(ctx, f.actor, labelled(hand, "P1"), `"1"`); !errors.Is(err, registry.ErrConflict) {
+		t.Errorf("adding the label by update = %v, want ErrConflict", err)
+	}
+	// P1's privacy access export holds P1's agent and not the hand-made one, and once P1's agent is
+	// retired, the hand-made agent does not block P1's erasure.
+	officer := registry.Actor{Tenant: f.actor.Tenant, Name: "operator:dpo", RequestID: "privacy"}
+	if err := store.SetPrivacyOfficers(ctx, f.db.OwnerURL, f.actor.Tenant, []string{officer.Name}); err != nil {
+		t.Fatal(err)
+	}
+	p1 := "P1"
+	subject := muistamov1.PrivacySubject{Email: "p1-not-bound@example.invalid", HrPersonId: &p1}
+	export, err := f.svc.ExportPersonalData(ctx, officer, subject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var exported []string
+	for _, row := range export.Sections["agent_instances"] {
+		exported = append(exported, row["name"].(string))
+	}
+	if len(exported) != 1 || exported[0] != rec.Document.Metadata.Name {
+		t.Errorf("P1's export lists agents %v, want only %s", exported, rec.Document.Metadata.Name)
+	}
+	for _, to := range []muistamov1.InstanceState{muistamov1.InstanceStateSuspended, muistamov1.InstanceStateRetired} {
+		if _, err := f.svc.TransitionTo(ctx, worker, rec.Document.Metadata.Name, to); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := f.svc.Erase(ctx, officer, muistamov1.ErasureRequest{Id: uuid.New(), Subject: subject, Reason: "test"}); err != nil {
+		t.Errorf("P1's erasure with only a hand-made agent active = %v", err)
 	}
 }
