@@ -52,7 +52,7 @@ func TestTheJoinerWaitsForALeaverBeingRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer intake.Close(ctx)
+	defer func() { _ = intake.Close(ctx) }()
 	tx, err := intake.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
