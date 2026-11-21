@@ -6,6 +6,7 @@ import { requireSession } from "@/lib/session";
 import { when } from "../entry";
 import { Refusal } from "../refusal";
 import { afterParam } from "../workforce";
+import { hideEmails } from "./record";
 
 // The control plane's evidence chain, in chain order, for console auditors (D70). Read-only. The
 // page shows the chain; it does not say whether the chain verifies. A verdict computed by the
@@ -71,7 +72,7 @@ export default async function EvidencePage(props: { searchParams?: Promise<Recor
                   <td className="mono">{e.action}</td>
                   {/* The kind only: a subject's name can be a person's HR id; it is on the event's page. */}
                   <td>{e.subject.kind}</td>
-                  <td className="mono">{e.actor}</td>
+                  <td className="mono">{hideEmails(e.actor)}</td>
                   <td className="mono nowrap">
                     {e.hash.slice(0, 12)}
                     <br />

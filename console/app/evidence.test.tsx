@@ -67,7 +67,7 @@ test.each([
 
 test("the log reads the chain in order, links each event and pages on", async () => {
   signInAs("r@example.invalid");
-  const fetch = vi.fn(async () => jsonResponse(200, { items: [event(41), event(42)], nextAfterSeq: 90 }));
+  const fetch = vi.fn(async () => jsonResponse(200, { items: [event(41), event(42, { actor: "dev:r@example.invalid" })], nextAfterSeq: 90 }));
   vi.stubGlobal("fetch", fetch);
   const html = renderToStaticMarkup(await EvidencePage(query({ after: "40" })));
   expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe("http://control-plane.test/v1/events?afterSeq=40&limit=50");
@@ -78,6 +78,7 @@ test("the log reads the chain in order, links each event and pages on", async ()
   expect(html).toContain('href="/evidence">First page');
   // The list shows no recorded contents, and a subject by its kind only: its name can be an HR id.
   expect(html).not.toContain("person-a@example.invalid");
+  expect(html).not.toContain("r@example.invalid");
   expect(html).toContain("HRPerson");
   expect(html).not.toContain("HR-77031");
 });
@@ -110,18 +111,37 @@ test("an address position that is not a whole number starts at the beginning", (
   expect(afterParam(undefined)).toBe(0);
 });
 
-test("an event page shows the event exactly as recorded", async () => {
+test("an event page shows the event as recorded, with email addresses hidden", async () => {
   signInAs("r@example.invalid");
-  const fetch = vi.fn(async () => jsonResponse(200, { items: [event(7)] }));
+  const fetch = vi.fn(async () =>
+    jsonResponse(200, {
+      items: [
+        event(7, {
+          actor: "dev:operator@example.invalid",
+          before: { spec: { binding: { ref: "person-b@example.invalid" }, sponsor: "Boss <boss@corp.example>" }, list: ["x", "c@d.example"] },
+          after: { type: "leaver", person: { email: "person-a@example.invalid", jobCode: "ANALYST" }, "k@e.example": 1 },
+        }),
+      ],
+    }),
+  );
   vi.stubGlobal("fetch", fetch);
   const html = renderToStaticMarkup(await EvidenceEventPage(params("7")));
   expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe("http://control-plane.test/v1/events?afterSeq=6&limit=1");
   expect(html).toContain("b".repeat(64));
   expect(html).toContain('href="/evidence/6"');
-  expect(html).toContain("&quot;person-a@example.invalid&quot;");
+  // Evidence is never rewritten, so a recorded event can still hold an email after an erasure:
+  // the page hides every one, in values, keys, arrays, the actor and the subject.
+  expect(html).not.toMatch(/@[a-z]+\.(invalid|example)/);
+  expect(html).toContain("[email address hidden]");
+  expect(html).toContain("dev:[email address hidden]");
+  expect(html).toContain("Boss &lt;[email address hidden]&gt;");
+  expect(html).toContain("ANALYST");
+  expect(html).toContain("the export holds the exact signed form");
   // The event's own page names its subject.
   expect(html).toContain("HR-77031");
-  expect(html).toContain("None");
+  // An event with nothing before says so.
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, { items: [event(7)] })));
+  expect(renderToStaticMarkup(await EvidenceEventPage(params("7")))).toContain("None");
 });
 
 test("an event page refuses a number that is not an event, and an event that is not there", async () => {
