@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/hrreceipt.json",
+  "title": "HrReceipt",
+  "description": "One HR event as the control plane received and decided it, for console administrators (D70). It names the person by their HR id only: nothing from the event's payload (email, job code, manager) is part of this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "type", "personId", "occurredAt", "receivedAt", "generation", "decision", "dispatchState", "setupCompleted", "identityMode"],
+  "properties": {
+    "eventId": { "description": "The HR system's event id.", "type": "string" },
+    "type": { "type": "string", "enum": ["joiner", "leaver"] },
+    "personId": { "description": "The HR system's stable id for the person.", "type": "string" },
+    "occurredAt": { "description": "When the HR system says the change took effect.", "type": "string", "format": "date-time" },
+    "receivedAt": { "type": "string", "format": "date-time" },
+    "generation": { "description": "The event's place in the person's accepted HR history; 0 for an ignored or legacy event.", "type": "integer", "minimum": 0 },
+    "decision": {
+      "description": "accepted: it changed what the person has. ignored: it was older than what the control plane already held. legacy: received before decisions were recorded.",
+      "type": "string",
+      "enum": ["legacy", "accepted", "ignored"]
+    },
+    "dispatchState": {
+      "description": "Whether the event was handed to its workflow: pending (not yet), dispatched, ignored (never, because it was ignored), cancelled (withdrawn, for example by an erasure), legacy.",
+      "type": "string",
+      "enum": ["legacy", "pending", "dispatched", "ignored", "cancelled"]
+    },
+    "setupCompleted": { "description": "The workflow no longer uses this event's HR details (email, manager). It is not a claim that the workflow, a grace period or provider clean-up has finished. Always false for ignored and legacy events.", "type": "boolean" },
+    "identityMode": { "description": "Whether agents get a directory identity in Entra or a simulated one.", "type": "string", "enum": ["simulated", "entra"] }
+  }
+}

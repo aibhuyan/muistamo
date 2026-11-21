@@ -52,6 +52,12 @@ func TestConsoleCallersReachOnlyTheListedRoutes(t *testing.T) {
 		request(http.MethodGet, "/v1/templates/analyst-intern", bearer),
 		request(http.MethodGet, "/v1/events", bearer),
 		request(http.MethodGet, "/v1/events?afterSeq=40&limit=50", bearer),
+		// People and HR events: the feed, and a person by HR id.
+		request(http.MethodGet, "/v1/hr/receipts", bearer),
+		request(http.MethodGet, "/v1/hr/receipts?cursor=YQ&limit=50", bearer),
+		request(http.MethodGet, "/v1/people/HR-20418", bearer),
+		request(http.MethodGet, "/v1/people/a.person_2-x", bearer),
+		request(http.MethodGet, "/v1/people/"+strings.Repeat("a", 200), bearer),
 	} {
 		console, dev := &fixedResolver{name: "entra:x"}, &fixedResolver{name: "dev:x"}
 		_, actor, err := api.WithConsole{Console: console, Fallback: dev}.Resolve(r)
@@ -85,6 +91,22 @@ func TestConsoleCallersReachOnlyTheListedRoutes(t *testing.T) {
 		// The other management reads are not opened yet, and the evidence log is read-only.
 		request(http.MethodPost, "/v1/events", bearer),
 		request(http.MethodGet, "/v1/events/40", bearer),
+		// The HR webhook and HR writes; nothing beneath a person; an HR id outside the pattern.
+		request(http.MethodGet, "/v1/hr/events", bearer),
+		request(http.MethodPost, "/v1/hr/events", bearer),
+		request(http.MethodPost, "/v1/hr/receipts", bearer),
+		request(http.MethodGet, "/v1/hr/receipts/ev-1", bearer),
+		request(http.MethodGet, "/v1/people", bearer),
+		request(http.MethodGet, "/v1/people/", bearer),
+		request(http.MethodPut, "/v1/people/HR-20418", bearer),
+		request(http.MethodGet, "/v1/people/HR-20418/entra-link", bearer),
+		request(http.MethodGet, "/v1/people/-HR", bearer),
+		request(http.MethodGet, "/v1/people/HR%2F1", bearer),
+		request(http.MethodGet, "/v1/people/HR%201", bearer),
+		request(http.MethodGet, "/v1/people/HR+1", bearer),
+		request(http.MethodGet, "/v1/people/a@corp", bearer),
+		request(http.MethodGet, "/v1/people/a%40corp", bearer),
+		request(http.MethodGet, "/v1/people/"+strings.Repeat("a", 201), bearer),
 		request(http.MethodGet, "/v1/action-policies", bearer),
 		request(http.MethodGet, "/v1/usage", bearer),
 		request(http.MethodPost, "/v1/catalogue/requests", bearer), // filing, not deciding

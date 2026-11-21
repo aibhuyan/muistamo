@@ -31,6 +31,7 @@ export function navGroups({ administrator, auditor }: Roles = NONE): NavGroup[] 
       items: [
         { href: "/agents", name: "Agents" },
         { href: "/templates", name: "Templates" },
+        { href: "/people", name: "People" },
       ],
     });
   }

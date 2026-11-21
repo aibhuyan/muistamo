@@ -34,6 +34,9 @@ export type AgentTemplateRecord = ControlPlane["schemas"]["AgentTemplateRecord"]
 export type AgentTemplatePage = ControlPlane["schemas"]["AgentTemplatePage"];
 export type EvidenceEvent = ControlPlane["schemas"]["EvidenceEvent"];
 export type EvidenceEventPage = ControlPlane["schemas"]["EvidenceEventPage"];
+export type HrReceipt = ControlPlane["schemas"]["HrReceipt"];
+export type HrReceiptPage = ControlPlane["schemas"]["HrReceiptPage"];
+export type PersonSummary = ControlPlane["schemas"]["PersonSummary"];
 
 export type Result<T> = { ok: true; data: T } | { ok: false; problem: Problem };
 
@@ -198,4 +201,8 @@ export const api = {
   // The control plane's evidence chain, in chain order, for console auditors.
   events: (s: Session, afterSeq: number, limit = PAGE_SIZE) =>
     call<EvidenceEventPage>(s, "control-plane", "GET", `/v1/events?afterSeq=${afterSeq}&limit=${limit}`),
+  // People and HR events, by HR id only, for console administrators.
+  hrReceipts: (s: Session, cursor?: string) =>
+    call<HrReceiptPage>(s, "control-plane", "GET", `/v1/hr/receipts?limit=${PAGE_SIZE}${page(cursor)}`),
+  person: (s: Session, personId: string) => call<PersonSummary>(s, "control-plane", "GET", `/v1/people/${id(personId)}`),
 };

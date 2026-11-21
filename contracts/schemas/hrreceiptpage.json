@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/hrreceiptpage.json",
+  "title": "HrReceiptPage",
+  "description": "A page of HR events, the most recently received first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": { "type": "array", "items": { "$ref": "hrreceipt.json" } },
+    "nextCursor": { "description": "Absent on the last page.", "type": "string" }
+  }
+}

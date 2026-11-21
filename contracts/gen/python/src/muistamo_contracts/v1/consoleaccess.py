@@ -13,7 +13,7 @@ class ConsoleAccess(BaseModel):
     administrator: Annotated[
         bool,
         Field(
-            description="The caller may read agents and templates in the console. People and HR events, and policies, follow in later slices (D70)."
+            description="The caller may read agents, templates, and people and HR events in the console. Policies follow in a later slice (D70)."
         ),
     ]
     auditor: Annotated[
