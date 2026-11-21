@@ -87,6 +87,14 @@ func TestConsoleCallersNeedTheAdministratorRoleToReadAgentsAndTemplates(t *testi
 	if _, err := f.svc.GetTemplate(t.Context(), throughConsole(f.actor, nobody), "no-such-template"); !errors.Is(err, registry.ErrForbidden) {
 		t.Errorf("missing template for a non-administrator = %v, want forbidden", err)
 	}
+	// A person signed in with Entra needs the role even if a resolver did not name the console app.
+	viaOtherApp := throughConsole(f.actor, nobody)
+	viaOtherApp.ClientApp = uuid.Nil
+	for name, err := range reads(f, viaOtherApp) {
+		if !errors.Is(err, registry.ErrForbidden) {
+			t.Errorf("entra person with no console app, %s = %v, want forbidden", name, err)
+		}
+	}
 	// Development callers (the CLI, Terraform, workflows) carry no console app and are unchanged.
 	for name, err := range reads(f, f.actor) {
 		if err != nil {
