@@ -58,6 +58,11 @@ func TestConsoleCallersReachOnlyTheListedRoutes(t *testing.T) {
 		request(http.MethodGet, "/v1/people/HR-20418", bearer),
 		request(http.MethodGet, "/v1/people/a.person_2-x", bearer),
 		request(http.MethodGet, "/v1/people/"+strings.Repeat("a", 200), bearer),
+		// Policies: the links and action policies, and one of each by name.
+		request(http.MethodGet, "/v1/links", bearer),
+		request(http.MethodGet, "/v1/links/intern-to-market", bearer),
+		request(http.MethodGet, "/v1/action-policies", bearer),
+		request(http.MethodGet, "/v1/action-policies/intern-actions", bearer),
 	} {
 		console, dev := &fixedResolver{name: "entra:x"}, &fixedResolver{name: "dev:x"}
 		_, actor, err := api.WithConsole{Console: console, Fallback: dev}.Resolve(r)
@@ -107,7 +112,22 @@ func TestConsoleCallersReachOnlyTheListedRoutes(t *testing.T) {
 		request(http.MethodGet, "/v1/people/a@corp", bearer),
 		request(http.MethodGet, "/v1/people/a%40corp", bearer),
 		request(http.MethodGet, "/v1/people/"+strings.Repeat("a", 201), bearer),
-		request(http.MethodGet, "/v1/action-policies", bearer),
+		// Policies: reads only, and nothing else of the policy engine.
+		request(http.MethodPut, "/v1/links/intern-to-market", bearer),
+		request(http.MethodDelete, "/v1/links/intern-to-market", bearer),
+		request(http.MethodPut, "/v1/action-policies/intern-actions", bearer),
+		request(http.MethodDelete, "/v1/action-policies/intern-actions", bearer),
+		request(http.MethodPost, "/v1/links", bearer),
+		request(http.MethodGet, "/v1/links/", bearer),
+		request(http.MethodGet, "/v1/links/Intern", bearer),
+		request(http.MethodGet, "/v1/links/a/b", bearer),
+		request(http.MethodGet, "/v1/action-policies/-x", bearer),
+		request(http.MethodGet, "/v1/action-policies/a%2Db", bearer),
+		request(http.MethodGet, "/v1/policy/cedar", bearer),
+		request(http.MethodHead, "/v1/links", bearer),
+		request(http.MethodHead, "/v1/action-policies/intern-actions", bearer),
+		request(http.MethodPost, "/v1/policy/decisions", bearer),
+		request(http.MethodPost, "/v1/policy/simulate", bearer),
 		request(http.MethodGet, "/v1/usage", bearer),
 		request(http.MethodPost, "/v1/catalogue/requests", bearer), // filing, not deciding
 		request(http.MethodGet, "/v1/catalogue/requests/"+uuid.NewString(), bearer),

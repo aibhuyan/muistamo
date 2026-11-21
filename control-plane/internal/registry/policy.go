@@ -200,6 +200,11 @@ func (s *Service) GetActionPolicy(ctx context.Context, actor Actor, name string)
 func (s *Service) getPolicyDocument(ctx context.Context, actor Actor, kind, name string) (storedDoc, error) {
 	var d storedDoc
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		// HUMAN REVIEW REQUIRED (AGENTS.md): console callers need the administrator role, checked
+		// before the lookup so a missing name says nothing (docs/console-management-plan.md, slice 4).
+		if err := requireConsoleAdministrator(ctx, tx, actor, "policies"); err != nil {
+			return err
+		}
 		var err error
 		d, _, err = policyDocument(ctx, tx, kind, name, false)
 		return err
@@ -238,6 +243,10 @@ func (s *Service) ListActionPolicies(ctx context.Context, actor Actor) ([]muista
 func (s *Service) listPolicyDocuments(ctx context.Context, actor Actor, kind string) ([]storedDoc, error) {
 	var out []storedDoc
 	err := s.db.InTenant(ctx, actor.Tenant, func(tx pgx.Tx) error {
+		// HUMAN REVIEW REQUIRED (AGENTS.md): console callers need the administrator role.
+		if err := requireConsoleAdministrator(ctx, tx, actor, "policies"); err != nil {
+			return err
+		}
 		rows, err := tx.Query(ctx, `SELECT revision, created_at, updated_at, updated_by, document FROM policy_documents
 			WHERE kind = $1 ORDER BY name`, kind)
 		if err != nil {
