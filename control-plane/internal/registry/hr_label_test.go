@@ -8,8 +8,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"muistamo.dev/muistamo/contracts/gen/go/muistamov1"
 	"muistamo.dev/muistamo/control-plane/internal/registry"
@@ -35,6 +37,54 @@ func labelled(doc muistamov1.AgentInstance, person string) muistamov1.AgentInsta
 	labels := map[string]string{registry.PersonLabel: person}
 	doc.Metadata.Labels = &labels
 	return doc
+}
+
+// A leaver recorded while the joiner is creating the agent is never missed: the joiner waits for
+// the person's lock, as HR intake holds it, then sees the leaver and creates nothing.
+func TestTheJoinerWaitsForALeaverBeingRecorded(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	if _, _, err := f.svc.ApplyTemplate(ctx, f.actor, template("research")); err != nil {
+		t.Fatal(err)
+	}
+	hrEvent(t, f, f.actor.Tenant, "join-p7", "joiner", "P7", "accepted")
+	intake, err := pgx.Connect(ctx, f.db.OwnerURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer intake.Close(ctx)
+	tx, err := intake.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, f.actor.Tenant.String()+"/P7"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO hr_events (tenant_id,event_id,type,person_id,received_at,occurred_at,workflow_id,payload,decision,dispatch_state,generation)
+		VALUES ($1,'leave-p7','leaver','P7',now(),now(),'wf','{}','accepted','dispatched',2)`, f.actor.Tenant); err != nil {
+		t.Fatal(err)
+	}
+	worker := registry.Actor{Tenant: f.actor.Tenant, Name: "workflow:wf", RequestID: "hr-event:join-p7"}
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := f.svc.CreateHRInstance(ctx, worker, instance("requested"), "P7", "join-p7")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("the joiner did not wait for the person's lock: %v", err)
+	case <-time.After(500 * time.Millisecond):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, registry.ErrConflict) {
+		t.Errorf("the joiner after the leaver = %v, want ErrConflict", err)
+	}
+	if n := testdb.Count(t, f.db.OwnerURL, `SELECT count(*) FROM agent_instances`); n != 0 {
+		t.Errorf("%d agents were created after the leaver", n)
+	}
 }
 
 func TestOnlyTheHRJoinerLabelsAnAgentWithAPerson(t *testing.T) {

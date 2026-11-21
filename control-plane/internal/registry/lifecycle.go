@@ -69,6 +69,11 @@ func (s *Service) CreateHRInstance(ctx context.Context, actor Actor, doc muistam
 		if err := store.LockHRPrivacy(ctx, tx, actor.Tenant, false); err != nil {
 			return err
 		}
+		// The person's lock, as HR intake and the Entra path take it: a leaver for this person
+		// cannot be recorded between the supersession check below and the agent's creation.
+		if err := lockIdentityHRPerson(ctx, tx, actor.Tenant, personID); err != nil {
+			return fmt.Errorf("lock HR person: %w", err)
+		}
 		var kind, person, decision string
 		var generation, latest int64
 		err := tx.QueryRow(ctx, `SELECT type, person_id, decision, generation,
