@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://muistamo.dev/schemas/v1/consoleaccess.json",
+  "title": "ConsoleAccess",
+  "description": "Which roles the caller holds in their tenant, so the console can choose which navigation links to show. It is a hint for display only and never an authorisation: every route still decides for itself at the time of the call.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["administrator", "auditor", "catalogueApprover", "gatewayAdministrator"],
+  "properties": {
+    "administrator": {
+      "type": "boolean",
+      "description": "The caller may read agents and templates in the console. People and HR events, and policies, follow in later slices (D70)."
+    },
+    "auditor": {
+      "type": "boolean",
+      "description": "The caller will read the evidence log in the console; that screen is a later slice, so today the role grants nothing (D70)."
+    },
+    "catalogueApprover": {
+      "type": "boolean",
+      "description": "The caller decides catalogue requests."
+    },
+    "gatewayAdministrator": {
+      "type": "boolean",
+      "description": "The caller issues and revokes virtual keys and reads the tenant's usage."
+    }
+  }
+}

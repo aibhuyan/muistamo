@@ -93,6 +93,19 @@ func (s *server) GetTemplate(ctx context.Context, req muistamov1.GetTemplateRequ
 	return muistamov1.GetTemplate200JSONResponse{TemplateRecordJSONResponse: templateResponse(rec)}, nil
 }
 
+// GetConsoleAccess tells the console which roles the caller holds, for its navigation only.
+func (s *server) GetConsoleAccess(ctx context.Context, _ muistamov1.GetConsoleAccessRequestObject) (muistamov1.GetConsoleAccessResponseObject, error) {
+	actor, err := s.actor(ctx)
+	if err != nil {
+		return muistamov1.GetConsoleAccessdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	access, err := s.svc.ConsoleAccess(ctx, actor)
+	if err != nil {
+		return muistamov1.GetConsoleAccessdefaultApplicationProblemPlusJSONResponse(s.problem(ctx, err)), nil
+	}
+	return muistamov1.GetConsoleAccess200JSONResponse(access), nil
+}
+
 func (s *server) GetTemplateVersion(ctx context.Context, req muistamov1.GetTemplateVersionRequestObject) (muistamov1.GetTemplateVersionResponseObject, error) {
 	actor, err := s.actor(ctx)
 	if err != nil {

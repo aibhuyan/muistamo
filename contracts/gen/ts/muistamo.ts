@@ -28,7 +28,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the latest version of every template */
+        /**
+         * List the latest version of every template
+         * @description A person signed in through the console must be a console administrator (403 otherwise).
+         */
         get: operations["listTemplates"];
         put?: never;
         post?: never;
@@ -47,7 +50,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get the latest version of a template */
+        /**
+         * Get the latest version of a template
+         * @description A person signed in through the console must be a console administrator (403 otherwise).
+         */
         get: operations["getTemplate"];
         /** Apply a template; a changed document creates a new immutable version */
         put: operations["applyTemplate"];
@@ -477,6 +483,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/console/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's console roles
+         * @description Which roles the caller holds, for the console to choose its navigation links. A hint for display only: it authorises nothing, and every route decides for itself at the time of the call.
+         */
+        get: operations["getConsoleAccess"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/instances": {
         parameters: {
             query?: never;
@@ -484,7 +510,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List instances */
+        /**
+         * List instances
+         * @description A person signed in through the console must be a console administrator (403 otherwise).
+         */
         get: operations["listInstances"];
         put?: never;
         post?: never;
@@ -503,7 +532,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get an instance */
+        /**
+         * Get an instance
+         * @description A person signed in through the console must be a console administrator (403 otherwise).
+         */
         get: operations["getInstance"];
         /**
          * Create an instance, or update its sponsor, delegate and cost centre
@@ -1298,6 +1330,20 @@ export interface components {
             /** @description Cedar policy text, ordered by policy id. */
             cedar: string;
             rules: components["schemas"]["PolicyRuleRef"][];
+        };
+        /**
+         * ConsoleAccess
+         * @description Which roles the caller holds in their tenant, so the console can choose which navigation links to show. It is a hint for display only and never an authorisation: every route still decides for itself at the time of the call.
+         */
+        ConsoleAccess: {
+            /** @description The caller may read agents and templates in the console. People and HR events, and policies, follow in later slices (D70). */
+            administrator: boolean;
+            /** @description The caller will read the evidence log in the console; that screen is a later slice, so today the role grants nothing (D70). */
+            auditor: boolean;
+            /** @description The caller decides catalogue requests. */
+            catalogueApprover: boolean;
+            /** @description The caller issues and revokes virtual keys and reads the tenant's usage. */
+            gatewayAdministrator: boolean;
         };
         /**
          * EffectiveAgentSpec
@@ -3590,6 +3636,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UsagePage"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getConsoleAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's roles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleAccess"];
                 };
             };
             default: components["responses"]["Problem"];

@@ -27,6 +27,11 @@ export type LeaverReviewDecision = Knowledge["schemas"]["LeaverReviewDecision"];
 export type PersonalEntry = Knowledge["schemas"]["PersonalEntry"];
 export type CatalogueRequest = ControlPlane["schemas"]["CatalogueRequest"];
 export type CatalogueDecision = ControlPlane["schemas"]["CatalogueDecision"];
+export type ConsoleAccess = ControlPlane["schemas"]["ConsoleAccess"];
+export type AgentInstanceRecord = ControlPlane["schemas"]["AgentInstanceRecord"];
+export type AgentInstancePage = ControlPlane["schemas"]["AgentInstancePage"];
+export type AgentTemplateRecord = ControlPlane["schemas"]["AgentTemplateRecord"];
+export type AgentTemplatePage = ControlPlane["schemas"]["AgentTemplatePage"];
 
 export type Result<T> = { ok: true; data: T } | { ok: false; problem: Problem };
 
@@ -144,6 +149,11 @@ async function readProblem(response: Response): Promise<Problem> {
 
 const id = (value: string) => encodeURIComponent(value);
 
+export const PAGE_SIZE = 50;
+
+// The service's own paging cursor, passed back as it was given.
+const page = (cursor?: string) => (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+
 export const api = {
   reviewerProposals: (s: Session) =>
     call<{ items: Proposal[] }>(s, "knowledge", "GET", "/v1/knowledge/proposals?role=reviewer"),
@@ -173,4 +183,14 @@ export const api = {
     call<{ items: CatalogueRequest[] }>(s, "control-plane", "GET", "/v1/catalogue/requests?state=pending"),
   decideCatalogueRequest: (s: Session, requestId: string, decision: CatalogueDecision) =>
     call<CatalogueRequest>(s, "control-plane", "POST", `/v1/catalogue/requests/${id(requestId)}/decision`, decision),
+
+  // The management screens (D70). The control plane decides who may read them; consoleAccess
+  // only tells the console which navigation links to show.
+  consoleAccess: (s: Session) => call<ConsoleAccess>(s, "control-plane", "GET", "/v1/console/access"),
+  instances: (s: Session, cursor?: string) =>
+    call<AgentInstancePage>(s, "control-plane", "GET", `/v1/instances?limit=${PAGE_SIZE}${page(cursor)}`),
+  instance: (s: Session, name: string) => call<AgentInstanceRecord>(s, "control-plane", "GET", `/v1/instances/${id(name)}`),
+  templates: (s: Session, cursor?: string) =>
+    call<AgentTemplatePage>(s, "control-plane", "GET", `/v1/templates?limit=${PAGE_SIZE}${page(cursor)}`),
+  template: (s: Session, name: string) => call<AgentTemplateRecord>(s, "control-plane", "GET", `/v1/templates/${id(name)}`),
 };

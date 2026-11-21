@@ -62,7 +62,7 @@ test: test-db
 # a skipped Go test counts as a failure, as the pytest conftest does for Python.
 test-authz: test-db
 	@status=0; \
-	go test -count=1 -tags authz -run Authz -v ./control-plane/... | tee /tmp/muistamo-authz-go.log | grep -E '^(--- |ok|FAIL|PASS)' || status=1; \
+	go test -count=1 -tags authz -run Authz -v ./control-plane/... | tee /tmp/muistamo-authz-go.log | grep -E '^(--- |ok|FAIL|PASS)|_test\.go:[0-9]+:' || status=1; \
 	if grep -q -- '--- SKIP' /tmp/muistamo-authz-go.log; then echo "authz: Go tests must never be skipped" >&2; status=1; fi; \
 	if ! grep -q -- '--- PASS\|--- FAIL' /tmp/muistamo-authz-go.log; then echo "authz: no Go tests ran" >&2; status=1; fi; \
 	uv run --no-sync pytest knowledge/tests/authz -m authz -p no:cacheprovider || status=1; \

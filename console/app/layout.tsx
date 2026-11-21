@@ -3,6 +3,7 @@ import "./globals.css";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { api } from "@/lib/api";
 import { getSession } from "@/lib/session";
 
 import { Nav } from "./nav";
@@ -24,6 +25,17 @@ function Brand() {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const session = await getSession();
+  // Which links to show, never what may be read: if the control plane cannot say, the
+  // management links are simply not shown.
+  let administrator = false;
+  if (session) {
+    try {
+      const access = await api.consoleAccess(session);
+      administrator = access.ok && access.data.administrator;
+    } catch {
+      // Not configured or not reachable: the links stay hidden, and every page decides itself.
+    }
+  }
   return (
     <html lang="en">
       <body>
@@ -31,7 +43,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <div className="shell">
             <div className="rail">
               <Brand />
-              <Nav />
+              <Nav administrator={administrator} />
               <form action={signOut} className="who">
                 <span className="who-name">{session.name ?? session.person}</span>
                 <code className="who-tenant">{session.tenant}</code>

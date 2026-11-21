@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -115,6 +116,12 @@ func seedPerson(t *testing.T, h harness, tenant uuid.UUID) {
 	if err := registry.ConfigureGatewayAdmins(t.Context(), h.db.OwnerURL, registry.Actor{Tenant: tenant, Name: "operator:test", RequestID: uuid.NewString()}, []string{subjectIdentity}, h.key); err != nil {
 		t.Fatal(err)
 	}
+	// A holds both console roles too (D70): erasure removes the rows.
+	for _, role := range []string{registry.ConsoleAdministrator, registry.ConsoleAuditor} {
+		if err := registry.ConfigureConsoleRole(t.Context(), h.db.OwnerURL, registry.Actor{Tenant: tenant, Name: "operator:test", RequestID: uuid.NewString()}, role, []string{subjectIdentity}, h.key); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// And a key A revoked: erasure must pseudonymise revoked_by through the revocation trigger.
 	revokedKey := uuid.New()
 	testdb.ExecIn(t, h.db.AppURL, tenant, insertKey, tenant, revokedKey)
@@ -206,7 +213,7 @@ func TestErasureRemovesThePersonEverywhereButEvidence(t *testing.T) {
 	counts, _ := got.body["counts"].(map[string]any)
 	for _, k := range []string{"agent_template_versions.created_by", "catalogue_requests.requested_by", "catalogue_approvals.approver",
 		"policy_documents.updated_by", "catalogue_approvers", "agent_instances.document", "hr_events.payload",
-		"virtual_keys.created_by", "virtual_keys.revoked_by", "gateway_calls.person", "gateway_admins"} {
+		"virtual_keys.created_by", "virtual_keys.revoked_by", "gateway_calls.person", "gateway_admins", "console_roles"} {
 		if n, _ := counts[k].(float64); n < 1 {
 			t.Errorf("count %s = %v, want at least 1", k, counts[k])
 		}
@@ -360,5 +367,46 @@ func TestEntraUserLinksAreForPrivacyOfficers(t *testing.T) {
 	}
 	if got := h.call(t, b, http.MethodGet, "/v1/people/A-PERSON/entra-link", "", asOfficer()...); got.status == http.StatusOK {
 		t.Errorf("another tenant read the link: %s", got.body)
+	}
+}
+
+// Console roles can be held only as entra:<object id>, the name a console caller resolves to. An
+// erasure that names the person by HR id, email and another identity, but not that name, still removes the roles through the person's
+// Entra link, and fences the name so an operator cannot give it a role again (D70).
+func TestErasureByHRIdReachesThePersonsConsoleRoles(t *testing.T) {
+	h := newHarnessWithHR(t, api.InsecureDevHeaders{}, &fakeDispatcher{})
+	a := h.tenant(t, "tenant-a")
+	seedPerson(t, h, a)
+	user, version, directory := uuid.New(), uuid.New(), uuid.New()
+	testdb.Exec(t, h.db.OwnerURL, `INSERT INTO entra_bindings (tenant_id,binding_version,config_digest,entra_tenant_id,blueprint_app_id)
+		VALUES ($1,$2,repeat('a',64),$3,gen_random_uuid())`, a, version, directory)
+	testdb.Exec(t, h.db.OwnerURL, `INSERT INTO person_entra_links (tenant_id,person_id,status,binding_version,entra_tenant_id,entra_user_object_id,receipt_id)
+		VALUES ($1,'A-PERSON','matched',$2,$3,$4,gen_random_uuid())`, a, version, directory, user)
+	person := "entra:" + user.String()
+	operator := registry.Actor{Tenant: a, Name: "operator:test", RequestID: uuid.NewString()}
+	for _, role := range []string{registry.ConsoleAdministrator, registry.ConsoleAuditor} {
+		if err := registry.ConfigureConsoleRole(t.Context(), h.db.OwnerURL, operator, role, []string{person}, h.key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	retire(t, h, a)
+	body := `{"id":"` + uuid.NewString() + `","reason":"DSR-2","subject":{"identities":["` + subjectIdentity + `"],"email":"` + subjectEmail + `","hrPersonId":"A-PERSON"}}`
+	got := h.call(t, a, http.MethodPost, "/v1/privacy/erasures", body, asOfficer()...)
+	if got.status != http.StatusCreated {
+		t.Fatalf("erasure = %d: %s", got.status, got.raw)
+	}
+	counts, _ := got.body["counts"].(map[string]any)
+	if n, _ := counts["console_roles"].(float64); n != 2 {
+		t.Errorf("console_roles erased = %v, want 2", counts["console_roles"])
+	}
+	if n := testdb.Count(t, h.db.OwnerURL, `SELECT count(*) FROM console_roles WHERE person=$1`, person); n != 0 {
+		t.Errorf("%d console roles survived the erasure", n)
+	}
+	if strings.Contains(got.raw, user.String()) {
+		t.Errorf("the proof names the person's Entra identity: %s", got.raw)
+	}
+	err := registry.ConfigureConsoleRole(t.Context(), h.db.OwnerURL, operator, registry.ConsoleAdministrator, []string{person}, h.key)
+	if !errors.Is(err, registry.ErrConflict) {
+		t.Errorf("an erased person was given a console role again: %v", err)
 	}
 }

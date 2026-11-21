@@ -594,7 +594,10 @@ def main() -> None:
         # The catalogue inbox through the console: the control plane accepts the reviewer's own
         # console token for its API app, and the reviewer approves the pending request.
         status, page = console_get(console, "/catalogue", jar)
-        assert status == 200 and "<h2>controller<!-- --> v<!-- -->1</h2>" in page, (
+        assert (
+            status == 200
+            and '<h2>controller<!-- --> <span class="muted">version <!-- -->1</span></h2>' in page
+        ), (
             status,
             page[-800:],
         )
@@ -614,8 +617,56 @@ def main() -> None:
         assert status == 401, status
         # Nor does a console token on a route outside the console's list.
         reviewer_cp = bearer(ms.control_plane_token(str(REVIEWER)))
-        assert http("GET", cp + "/v1/instances", None, reviewer_cp)[0] == 401
+        assert http("GET", cp + "/v1/events", None, reviewer_cp)[0] == 401
+        assert http("PUT", cp + "/v1/templates/controller", controller, reviewer_cp)[0] == 401
         assert http("GET", cp + "/v1/catalogue/requests", None, reviewer_cp)[0] == 200
+
+        # The Workforce screens (D70): agents and templates for console administrators only.
+        # The reviewer holds no role yet: the control plane refuses, and the console shows that.
+        assert http("GET", cp + "/v1/instances", None, reviewer_cp)[0] == 403
+        assert http("GET", cp + "/v1/templates/controller", None, reviewer_cp)[0] == 403
+        status, page = console_get(console, "/", jar)
+        assert status == 200 and 'href="/agents"' not in page, (status, page[-800:])
+        status, page = console_get(console, "/agents", jar)
+        assert status == 200 and "only console administrators can read agents" in page, (
+            status,
+            page[:1500],
+        )
+        assert 'href="/agents/' not in page, page[:1500]
+        # An operator names the reviewer an administrator, signed as evidence.
+        run(
+            [binary, "tenant", "console", "roles", "set", "--tenant", tenant]
+            + ["--actor", "operator:e2e", "--role", "administrator", f"entra:{REVIEWER}"],
+            base,
+        )
+        status, access = http("GET", cp + "/v1/console/access", None, reviewer_cp)
+        assert status == 200 and access["administrator"] is True, (status, access)
+        status, page = console_get(console, "/", jar)
+        assert status == 200 and 'href="/agents"' in page, (status, page[-800:])
+        status, page = console_get(console, "/templates", jar)
+        assert status == 200 and 'href="/templates/controller"' in page, (status, page[-800:])
+        status, page = console_get(console, "/templates/controller", jar)
+        assert status == 200 and "Medium" in page, (status, page[-800:])
+        status, listed = http("GET", cp + "/v1/instances", None, operator)
+        assert status == 200, (status, listed)
+        names = [i["document"]["metadata"]["name"] for i in listed["items"]]
+        assert names, "the HR joiner in step 1 made no agent"
+        status, page = console_get(console, "/agents", jar)
+        assert status == 200 and all(f'href="/agents/{n}"' in page for n in names), (
+            names,
+            page[-800:],
+        )
+        status, page = console_get(console, f"/agents/{names[0]}", jar)
+        assert status == 200 and names[0] in page and "Forbidden" not in page, (status, page[:1500])
+        assert "hr-person-id" not in page, "the agent page shows a person's HR id label"
+        # Still read-only: an administrator's console token writes nothing.
+        assert http("PUT", cp + "/v1/templates/controller", controller, reviewer_cp)[0] == 401
+        # Another current employee with no role is still refused.
+        assert (
+            http("GET", cp + "/v1/instances", None, bearer(ms.control_plane_token(str(OTHER))))[0]
+            == 403
+        )
+        assert "console.roles.configured" in evidence_actions(cp, operator)
         # A current employee who is not an approver sees only their own requests (none).
         status, theirs = http(
             "GET", cp + "/v1/catalogue/requests", None, bearer(ms.control_plane_token(str(OTHER)))
@@ -980,6 +1031,19 @@ def hr_event(
         {"X-Muistamo-Tenant": tenant, "X-Muistamo-Signature": f"t={ts},v1={mac}"},
     )
     assert status == 202, (status, answer)
+
+
+def evidence_actions(cp: str, operator: dict) -> set[str]:
+    """Every action in the tenant's control-plane evidence chain, page by page."""
+    actions: set[str] = set()
+    after = 0
+    while True:
+        status, page = http("GET", f"{cp}/v1/events?afterSeq={after}&limit=200", None, operator)
+        assert status == 200, (status, page)
+        actions.update(e["action"] for e in page["items"])
+        if not page.get("nextAfterSeq"):
+            return actions
+        after = page["nextAfterSeq"]
 
 
 def _active(cp: str, operator: dict) -> str | None:

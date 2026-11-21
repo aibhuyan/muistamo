@@ -69,6 +69,13 @@ const TONES: Record<string, Tone> = {
   low: "neutral",
   blocking: "stop",
   warning: "wait",
+  // agent states
+  active: "ok",
+  requested: "wait",
+  "under-review": "wait",
+  suspended: "stop",
+  quarantined: "stop",
+  retired: "neutral",
 };
 
 // A status as a word on a tinted ground. A value the console does not know is shown neutrally,

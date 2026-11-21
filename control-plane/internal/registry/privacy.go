@@ -34,7 +34,7 @@ var PersonalDataTables = []string{
 	"catalogue_approvals", "policy_documents", "privacy_officers", "erasure_requests", "agent_clones",
 	"model_catalogue", "model_aliases", "rollouts", "evidence_events",
 	"entra_bindings", "instance_identities", "identity_operations",
-	"virtual_keys", "gateway_calls", "gateway_admins", "person_entra_links",
+	"virtual_keys", "gateway_calls", "gateway_admins", "person_entra_links", "console_roles",
 }
 
 type retention = struct {
@@ -190,6 +190,33 @@ func (s *Service) Erase(ctx context.Context, actor Actor, req muistamov1.Erasure
 		rows.Close()
 		if err != nil {
 			return err
+		}
+		// The person's Entra identity, as the console names them (entra:<object id>), from their
+		// linked HR record: console roles, approvers and gateway administrators can hold only that
+		// name, so an erasure by HR id or email must reach it too, and fence it against coming back.
+		linked, err := tx.Query(ctx, `SELECT entra_user_object_id FROM person_entra_links WHERE person_id = ANY($1::text[]) AND entra_user_object_id IS NOT NULL`, personIDs)
+		if err != nil {
+			return fmt.Errorf("resolve Entra identities: %w", err)
+		}
+		for linked.Next() {
+			var oid uuid.UUID
+			if err := linked.Scan(&oid); err != nil {
+				linked.Close()
+				return err
+			}
+			name := "entra:" + oid.String()
+			values = append(values, name)
+			fenceKeys = append(fenceKeys, store.HRFenceKey(actor.Tenant, "identifier", name))
+		}
+		err = linked.Err()
+		linked.Close()
+		if err != nil {
+			return err
+		}
+		slices.Sort(values)
+		values = slices.Compact(values)
+		if slices.Contains(values, actor.Name) {
+			return fmt.Errorf("a privacy officer cannot erase their own data; another officer must: %w", ErrForbidden)
 		}
 		for _, person := range personIDs {
 			fenceKeys = append(fenceKeys, store.HRFenceKey(actor.Tenant, "hr-person", person))

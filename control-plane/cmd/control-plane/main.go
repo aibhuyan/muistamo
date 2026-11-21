@@ -269,6 +269,7 @@ func tenantCmd() *cobra.Command {
 			return nil
 		},
 	})
+	console.AddCommand(consoleRolesCmd())
 	tenant.AddCommand(console)
 	tenant.AddCommand(&cobra.Command{
 		Use:   "hr-secret TENANT_ID",
@@ -459,6 +460,57 @@ func gatewayCmd() *cobra.Command {
 	cmd.AddCommand(admins)
 	cmd.AddCommand(gatewayAuthorizationCmd(), gatewayIngestCmd(), gatewayDigestCmd(), gatewayRenderCmd())
 	return cmd
+}
+
+// consoleRolesCmd sets who may read the console's management screens (D70).
+func consoleRolesCmd() *cobra.Command {
+	roles := &cobra.Command{Use: "roles", Short: "Manage who reads the console's management screens"}
+	var tenant, operator, role string
+	var clear bool
+	set := &cobra.Command{
+		Use:   "set --tenant ID --actor OPERATOR --role administrator|auditor PERSON... | --clear",
+		Short: "Replace the people in one console role (MUISTAMO_MIGRATE_DATABASE_URL)",
+		Long: "Administrators read agents and templates in the console. Auditors will read the evidence log,\n" +
+			"a later slice; today the role grants nothing. Name each person as the console knows them:\n" +
+			"entra:<object id>, or dev:<identity> for development sign-in.",
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if (len(args) == 0) != clear {
+				return errors.New("supply the people in the role or --clear")
+			}
+			id, err := uuid.Parse(tenant)
+			if err != nil {
+				return fmt.Errorf("tenant id: %w", err)
+			}
+			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			defer cancel()
+			ownerURL := requireEnv("MUISTAMO_MIGRATE_DATABASE_URL")
+			db, err := store.Open(ctx, ownerURL)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			key, err := loadSigner(ctx, db, requireEnv("MUISTAMO_EVIDENCE_KEY_FILE"))
+			if err != nil {
+				return err
+			}
+			who := registry.Actor{Tenant: id, Name: operator, RequestID: uuid.NewString()}
+			if err := registry.ConfigureConsoleRole(ctx, ownerURL, who, role, args, key); err != nil {
+				return err
+			}
+			cmd.Printf("tenant %s now has %d console %ss\n", id, len(args), role)
+			return nil
+		},
+	}
+	set.Flags().StringVar(&tenant, "tenant", "", "tenant id")
+	set.Flags().StringVar(&operator, "actor", "", "operator identity for signed evidence")
+	set.Flags().StringVar(&role, "role", "", "administrator or auditor")
+	set.Flags().BoolVar(&clear, "clear", false, "remove everyone from the role")
+	_ = set.MarkFlagRequired("tenant")
+	_ = set.MarkFlagRequired("actor")
+	_ = set.MarkFlagRequired("role")
+	roles.AddCommand(set)
+	return roles
 }
 
 func requireEnv(name string) string {
